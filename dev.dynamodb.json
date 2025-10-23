@@ -1,0 +1,221 @@
+{
+  "batches": {
+    "2419887b-4d23-4c83-9ec7-7818603fe6b6": {
+      "created_at": "2025-10-23T22:55:15.556542+00:00",
+      "description": null,
+      "id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "jira_issue": null,
+      "name": "Three sites high level regression test ",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "task_ids": [
+        "45bf140c-0e8a-4106-911b-421961b32eb7",
+        "ce469c27-1ace-4869-a5b0-060b8b52c3b0"
+      ],
+      "updated_at": "2025-10-23T23:29:51.870865+00:00"
+    },
+    "2852fb4d-feb9-49f1-a0c9-4cb1eb328a44": {
+      "created_at": "2025-10-23T23:30:17.857728+00:00",
+      "description": null,
+      "id": "2852fb4d-feb9-49f1-a0c9-4cb1eb328a44",
+      "jira_issue": null,
+      "name": "Monographs-specific suite",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "task_ids": [],
+      "updated_at": "2025-10-23T23:30:17.857728+00:00"
+    }
+  },
+  "config": {
+    "browsers": [
+      "chromium",
+      "firefox"
+    ],
+    "viewports": [
+      "1920x1080",
+      "1600x900",
+      "1440x900",
+      "1366x768",
+      "1280x720",
+      "1024x768",
+      "768x1024",
+      "414x896",
+      "375x812",
+      "360x640"
+    ]
+  },
+  "pages": {
+    "2228fcba-39a1-4006-b64b-afd340a93012": {
+      "created_at": "2025-10-23T22:23:27.933450+00:00",
+      "id": "2228fcba-39a1-4006-b64b-afd340a93012",
+      "name": "Monographs home page",
+      "preparatory_js": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "reference_url": "https://monographs.iarc.who.int/",
+      "updated_at": "2025-10-23T22:23:27.933450+00:00",
+      "url": "https://iarc-mono.spherical.horse/"
+    },
+    "ba53a1af-ec40-41d5-8fab-d934e23af5ec": {
+      "created_at": "2025-10-23T22:21:27.768043+00:00",
+      "id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "name": "WWW home page",
+      "preparatory_js": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "reference_url": "https://www.iarc.who.int/",
+      "updated_at": "2025-10-23T22:21:27.768043+00:00",
+      "url": "https://iarc.spherical.horse"
+    },
+    "fdf57dbf-3c94-4a35-85f5-9ec0399231d9": {
+      "created_at": "2025-10-23T22:22:19.387376+00:00",
+      "id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "name": "Training home page",
+      "preparatory_js": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "reference_url": "https://training.iarc.who.int/",
+      "updated_at": "2025-10-23T22:22:19.387376+00:00",
+      "url": "https://iarc-training.spherical.horse/"
+    }
+  },
+  "projects": {
+    "2d7b13fb-5233-405d-8b11-a72eb87d0d6c": {
+      "created_at": "2025-10-23T15:43:03.976561+00:00",
+      "description": "",
+      "id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "name": "IARC WEB",
+      "slug": "iarc",
+      "updated_at": "2025-10-23T15:43:03.976561+00:00"
+    }
+  },
+  "runs": {
+    "118dceb3-e22d-4e75-8bd4-df858a494c08": {
+      "baseline_id": null,
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-10-23T23:27:17.639889+00:00",
+      "id": "118dceb3-e22d-4e75-8bd4-df858a494c08",
+      "jira_issue": null,
+      "note": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "project_name": "IARC WEB",
+      "purpose": "baseline_recording",
+      "requested_by": "mock_user",
+      "status": "queued",
+      "summary": {
+        "executions_failed": 2,
+        "executions_finished": 2,
+        "executions_total": 3
+      },
+      "updated_at": "2025-10-23T23:27:17.639889+00:00"
+    },
+    "46090259-6584-4174-b674-7683fcfcabf3": {
+      "baseline_id": null,
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-10-23T23:27:33.390769+00:00",
+      "id": "46090259-6584-4174-b674-7683fcfcabf3",
+      "jira_issue": null,
+      "note": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "purpose": "baseline_recording",
+      "requested_by": "mock_user",
+      "status": "queued",
+      "summary": {
+        "executions_failed": 0,
+        "executions_finished": 5,
+        "executions_total": 5
+      },
+      "updated_at": "2025-10-23T23:27:33.390769+00:00"
+    },
+    "76e3a6b0-bbf0-4e0a-b983-74838ea687bf": {
+      "baseline_id": null,
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-10-23T22:56:07.980478+00:00",
+      "id": "76e3a6b0-bbf0-4e0a-b983-74838ea687bf",
+      "jira_issue": null,
+      "note": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "project_name": "IARC WEB",
+      "purpose": "baseline_recording",
+      "requested_by": "mock_user",
+      "status": "queued",
+      "summary": {
+        "executions_failed": 1,
+        "executions_finished": 1,
+        "executions_total": 7
+      },
+      "updated_at": "2025-10-23T22:56:07.980478+00:00"
+    }
+  },
+  "tasks": {
+    "45bf140c-0e8a-4106-911b-421961b32eb7": {
+      "browsers": [
+        "chromium",
+        "firefox"
+      ],
+      "created_at": "2025-10-23T22:27:46.700769+00:00",
+      "default_baseline_policy": null,
+      "id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "name": "WWW regression kit",
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "task_js": null,
+      "updated_at": "2025-10-23T22:27:46.700769+00:00",
+      "viewports": [
+        {
+          "height": 720,
+          "width": 1280
+        },
+        {
+          "height": 1000,
+          "width": 800
+        },
+        {
+          "height": 1000,
+          "width": 360
+        }
+      ]
+    },
+    "6139caea-48c6-4d07-a338-271caa071a7f": {
+      "browsers": [
+        "chromium"
+      ],
+      "created_at": "2025-10-23T23:30:40.861359+00:00",
+      "id": "6139caea-48c6-4d07-a338-271caa071a7f",
+      "name": "Mono home page test",
+      "page_id": "2228fcba-39a1-4006-b64b-afd340a93012",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "task_js": null,
+      "updated_at": "2025-10-23T23:30:40.861359+00:00",
+      "viewports": [
+        {
+          "height": 1080,
+          "width": 1920
+        }
+      ]
+    },
+    "ce469c27-1ace-4869-a5b0-060b8b52c3b0": {
+      "browsers": [
+        "chromium",
+        "firefox"
+      ],
+      "created_at": "2025-10-23T23:29:41.213156+00:00",
+      "id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "name": "Training regression kit",
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "task_js": null,
+      "updated_at": "2025-10-23T23:29:41.213156+00:00",
+      "viewports": [
+        {
+          "height": 1080,
+          "width": 1920
+        },
+        {
+          "height": 768,
+          "width": 1024
+        },
+        {
+          "height": 812,
+          "width": 375
+        }
+      ]
+    }
+  },
+  "version": 1
+}

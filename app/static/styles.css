@@ -1,0 +1,21 @@
+body {
+  background-color: #f8fafc;
+}
+
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline-block;
+}
+
+.empty-state {
+  padding: 1rem;
+  border: 1px dashed #cbd5f5;
+  border-radius: 0.75rem;
+  background-color: #eef2ff;
+  color: #475569;
+  text-align: center;
+}

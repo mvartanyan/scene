@@ -1,0 +1,600 @@
+<div class="card border shadow-sm">
+  <div class="card-header bg-white border-bottom-0">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <h2 class="h5 mb-1">{{ project.name }}</h2>
+        <div class="text-muted small">Slug: {{ project.slug }}</div>
+      </div>
+      <div class="btn-group">
+        <button
+          class="btn btn-outline-primary btn-sm"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#edit-project-{{ project.id }}"
+          aria-expanded="false"
+          aria-controls="edit-project-{{ project.id }}"
+        >
+          Edit
+        </button>
+        <form
+          hx-delete="/projects/{{ project.id }}"
+          hx-target="#project-dashboard"
+          hx-swap="outerHTML"
+          class="ms-2"
+        >
+          <button
+            class="btn btn-outline-danger btn-sm"
+            type="submit"
+            onclick="return confirm('Delete this project?')"
+          >
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+    <div class="collapse mt-3" id="edit-project-{{ project.id }}">
+      <form
+        hx-post="/projects/{{ project.id }}/edit"
+        hx-target="#project-detail"
+        hx-swap="innerHTML"
+        class="row g-3"
+      >
+        <input type="hidden" name="active_tab" value="{{ active_tab }}" />
+        <div class="col-md-6">
+          <label class="form-label">Name</label>
+          <input type="text" name="name" value="{{ project.name }}" required class="form-control" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Slug</label>
+          <input type="text" name="slug" value="{{ project.slug }}" required class="form-control" />
+        </div>
+        <div class="col-12">
+          <label class="form-label">Description</label>
+          <textarea name="description" rows="3" class="form-control">{{ project.description or "" }}</textarea>
+        </div>
+        <div class="col-12 d-flex justify-content-end">
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+
+    <ul class="nav nav-tabs mt-4" id="projectTabs-{{ project.id }}" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link {% if active_tab == 'pages' %}active{% endif %}"
+          id="pages-tab-{{ project.id }}"
+          data-bs-toggle="tab"
+          data-bs-target="#pages-pane-{{ project.id }}"
+          type="button"
+          role="tab"
+          aria-controls="pages-pane-{{ project.id }}"
+          aria-selected="{{ 'true' if active_tab == 'pages' else 'false' }}"
+        >
+          Pages <span class="badge text-bg-secondary ms-1">{{ pages|length }}</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link {% if active_tab == 'tasks' %}active{% endif %}"
+          id="tasks-tab-{{ project.id }}"
+          data-bs-toggle="tab"
+          data-bs-target="#tasks-pane-{{ project.id }}"
+          type="button"
+          role="tab"
+          aria-controls="tasks-pane-{{ project.id }}"
+          aria-selected="{{ 'true' if active_tab == 'tasks' else 'false' }}"
+        >
+          Tasks <span class="badge text-bg-secondary ms-1">{{ tasks|length }}</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link {% if active_tab == 'batches' %}active{% endif %}"
+          id="batches-tab-{{ project.id }}"
+          data-bs-toggle="tab"
+          data-bs-target="#batches-pane-{{ project.id }}"
+          type="button"
+          role="tab"
+          aria-controls="batches-pane-{{ project.id }}"
+          aria-selected="{{ 'true' if active_tab == 'batches' else 'false' }}"
+        >
+          Batches <span class="badge text-bg-secondary ms-1">{{ batches|length }}</span>
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card-body">
+    <div class="tab-content" id="projectTabsContent-{{ project.id }}">
+      <div
+        class="tab-pane fade {% if active_tab == 'pages' %}show active{% endif %}"
+        id="pages-pane-{{ project.id }}"
+        role="tabpanel"
+        aria-labelledby="pages-tab-{{ project.id }}"
+      >
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <div class="card border h-100">
+              <div class="card-header bg-white fw-semibold">Pages</div>
+              <div class="card-body">
+                {% if pages %}
+                  <div class="list-group list-group-flush">
+                    {% for page in pages %}
+                      <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <div class="me-3">
+                            <div class="fw-semibold">{{ page.name }}</div>
+                            <small class="text-muted">{{ page.url }}</small>
+                          </div>
+                          <div class="btn-group">
+                            <button
+                              class="btn btn-outline-primary btn-sm"
+                              type="button"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#edit-page-{{ page.id }}"
+                              aria-expanded="false"
+                              aria-controls="edit-page-{{ page.id }}"
+                            >
+                              Edit
+                            </button>
+                            <form
+                              hx-delete="/pages/{{ page.id }}"
+                              hx-target="#project-detail"
+                              hx-swap="innerHTML"
+                              class="ms-2"
+                            >
+                              <input type="hidden" name="active_tab" value="pages" />
+                              <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                            </form>
+                          </div>
+                        </div>
+                        <div class="collapse mt-3" id="edit-page-{{ page.id }}">
+                          <form
+                            hx-post="/pages/{{ page.id }}/edit"
+                            hx-target="#project-detail"
+                            hx-swap="innerHTML"
+                            class="row g-3"
+                          >
+                            <input type="hidden" name="active_tab" value="pages" />
+                            <div class="col-12">
+                              <label class="form-label">Name</label>
+                              <input type="text" name="name" value="{{ page.name }}" required class="form-control" />
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">URL</label>
+                              <input type="url" name="url" value="{{ page.url }}" required class="form-control" />
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Reference URL</label>
+                              <input type="url" name="reference_url" value="{{ page.reference_url or '' }}" class="form-control" />
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Preparatory JS</label>
+                              <textarea name="preparatory_js" rows="3" class="form-control">{{ page.preparatory_js or "" }}</textarea>
+                            </div>
+                            <div class="col-12 d-flex justify-content-end">
+                              <button type="submit" class="btn btn-primary btn-sm">Update Page</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="empty-state">No pages yet.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card border h-100">
+              <div class="card-header bg-white fw-semibold">Add Page</div>
+              <div class="card-body">
+                <form
+                  hx-post="/projects/{{ project.id }}/pages"
+                  hx-target="#project-detail"
+                  hx-swap="innerHTML"
+                  class="row g-3"
+                >
+                  <input type="hidden" name="active_tab" value="pages" />
+                  <div class="col-12">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="name" required class="form-control" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">URL</label>
+                    <input type="url" name="url" required placeholder="https://example.com" class="form-control" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Reference URL</label>
+                    <input type="url" name="reference_url" placeholder="https://production.example.com" class="form-control" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Preparatory JS</label>
+                    <textarea name="preparatory_js" rows="3" class="form-control" placeholder="// Optional setup script"></textarea>
+                  </div>
+                  <div class="col-12 d-flex justify-content-end">
+                    <button type="submit" class="btn btn-primary">Save Page</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="tab-pane fade {% if active_tab == 'tasks' %}show active{% endif %}"
+        id="tasks-pane-{{ project.id }}"
+        role="tabpanel"
+        aria-labelledby="tasks-tab-{{ project.id }}"
+      >
+        <div class="row g-4">
+          <div class="col-lg-7">
+            <div class="card border h-100">
+              <div class="card-header bg-white fw-semibold">Tasks</div>
+              <div class="card-body">
+                {% if tasks %}
+                  <div class="list-group list-group-flush">
+                    {% for task in tasks %}
+                      {% set vp_ns = namespace(values=[]) %}
+                      {% for vp in task.viewports %}
+                        {% set _ = vp_ns.values.append(vp.width|string ~ 'x' ~ vp.height|string) %}
+                      {% endfor %}
+                      <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <div>
+                            <div class="fw-semibold">{{ task.name }}</div>
+                            <small class="text-muted">
+                              Page: {{ page_lookup[task.page_id].name if page_lookup.get(task.page_id) else task.page_id }}
+                            </small>
+                            <div class="text-muted small mt-1">
+                              Browsers: {{ task.browsers | join(", ") or "Not set" }}
+                            </div>
+                            <div class="text-muted small">
+                              Viewports:
+                              {% if vp_ns.values %}
+                                {{ vp_ns.values | join(", ") }}
+                              {% else %}
+                                Not set
+                              {% endif %}
+                            </div>
+                          </div>
+                          <div class="btn-group">
+                            <button
+                              class="btn btn-outline-primary btn-sm"
+                              type="button"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#edit-task-{{ task.id }}"
+                              aria-expanded="false"
+                              aria-controls="edit-task-{{ task.id }}"
+                            >
+                              Edit
+                            </button>
+                            <form
+                              hx-delete="/tasks/{{ task.id }}"
+                              hx-target="#project-detail"
+                              hx-swap="innerHTML"
+                              class="ms-2"
+                            >
+                              <input type="hidden" name="active_tab" value="tasks" />
+                              <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                            </form>
+                          </div>
+                        </div>
+                        <div class="collapse mt-3" id="edit-task-{{ task.id }}">
+                          <form
+                            hx-post="/tasks/{{ task.id }}/edit"
+                            hx-target="#project-detail"
+                            hx-swap="innerHTML"
+                            class="row g-3"
+                          >
+                            <input type="hidden" name="active_tab" value="tasks" />
+                            <div class="col-12">
+                              <label class="form-label">Name</label>
+                              <input type="text" name="name" value="{{ task.name }}" required class="form-control" />
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Page</label>
+                              <select name="page_id" class="form-select" required>
+                                {% for page in pages %}
+                                  <option value="{{ page.id }}" {% if page.id == task.page_id %}selected{% endif %}>{{ page.name }}</option>
+                                {% endfor %}
+                              </select>
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Browsers</label>
+                              <div class="d-flex flex-wrap gap-3">
+                                {% for browser in available_browsers %}
+                                  <div class="form-check">
+                                    <input
+                                      class="form-check-input"
+                                      type="checkbox"
+                                      name="browsers"
+                                      value="{{ browser }}"
+                                      id="edit-task-{{ task.id }}-browser-{{ loop.index }}"
+                                      {% if browser in task.browsers %}checked{% endif %}
+                                    />
+                                    <label class="form-check-label" for="edit-task-{{ task.id }}-browser-{{ loop.index }}">
+                                      {{ browser|capitalize }}
+                                    </label>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Viewports</label>
+                              <div class="d-flex flex-wrap gap-3">
+                                {% for viewport in available_viewports %}
+                                  <div class="form-check">
+                                    <input
+                                      class="form-check-input"
+                                      type="checkbox"
+                                      name="viewports"
+                                      value="{{ viewport }}"
+                                      id="edit-task-{{ task.id }}-viewport-{{ loop.index }}"
+                                      {% if viewport in vp_ns.values %}checked{% endif %}
+                                    />
+                                    <label class="form-check-label" for="edit-task-{{ task.id }}-viewport-{{ loop.index }}">
+                                      {{ viewport.replace('x', ' × ') }}
+                                    </label>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            </div>
+                           <div class="col-12">
+                              <label class="form-label">Task JS</label>
+                              <textarea name="task_js" rows="3" class="form-control">{{ task.task_js or "" }}</textarea>
+                            </div>
+                            <div class="col-12 d-flex justify-content-end">
+                              <button type="submit" class="btn btn-primary btn-sm">Update Task</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="empty-state">No tasks yet.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="card border h-100">
+              <div class="card-header bg-white fw-semibold">Add Task</div>
+              <div class="card-body">
+                {% if pages %}
+                  <form
+                    hx-post="/projects/{{ project.id }}/tasks"
+                    hx-target="#project-detail"
+                    hx-swap="innerHTML"
+                    class="row g-3"
+                  >
+                    <input type="hidden" name="active_tab" value="tasks" />
+                    <div class="col-12">
+                      <label class="form-label">Name</label>
+                      <input type="text" name="name" required class="form-control" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Page</label>
+                      <select name="page_id" required class="form-select">
+                        {% for page in pages %}
+                          <option value="{{ page.id }}">{{ page.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Browsers</label>
+                      <div class="d-flex flex-wrap gap-3">
+                        {% for browser in available_browsers %}
+                          <div class="form-check">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              name="browsers"
+                              value="{{ browser }}"
+                              id="new-task-browser-{{ project.id }}-{{ loop.index }}"
+                            />
+                            <label class="form-check-label" for="new-task-browser-{{ project.id }}-{{ loop.index }}">
+                              {{ browser|capitalize }}
+                            </label>
+                          </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Viewports</label>
+                      <div class="d-flex flex-wrap gap-3">
+                        {% for viewport in available_viewports %}
+                          <div class="form-check">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              name="viewports"
+                              value="{{ viewport }}"
+                              id="new-task-viewport-{{ project.id }}-{{ loop.index }}"
+                            />
+                            <label class="form-check-label" for="new-task-viewport-{{ project.id }}-{{ loop.index }}">
+                              {{ viewport.replace('x', ' × ') }}
+                            </label>
+                          </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Task JS</label>
+                      <textarea name="task_js" rows="3" class="form-control" placeholder="// Optional run script"></textarea>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                      <button type="submit" class="btn btn-primary">Save Task</button>
+                    </div>
+                  </form>
+                {% else %}
+                  <div class="empty-state">Add a page before creating tasks.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="tab-pane fade {% if active_tab == 'batches' %}show active{% endif %}"
+        id="batches-pane-{{ project.id }}"
+        role="tabpanel"
+        aria-labelledby="batches-tab-{{ project.id }}"
+      >
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <div class="card border h-100">
+              <div class="card-header bg-white fw-semibold">Batches</div>
+              <div class="card-body">
+                {% if batches %}
+                  <div class="list-group list-group-flush">
+                    {% for batch in batches %}
+                      <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <div>
+                            <div class="fw-semibold">{{ batch.name }}</div>
+                            <small class="text-muted">{{ batch.description or "No description" }}</small>
+                            <div class="text-muted small mt-1">Tasks: {{ batch.task_ids | length }}</div>
+                            {% if batch.jira_issue %}
+                              <span class="badge text-bg-info mt-2">JIRA: {{ batch.jira_issue }}</span>
+                            {% endif %}
+                          </div>
+                          <div class="btn-group">
+                            <button
+                              class="btn btn-outline-primary btn-sm"
+                              type="button"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#edit-batch-{{ batch.id }}"
+                              aria-expanded="false"
+                              aria-controls="edit-batch-{{ batch.id }}"
+                            >
+                              Edit
+                            </button>
+                            <form
+                              hx-delete="/batches/{{ batch.id }}"
+                              hx-target="#project-detail"
+                              hx-swap="innerHTML"
+                              class="ms-2"
+                            >
+                              <input type="hidden" name="active_tab" value="batches" />
+                              <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                            </form>
+                          </div>
+                        </div>
+                        <div class="collapse mt-3" id="edit-batch-{{ batch.id }}">
+                          <form
+                            hx-post="/batches/{{ batch.id }}/edit"
+                            hx-target="#project-detail"
+                            hx-swap="innerHTML"
+                            class="row g-3"
+                          >
+                            <input type="hidden" name="active_tab" value="batches" />
+                            <div class="col-12">
+                              <label class="form-label">Name</label>
+                              <input type="text" name="name" value="{{ batch.name }}" required class="form-control" />
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Description</label>
+                              <textarea name="description" rows="3" class="form-control">{{ batch.description or "" }}</textarea>
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">JIRA Issue</label>
+                              <input type="text" name="jira_issue" value="{{ batch.jira_issue or '' }}" class="form-control" />
+                            </div>
+                            <div class="col-12">
+                              <label class="form-label">Tasks</label>
+                              <div class="d-flex flex-column gap-2">
+                                {% for task in tasks %}
+                                  <div class="form-check">
+                                    <input
+                                      class="form-check-input"
+                                      type="checkbox"
+                                      name="task_ids"
+                                      value="{{ task.id }}"
+                                      id="edit-batch-{{ batch.id }}-task-{{ loop.index }}"
+                                      {% if task.id in batch.task_ids %}checked{% endif %}
+                                    />
+                                    <label class="form-check-label" for="edit-batch-{{ batch.id }}-task-{{ loop.index }}">
+                                      {{ task.name }}
+                                    </label>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            </div>
+                            <div class="col-12 d-flex justify-content-end">
+                              <button type="submit" class="btn btn-primary btn-sm">Update Batch</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="empty-state">No batches yet.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card border h-100">
+              <div class="card-header bg-white fw-semibold">Add Batch</div>
+              <div class="card-body">
+                {% if tasks %}
+                  <form
+                    hx-post="/projects/{{ project.id }}/batches"
+                    hx-target="#project-detail"
+                    hx-swap="innerHTML"
+                    class="row g-3"
+                  >
+                    <input type="hidden" name="active_tab" value="batches" />
+                    <div class="col-12">
+                      <label class="form-label">Name</label>
+                      <input type="text" name="name" required class="form-control" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Description</label>
+                      <textarea name="description" rows="3" class="form-control"></textarea>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">JIRA Issue</label>
+                      <input type="text" name="jira_issue" class="form-control" placeholder="e.g. VIS-42" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Tasks</label>
+                      <div class="d-flex flex-column gap-2">
+                        {% for task in tasks %}
+                          <div class="form-check">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              name="task_ids"
+                              value="{{ task.id }}"
+                              id="new-batch-task-{{ project.id }}-{{ loop.index }}"
+                            />
+                            <label class="form-check-label" for="new-batch-task-{{ project.id }}-{{ loop.index }}">
+                              {{ task.name }}
+                            </label>
+                          </div>
+                        {% endfor %}
+                      </div>
+                      <div class="form-text">Select the tasks to include in this batch.</div>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                      <button type="submit" class="btn btn-primary">Save Batch</button>
+                    </div>
+                  </form>
+                {% else %}
+                  <div class="empty-state">Create tasks to assemble batches.</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

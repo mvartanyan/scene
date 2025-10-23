@@ -1,0 +1,112 @@
+<div class="modal-header">
+  <h1 class="modal-title fs-5" id="configModalLabel">Configuration</h1>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+  {% if error %}
+    <div class="alert alert-danger" role="alert">{{ error }}</div>
+  {% elif message %}
+    <div class="alert alert-success" role="alert">{{ message }}</div>
+  {% endif %}
+
+  <div class="d-flex flex-column gap-4">
+    <section class="card border">
+      <div class="card-header bg-white fw-semibold">Browsers</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/browsers"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="row g-3"
+        >
+          <div class="col-12">
+            <div class="d-flex flex-wrap gap-3">
+              {% for browser in browser_options %}
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="browsers"
+                    value="{{ browser }}"
+                    id="config-browser-{{ loop.index }}"
+                    {% if browser in selected_browsers %}checked{% endif %}
+                    {% if browser in locked_browsers %}disabled{% endif %}
+                  />
+                  <label class="form-check-label" for="config-browser-{{ loop.index }}">
+                    {{ browser|capitalize }}
+                  {% if browser in locked_browsers %}
+                    <span class="text-muted small">(in use)</span>
+                  {% endif %}
+                  </label>
+                  {% if browser in locked_browsers %}
+                    <input type="hidden" name="browsers" value="{{ browser }}" />
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Add Browser</label>
+            <input type="text" name="new_browser" class="form-control" placeholder="e.g. msedge" />
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Save Browsers</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card border">
+      <div class="card-header bg-white fw-semibold">Viewport Presets</div>
+      <div class="card-body d-flex flex-column gap-3">
+        <div class="list-group list-group-flush">
+          {% for viewport in available_viewports %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+              <span>
+                {{ viewport.replace('x', ' × ') }}
+                {% if viewport in locked_viewports %}
+                  <span class="text-muted small">(in use)</span>
+                {% endif %}
+              </span>
+              <form
+                hx-post="/config/viewports/remove"
+                hx-target="#config-modal-content"
+                hx-swap="innerHTML"
+              >
+                <input type="hidden" name="viewport" value="{{ viewport }}" />
+                <button
+                  type="submit"
+                  class="btn btn-outline-danger btn-sm"
+                  {% if viewport in locked_viewports %}disabled{% endif %}
+                >
+                  Remove
+                </button>
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+        <form
+          hx-post="/config/viewports/add"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="row g-3 align-items-end"
+        >
+          <div class="col-6">
+            <label class="form-label">Width</label>
+            <input type="number" name="width" min="1" class="form-control" required />
+          </div>
+          <div class="col-6">
+            <label class="form-label">Height</label>
+            <input type="number" name="height" min="1" class="form-control" required />
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Add Viewport</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>

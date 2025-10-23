@@ -1,0 +1,76 @@
+<div class="card border shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">{{ project.name if project else "Unknown Project" }}</span>
+    <span class="badge text-bg-secondary">{{ run.status.replace("_", " ") | title }}</span>
+  </div>
+  <div class="card-body">
+    {% if run.jira_issue %}
+      <span class="badge text-bg-info mb-3">JIRA: {{ run.jira_issue }}</span>
+    {% endif %}
+    <p class="mb-3">
+      Purpose: {{ run.purpose.replace("_", " ") | title }} · Requested {{ run.created_at }}
+      {% if batch %} · Batch: {{ batch.name }}{% endif %}
+    </p>
+    <div class="row row-cols-1 row-cols-md-3 g-3">
+      <div class="col">
+        <div class="bg-light rounded-3 p-3 h-100">
+          <div class="text-uppercase small text-muted">Batch</div>
+          <div class="fw-semibold">{{ batch.name if batch else run.batch_id }}</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="bg-light rounded-3 p-3 h-100">
+          <div class="text-uppercase small text-muted">Requested By</div>
+          <div class="fw-semibold">{{ run.requested_by or "mock_user" }}</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="bg-light rounded-3 p-3 h-100">
+          <div class="text-uppercase small text-muted">Summary</div>
+          <div class="fw-semibold">
+            {% if run.summary %}
+              {{ run.summary.executions_finished or 0 }}/{{ run.summary.executions_total or 0 }} finished ·
+              {{ run.summary.executions_failed or 0 }} failed
+            {% else %}
+              Not available
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="text-muted small mb-0 mt-3">
+      Execution details remain mocked until the worker pipeline wires in real artifacts and viewers.
+    </p>
+  </div>
+</div>
+
+<div class="card border shadow-sm">
+  <div class="card-header bg-white fw-semibold">Executions</div>
+  <div class="card-body">
+    {% if executions %}
+      <div class="row row-cols-1 row-cols-md-2 g-3">
+        {% for exec in executions %}
+          <div class="col">
+            <div class="card h-100">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <div>
+                    <div class="fw-semibold">{{ exec.task_name }}</div>
+                    <small class="text-muted">{{ exec.browser }} · {{ exec.viewport }}</small>
+                  </div>
+                  <span class="badge text-bg-secondary">{{ exec.status.replace("_", " ") | title }}</span>
+                </div>
+                {% if exec.diff_pct is not none %}
+                  <div class="text-muted small mb-2">Diff: {{ exec.diff_pct }}%</div>
+                {% endif %}
+                <button class="btn btn-sm btn-outline-secondary" disabled>Viewer coming soon</button>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">No executions recorded.</div>
+    {% endif %}
+  </div>
+</div>

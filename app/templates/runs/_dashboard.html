@@ -1,0 +1,162 @@
+<div class="row g-4" id="runs-dashboard">
+  <div class="col-lg-5 d-flex flex-column gap-4">
+    <div class="card border shadow-sm">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span>Filter Runs</span>
+        <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
+      </div>
+      <div class="card-body">
+        <form
+          class="row g-3"
+          hx-get="/runs/fragment"
+          hx-target="#runs-dashboard"
+          hx-swap="outerHTML"
+        >
+          <div class="col-12">
+            <label class="form-label">Project</label>
+            <select name="filter_project_id" class="form-select">
+              <option value="">All projects</option>
+              {% for project in projects %}
+                <option value="{{ project.id }}" {% if filter_project_id == project.id %}selected{% endif %}>
+                  {{ project.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Status</label>
+            <select name="filter_status" class="form-select">
+              <option value="">All statuses</option>
+              {% for status in statuses %}
+                <option value="{{ status.value }}" {% if filter_status == status.value %}selected{% endif %}>
+                  {{ status.value.title() }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 d-flex justify-content-end gap-2">
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              hx-get="/runs/fragment"
+              hx-target="#runs-dashboard"
+              hx-swap="outerHTML"
+            >
+              Reset
+            </button>
+            <button type="submit" class="btn btn-primary">Apply Filters</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card border shadow-sm">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span>Runs</span>
+        <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
+      </div>
+      <div class="card-body">
+        {% if runs %}
+          <div class="list-group list-group-flush">
+            {% for item in runs %}
+              <a
+                class="list-group-item list-group-item-action {% if item.id == selected_run_id %}active{% endif %}"
+                hx-get="/runs/{{ item.id }}"
+                hx-target="#run-detail"
+                hx-swap="innerHTML"
+              >
+                <div class="d-flex justify-content-between align-items-start">
+                  <div class="me-3">
+                    <div class="fw-semibold">{{ item.project_name }}</div>
+                    <small>Purpose: {{ item.purpose.replace("_", " ") | title }}</small>
+                    {% if item.summary %}
+                      <div class="text-muted small">
+                        {{ item.summary.executions_finished or 0 }}/{{ item.summary.executions_total or 0 }} finished ·
+                        {{ item.summary.executions_failed or 0 }} failed
+                      </div>
+                    {% endif %}
+                    {% if item.jira_issue %}
+                      <div class="mt-1"><span class="badge text-bg-info">JIRA: {{ item.jira_issue }}</span></div>
+                    {% endif %}
+                    <small class="text-muted d-block mt-1">Requested {{ item.created_at }}</small>
+                  </div>
+                  <span class="badge text-bg-secondary">{{ item.status.replace("_", " ") | title }}</span>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">No runs captured yet. Generate a mock run to preview the dashboard.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card border shadow-sm">
+      <div class="card-header bg-white fw-semibold">Create Mock Run</div>
+      <div class="card-body">
+        {% if projects and project_batches %}
+          <form
+            hx-post="/runs/mock"
+            hx-target="#runs-dashboard"
+            hx-swap="outerHTML"
+            class="row g-3"
+          >
+            <div class="col-12">
+              <label class="form-label">Project</label>
+              <select name="project_id" class="form-select" required>
+                {% for project in projects %}
+                  <option value="{{ project.id }}">{{ project.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Batch</label>
+              <select name="batch_id" class="form-select" required>
+                {% for project in projects %}
+                  <optgroup label="{{ project.name }}">
+                    {% for batch in project_batches[project.id] %}
+                      <option value="{{ batch.id }}">{{ batch.name }}</option>
+                    {% endfor %}
+                  </optgroup>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Purpose</label>
+              <select name="purpose" class="form-select">
+                {% for purpose in purposes %}
+                  <option value="{{ purpose.value }}">{{ purpose.name.replace("_", " ") | title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Status</label>
+              <select name="status" class="form-select">
+                {% for status in statuses %}
+                  <option value="{{ status.value }}">{{ status.value.title() }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">JIRA Issue</label>
+              <input type="text" name="jira_issue" class="form-control" placeholder="e.g. VIS-123" />
+            </div>
+            <div class="col-12 d-flex justify-content-end">
+              <button type="submit" class="btn btn-primary">Mock Run</button>
+            </div>
+          </form>
+        {% else %}
+          <div class="empty-state">Create at least one project with a batch to mock runs.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7" id="run-detail">
+    {% if run %}
+      {% include "runs/_run_detail.html" %}
+    {% else %}
+      <div class="empty-state">Select a run to inspect details.</div>
+    {% endif %}
+  </div>
+</div>

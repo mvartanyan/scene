@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Projects · Scene{% endblock %}
+
+{% block body %}
+<div class="row g-4" id="project-dashboard">
+  <section class="col-lg-4 d-flex flex-column gap-4">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Projects</span>
+        <span class="badge text-bg-secondary rounded-pill">{{ projects|length }}</span>
+      </div>
+      <div class="list-group list-group-flush">
+        {% if projects %}
+          {% for item in projects %}
+            <a
+              class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {% if item.id == selected_project_id %}active{% endif %}"
+              hx-get="/projects/{{ item.id }}/detail"
+              hx-target="#project-detail"
+              hx-push-url="/projects?project_id={{ item.id }}"
+              hx-swap="innerHTML"
+            >
+              <div class="me-2">
+                <div class="fw-semibold">{{ item.name }}</div>
+                <small class="text-muted">{{ item.description or "No description yet." }}</small>
+              </div>
+              <span class="badge text-bg-light text-secondary">{{ item.slug }}</span>
+            </a>
+          {% endfor %}
+        {% else %}
+          <div class="p-3 text-muted">No projects yet. Create one below to get started.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="fw-semibold">Create Project</span>
+      </div>
+      <div class="card-body">
+        <form hx-post="/projects" hx-target="#project-dashboard" hx-swap="outerHTML" class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" required class="form-control" />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Slug</label>
+            <input type="text" name="slug" required class="form-control" />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Description</label>
+            <textarea name="description" rows="3" class="form-control" placeholder="Optional project overview"></textarea>
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary">Create Project</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="project-detail" class="col-lg-8 d-flex flex-column gap-4">
+    {% if project %}
+      {% include "projects/_project_detail.html" %}
+    {% else %}
+      <div class="alert alert-info">Select a project to see configuration details.</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% set timeout_messages = timeout_toasts | default([]) %}
+{% if timeout_messages %}
+  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
+    {% for message in timeout_messages %}
+      <div
+        class="toast text-bg-warning text-dark border-0 shadow"
+        id="timeout-toast-{{ loop.index }}"
+        role="status"
+        aria-live="polite"
+        data-bs-delay="5000"
+        data-bs-autohide="true"
+      >
+        <div class="d-flex align-items-center">
+          <div class="toast-body">{{ message }}</div>
+          <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  <script>
+    (function () {
+      if (!window.bootstrap || !window.bootstrap.Toast) {
+        return;
+      }
+      {% for message in timeout_messages %}
+        (function () {
+          const toastEl = document.getElementById('timeout-toast-{{ loop.index }}');
+          if (toastEl) {
+            window.bootstrap.Toast.getOrCreateInstance(toastEl).show();
+          }
+        })();
+      {% endfor %}
+    })();
+  </script>
+{% endif %}
+<style>
+  #run-log .run-log-entry {
+    border-left: 4px solid transparent;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+  #run-log .run-log-entry.selected-run {
+    border-left-color: var(--bs-primary);
+    background-color: #f5f8ff;
+  }
+  #run-log .run-select-btn {
+    color: inherit;
+    text-decoration: none;
+  }
+  #run-log .run-log-actions {
+    min-width: 8rem;
+  }
+</style>
+<div
+  class="card border shadow-sm"
+  id="run-log"
+  data-selected-run-id="{{ selected_run_id or '' }}"
+  data-scene-hash="{{ snapshot_hash or '' }}"
+  hx-get="/runs/log"
+  hx-trigger="every 5s"
+  hx-sync="this:queue"
+  hx-target="#run-log"
+  hx-swap="outerHTML"
+  hx-include="#run-log [data-run-filter]"
+>
+  <input type="hidden" name="selected_run_id" value="{{ selected_run_id or '' }}" data-run-filter="selected_run_id" />
+  <input type="hidden" name="filter_project_id" value="{{ filter_project_id or '' }}" data-run-filter="filter_project_id" />
+  <input type="hidden" name="filter_status" value="{{ filter_status or '' }}" data-run-filter="filter_status" />
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span>Run Log</span>
+    <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
+  </div>
+  <div class="card-body">
+    {% if runs %}
+      <div class="list-group list-group-flush">
+        {% for item in runs %}
+          {% set is_selected = selected_run_id and item.id == selected_run_id %}
+          <div class="list-group-item run-log-entry{% if is_selected %} selected-run{% endif %}" data-run-id="{{ item.id }}">
+            <div class="d-flex align-items-start gap-3">
+              <button
+                type="button"
+                class="btn btn-link text-start flex-grow-1 px-0 run-select-btn"
+                data-run-id="{{ item.id }}"
+                hx-get="/runs/{{ item.id }}/overlay"
+                hx-target="#run-detail-shell"
+                hx-swap="innerHTML"
+              >
+                <div class="fw-semibold">{{ item.project_name }}</div>
+                <div class="small text-muted">{{ item.purpose.replace("_", " ") | title }} · {{ item.created_at | format_ts }}</div>
+                <div class="d-flex flex-wrap gap-2 mt-2 small">
+                  <span class="badge rounded-pill text-bg-secondary">Queued {{ item.counts.queued | default(0) }}</span>
+                  <span class="badge rounded-pill text-bg-primary">In Progress {{ item.counts.executing | default(0) }}</span>
+                  <span class="badge rounded-pill text-bg-success">Done {{ item.counts.finished | default(0) }}</span>
+                  {% if item.diff_grade in ['minor_diff', 'major_diff'] %}
+                    <span class="badge rounded-pill text-bg-{{ item.diff_badge }}">Diff {{ '%.2f'|format(item.diff_average or 0.0) }}%</span>
+                  {% endif %}
+                  {% if item.counts.failed | default(0) > 0 %}
+                    <span class="badge rounded-pill text-bg-danger">Failed {{ item.counts.failed }}</span>
+                  {% endif %}
+                  {% if item.counts.cancelled | default(0) > 0 %}
+                    <span class="badge rounded-pill text-bg-warning text-dark">Cancelled {{ item.counts.cancelled }}</span>
+                  {% endif %}
+                </div>
+                {% if item.jira_issue %}
+                  <div class="mt-2"><span class="badge text-bg-info">JIRA: {{ item.jira_issue }}</span></div>
+                {% endif %}
+              </button>
+              <div class="run-log-actions d-flex flex-column align-items-end gap-2 flex-shrink-0">
+                <span class="badge text-bg-{{ item.status_badge }}">{{ item.status.replace("_", " ") | title }}</span>
+                <form
+                  hx-post="/runs/{{ item.id }}/delete"
+                  hx-target="#runs-dashboard"
+                  hx-swap="outerHTML"
+                  class="mt-2 run-delete-form"
+                  onsubmit="return confirm('Delete this run and all executions?')"
+                >
+                  <input type="hidden" name="filter_project_id" value="{{ filter_project_id or '' }}" />
+                  <input type="hidden" name="filter_status" value="{{ filter_status or '' }}" />
+                  <input type="hidden" name="selected_run_id" value="{{ selected_run_id or '' }}" />
+                  <button type="submit" class="btn btn-outline-danger btn-sm w-100">Delete</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">No runs captured yet. Launch a run above to get started.</div>
+    {% endif %}
+  </div>
+</div>

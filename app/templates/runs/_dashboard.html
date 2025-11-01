@@ -1,162 +1,814 @@
-<div class="row g-4" id="runs-dashboard">
-  <div class="col-lg-5 d-flex flex-column gap-4">
-    <div class="card border shadow-sm">
-      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-        <span>Filter Runs</span>
-        <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
-      </div>
-      <div class="card-body">
+<div class="d-flex flex-column gap-4" id="runs-dashboard">
+  <div class="card border shadow-sm">
+    <div class="card-header bg-white fw-semibold">Launch Run</div>
+    <div class="card-body">
+      {% if projects and project_batches %}
+        {% if launch_defaults is not defined %}
+          {% set launch_defaults = {} %}
+        {% endif %}
+        {% if projects %}
+          {% set default_project_id = launch_defaults.project_id | default(projects[0].id, true) %}
+        {% else %}
+          {% set default_project_id = launch_defaults.project_id | default('', true) %}
+        {% endif %}
+        {% set available_batches = project_batches.get(default_project_id, []) %}
+        {% if available_batches %}
+          {% set default_batch_id = launch_defaults.batch_id | default(available_batches[0].id, true) %}
+        {% else %}
+          {% set default_batch_id = launch_defaults.batch_id | default('', true) %}
+        {% endif %}
+        {% set baseline_options = batch_baselines.get(default_batch_id, []) %}
+        {% set default_purpose = launch_defaults.purpose | default('comparison', true) %}
+        {% set custom_baseline_value = "__custom__" %}
+        {% set default_baseline_id = launch_defaults.baseline_id | default('', true) %}
+        {% set default_baseline_input = launch_defaults.baseline_input | default('', true) %}
+        {% set default_requested_by = launch_defaults.requested_by | default('', true) %}
+        {% set default_jira_issue = launch_defaults.jira_issue | default('', true) %}
+        {% set default_note = launch_defaults.note | default('', true) %}
+        {% set default_timeout = launch_defaults.timeout_seconds | default(default_timeout_seconds, true) %}
+        {% set baseline_selected_value = default_baseline_id %}
+        {% if not baseline_selected_value and default_baseline_input %}
+          {% set baseline_selected_value = custom_baseline_value %}
+        {% endif %}
+        {% set show_baseline_select = baseline_options and default_purpose != 'baseline_recording' %}
+        {% set show_baseline_input = default_purpose != 'baseline_recording' and (not show_baseline_select or baseline_selected_value == custom_baseline_value) %}
+        {% if default_purpose == 'baseline_recording' %}
+          {% set baseline_help_text = 'Baseline selection disabled when recording a new baseline.' %}
+        {% elif show_baseline_select %}
+          {% if baseline_selected_value %}
+            {% set baseline_help_text = 'Comparing against the selected stored baseline.' %}
+          {% else %}
+            {% set baseline_help_text = 'Using the latest stored baseline for this batch.' %}
+          {% endif %}
+        {% else %}
+          {% set baseline_help_text = 'No stored baselines yet. Enter an id or leave blank to use the latest when available.' %}
+        {% endif %}
         <form
-          class="row g-3"
-          hx-get="/runs/fragment"
+          id="run-launch-form"
+          hx-post="/runs/launch"
           hx-target="#runs-dashboard"
           hx-swap="outerHTML"
+          class="row g-3"
         >
-          <div class="col-12">
+          <div class="col-md-6">
             <label class="form-label">Project</label>
-            <select name="filter_project_id" class="form-select">
-              <option value="">All projects</option>
+            <select name="project_id" class="form-select" required data-role="launch-project">
               {% for project in projects %}
-                <option value="{{ project.id }}" {% if filter_project_id == project.id %}selected{% endif %}>
+                <option value="{{ project.id }}" {% if project.id == default_project_id %}selected{% endif %}>
                   {{ project.name }}
                 </option>
               {% endfor %}
             </select>
           </div>
-          <div class="col-12">
-            <label class="form-label">Status</label>
-            <select name="filter_status" class="form-select">
-              <option value="">All statuses</option>
-              {% for status in statuses %}
-                <option value="{{ status.value }}" {% if filter_status == status.value %}selected{% endif %}>
-                  {{ status.value.title() }}
+          <div class="col-md-6">
+            <label class="form-label">Batch</label>
+            <select name="batch_id" class="form-select" required data-role="launch-batch">
+              {% for project in projects %}
+                {% set batches = project_batches.get(project.id, []) %}
+                {% if batches %}
+                  <optgroup label="{{ project.name }}">
+                    {% for batch in batches %}
+                      <option value="{{ batch.id }}" {% if batch.id == default_batch_id %}selected{% endif %}>
+                        {{ batch.name }}
+                      </option>
+                    {% endfor %}
+                  </optgroup>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Purpose</label>
+            <select name="purpose" class="form-select" data-role="launch-purpose">
+              {% for purpose in purposes %}
+                <option
+                  value="{{ purpose.value }}"
+                  {% if default_purpose == purpose.value %}selected{% endif %}
+                >
+                  {{ purpose.name.replace("_", " ") | title }}
                 </option>
               {% endfor %}
             </select>
           </div>
-          <div class="col-12 d-flex justify-content-end gap-2">
-            <button
-              type="button"
-              class="btn btn-outline-secondary"
-              hx-get="/runs/fragment"
-              hx-target="#runs-dashboard"
-              hx-swap="outerHTML"
+          <div class="col-md-4">
+            <label class="form-label">Requested By</label>
+            <input
+              type="text"
+              name="requested_by"
+              class="form-control"
+              placeholder="your.name@example.com"
+              value="{{ default_requested_by }}"
+            />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">JIRA Issue</label>
+            <input
+              type="text"
+              name="jira_issue"
+              class="form-control"
+              placeholder="e.g. VIS-123"
+              value="{{ default_jira_issue }}"
+            />
+          </div>
+          <div class="col-md-6" data-role="baseline-field">
+            <label class="form-label">Baseline</label>
+            <select
+              class="form-select{% if not show_baseline_select %} d-none{% endif %}"
+              data-role="baseline-select"
+              {% if not show_baseline_select %}disabled{% endif %}
             >
-              Reset
-            </button>
-            <button type="submit" class="btn btn-primary">Apply Filters</button>
+              {% if show_baseline_select %}
+                <option value="">Latest baseline</option>
+                {% for baseline in baseline_options %}
+                  <option value="{{ baseline.id }}" {% if baseline.id == default_baseline_id %}selected{% endif %}>
+                    {{ baseline.label }}
+                  </option>
+                {% endfor %}
+                <option value="{{ custom_baseline_value }}" {% if baseline_selected_value == custom_baseline_value %}selected{% endif %}>
+                  Enter custom baseline…
+                </option>
+              {% else %}
+                <option value="">No baselines available</option>
+              {% endif %}
+            </select>
+            <input
+              type="text"
+              name="baseline_id"
+              class="form-control mt-2{% if not show_baseline_input %} d-none{% endif %}"
+              data-role="baseline-input"
+              placeholder="Enter baseline ID or prefix"
+              autocomplete="off"
+              value="{{ default_baseline_input }}"
+              {% if default_purpose == 'baseline_recording' %}disabled{% endif %}
+            />
+            <div class="form-text small text-muted" data-role="baseline-help">{{ baseline_help_text }}</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Note</label>
+            <textarea
+              name="note"
+              class="form-control"
+              rows="1"
+              placeholder="Optional run notes"
+            >{{ default_note }}</textarea>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Timeout (seconds)</label>
+            <input
+              type="number"
+              name="timeout_seconds"
+              class="form-control"
+              min="10"
+              value="{{ default_timeout }}"
+              required
+            />
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary">Launch</button>
           </div>
         </form>
-      </div>
+        <script type="application/json" id="run-launch-metadata">
+          {{ launch_metadata_json | safe }}
+        </script>
+      {% else %}
+        <div class="empty-state">Create at least one project with a batch to launch runs.</div>
+      {% endif %}
     </div>
+  </div>
 
-    <div class="card border shadow-sm">
-      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-        <span>Runs</span>
-        <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
-      </div>
-      <div class="card-body">
-        {% if runs %}
-          <div class="list-group list-group-flush">
-            {% for item in runs %}
-              <a
-                class="list-group-item list-group-item-action {% if item.id == selected_run_id %}active{% endif %}"
-                hx-get="/runs/{{ item.id }}"
-                hx-target="#run-detail"
-                hx-swap="innerHTML"
-              >
-                <div class="d-flex justify-content-between align-items-start">
-                  <div class="me-3">
-                    <div class="fw-semibold">{{ item.project_name }}</div>
-                    <small>Purpose: {{ item.purpose.replace("_", " ") | title }}</small>
-                    {% if item.summary %}
-                      <div class="text-muted small">
-                        {{ item.summary.executions_finished or 0 }}/{{ item.summary.executions_total or 0 }} finished ·
-                        {{ item.summary.executions_failed or 0 }} failed
-                      </div>
-                    {% endif %}
-                    {% if item.jira_issue %}
-                      <div class="mt-1"><span class="badge text-bg-info">JIRA: {{ item.jira_issue }}</span></div>
-                    {% endif %}
-                    <small class="text-muted d-block mt-1">Requested {{ item.created_at }}</small>
-                  </div>
-                  <span class="badge text-bg-secondary">{{ item.status.replace("_", " ") | title }}</span>
-                </div>
-              </a>
+  <div class="card border shadow-sm">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+      <span>Filter Runs</span>
+      <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
+    </div>
+    <div class="card-body">
+      <form
+        class="row g-3"
+        hx-get="/runs/fragment"
+        hx-target="#runs-dashboard"
+        hx-swap="outerHTML"
+      >
+        <div class="col-md-6">
+          <label class="form-label">Project</label>
+          <select name="filter_project_id" class="form-select">
+            <option value="">All projects</option>
+            {% for project in projects %}
+              <option value="{{ project.id }}" {% if filter_project_id == project.id %}selected{% endif %}>
+                {{ project.name }}
+              </option>
             {% endfor %}
-          </div>
-        {% else %}
-          <div class="empty-state">No runs captured yet. Generate a mock run to preview the dashboard.</div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="card border shadow-sm">
-      <div class="card-header bg-white fw-semibold">Create Mock Run</div>
-      <div class="card-body">
-        {% if projects and project_batches %}
-          <form
-            hx-post="/runs/mock"
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Status</label>
+          <select name="filter_status" class="form-select">
+            <option value="">All statuses</option>
+            {% for status in statuses %}
+              <option value="{{ status.value }}" {% if filter_status == status.value %}selected{% endif %}>
+                {{ status.value.replace("_", " ") | title }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <input type="hidden" name="selected_run_id" id="run-filter-selected" value="{{ selected_run_id or '' }}" />
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <button
+            type="button"
+            class="btn btn-outline-secondary"
+            hx-get="/runs/fragment"
             hx-target="#runs-dashboard"
             hx-swap="outerHTML"
-            class="row g-3"
+            hx-vals='{ "selected_run_id": "" }'
           >
-            <div class="col-12">
-              <label class="form-label">Project</label>
-              <select name="project_id" class="form-select" required>
-                {% for project in projects %}
-                  <option value="{{ project.id }}">{{ project.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-12">
-              <label class="form-label">Batch</label>
-              <select name="batch_id" class="form-select" required>
-                {% for project in projects %}
-                  <optgroup label="{{ project.name }}">
-                    {% for batch in project_batches[project.id] %}
-                      <option value="{{ batch.id }}">{{ batch.name }}</option>
-                    {% endfor %}
-                  </optgroup>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Purpose</label>
-              <select name="purpose" class="form-select">
-                {% for purpose in purposes %}
-                  <option value="{{ purpose.value }}">{{ purpose.name.replace("_", " ") | title }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Status</label>
-              <select name="status" class="form-select">
-                {% for status in statuses %}
-                  <option value="{{ status.value }}">{{ status.value.title() }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-12">
-              <label class="form-label">JIRA Issue</label>
-              <input type="text" name="jira_issue" class="form-control" placeholder="e.g. VIS-123" />
-            </div>
-            <div class="col-12 d-flex justify-content-end">
-              <button type="submit" class="btn btn-primary">Mock Run</button>
-            </div>
-          </form>
-        {% else %}
-          <div class="empty-state">Create at least one project with a batch to mock runs.</div>
-        {% endif %}
-      </div>
+            Reset
+          </button>
+          <button type="submit" class="btn btn-primary">Apply Filters</button>
+        </div>
+      </form>
     </div>
   </div>
 
-  <div class="col-lg-7" id="run-detail">
-    {% if run %}
-      {% include "runs/_run_detail.html" %}
-    {% else %}
-      <div class="empty-state">Select a run to inspect details.</div>
-    {% endif %}
+  {% include "runs/_run_list.html" %}
+</div>
+
+<div class="modal fade" id="runDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div
+      class="modal-content"
+      id="run-detail-shell"
+      data-run-id="{{ selected_run_id or '' }}"
+      {% if selected_run_id %}
+        hx-get="/runs/{{ selected_run_id }}/overlay"
+        hx-trigger="every 5s"
+      {% endif %}
+      hx-sync="this:queue"
+      hx-on::hidden.bs.modal="this.removeAttribute('hx-trigger')"
+      hx-target="this"
+      hx-swap="innerHTML"
+    >
+      <div class="modal-header">
+        <h5 class="modal-title">Run Detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">Select a run from the log to inspect details.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
   </div>
 </div>
+
+<div class="modal fade" id="executionViewerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content" id="execution-viewer-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Execution Viewer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">Select an execution to load artifacts.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="executionLogModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content" id="execution-log-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Execution Log</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">Select an execution to load logs.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    const CUSTOM_BASELINE_OPTION = "__custom__";
+
+    function ensureRunModalVisible() {
+      const modal = document.getElementById("runDetailModal");
+      if (!modal || !window.bootstrap || !window.bootstrap.Modal) {
+        return;
+      }
+      window.bootstrap.Modal.getOrCreateInstance(modal).show();
+    }
+
+    function setupModals() {
+      const viewer = document.getElementById("executionViewerModal");
+      if (viewer && !viewer.dataset.sceneInit) {
+        viewer.addEventListener("hidden.bs.modal", ensureRunModalVisible);
+        viewer.dataset.sceneInit = "1";
+      }
+
+      const logModal = document.getElementById("executionLogModal");
+      if (logModal && !logModal.dataset.sceneInit) {
+        logModal.addEventListener("show.bs.modal", () => {
+          document.body.dataset.sceneLogStack = "active";
+        });
+        logModal.addEventListener("hidden.bs.modal", () => {
+          document.body.dataset.sceneLogStack = "";
+          if (document.body.dataset.runDetailOpen === "true") {
+            ensureRunModalVisible();
+          }
+        });
+        logModal.dataset.sceneInit = "1";
+      }
+
+      const runModal = document.getElementById("runDetailModal");
+      if (runModal && !runModal.dataset.sceneLogGuard) {
+        runModal.addEventListener("hide.bs.modal", (event) => {
+          const stackState = document.body.dataset.sceneLogStack || "";
+          if (stackState === "pending" || stackState === "active") {
+            event.preventDefault();
+          }
+        });
+        runModal.dataset.sceneLogGuard = "1";
+      }
+    }
+
+    function highlightRunLogSelection(container, runId) {
+      if (!container) {
+        return;
+      }
+      container.dataset.selectedRunId = runId || "";
+      const filterInputs = container.querySelectorAll('[data-run-filter="selected_run_id"]');
+      filterInputs.forEach((input) => {
+        input.value = runId || "";
+      });
+      const entries = container.querySelectorAll(".run-log-entry");
+      entries.forEach((entry) => {
+        const id = entry.getAttribute("data-run-id");
+        entry.classList.toggle("selected-run", Boolean(runId) && id === runId);
+      });
+    }
+
+    function syncRunFilterSelected() {
+      const runLog = document.getElementById("run-log");
+      const selectedInput = document.getElementById("run-filter-selected");
+      if (runLog && selectedInput) {
+        selectedInput.value = runLog.dataset.selectedRunId || "";
+      }
+    }
+
+    function setupRunLogSync() {
+      const runLog = document.getElementById("run-log");
+      const selected =
+        (document.body && document.body.dataset.sceneSelectedRun) ||
+        (runLog ? runLog.dataset.selectedRunId : "") ||
+        "";
+      if (runLog) {
+        highlightRunLogSelection(runLog, selected);
+      }
+      syncRunFilterSelected();
+    }
+
+    function onConfigRequest(event) {
+      const detail = event.detail || {};
+      const path = detail.path || detail.url || "";
+      if (typeof path !== "string") {
+        return;
+      }
+      const match = path.match(/\/runs\/([^/]+)\/overlay/);
+      if (!match) {
+        return;
+      }
+      const runId = match[1];
+      const shell = document.getElementById("run-detail-shell");
+      if (shell) {
+        shell.dataset.pendingRunId = runId;
+      }
+      if (document.body) {
+        document.body.dataset.sceneSelectedRun = runId;
+      }
+      const runLog = document.getElementById("run-log");
+      if (runLog) {
+        highlightRunLogSelection(runLog, runId);
+      }
+    }
+
+    function onBeforeSwap(event) {
+      const target = event.target;
+      const xhr = event.detail && event.detail.xhr;
+      if (!target || !xhr) {
+        return;
+      }
+      if (target.id === "run-log") {
+        const responseHash = xhr.getResponseHeader("X-Scene-Run-Hash");
+        if (responseHash && target.dataset.sceneHash === responseHash) {
+          event.detail.shouldSwap = false;
+          event.preventDefault();
+        }
+        return;
+      }
+      if (target.id === "run-detail-shell") {
+        const responseRunId = xhr.getResponseHeader("X-Scene-Run-Id") || "";
+        const responseHash = xhr.getResponseHeader("X-Scene-Run-Hash") || "";
+        const currentRunId = target.dataset.runId || "";
+        const pendingRunId = target.dataset.pendingRunId || "";
+        const selectedRunId =
+          (document.body && document.body.dataset.sceneSelectedRun) || "";
+        if (responseRunId) {
+          const matchesPending = pendingRunId && responseRunId === pendingRunId;
+          const matchesCurrent = responseRunId === currentRunId;
+          const matchesSelected = selectedRunId && responseRunId === selectedRunId;
+          if (!matchesPending && !matchesCurrent && !matchesSelected) {
+            event.detail.shouldSwap = false;
+            event.preventDefault();
+            return;
+          }
+        }
+        if (responseHash && target.dataset.sceneHash === responseHash) {
+          event.detail.shouldSwap = false;
+          event.preventDefault();
+        }
+      }
+    }
+
+    function onAfterSwap(event) {
+      const target = event.target;
+      const xhr = event.detail && event.detail.xhr;
+      if (!target) {
+        return;
+      }
+      if (target.id === "run-log") {
+        if (xhr) {
+          const responseHash = xhr.getResponseHeader("X-Scene-Run-Hash");
+          if (responseHash) {
+            target.dataset.sceneHash = responseHash;
+          }
+        }
+        const selected =
+          (document.body && document.body.dataset.sceneSelectedRun) ||
+          target.dataset.selectedRunId ||
+          "";
+        highlightRunLogSelection(target, selected);
+        syncRunFilterSelected();
+        return;
+      }
+      if (target.id === "run-detail-shell") {
+        if (xhr) {
+          const responseHash = xhr.getResponseHeader("X-Scene-Run-Hash");
+          const responseRunId = xhr.getResponseHeader("X-Scene-Run-Id");
+          if (responseHash) {
+            target.dataset.sceneHash = responseHash;
+          }
+          if (responseRunId) {
+            target.dataset.runId = responseRunId;
+            if (document.body) {
+              document.body.dataset.sceneSelectedRun = responseRunId;
+            }
+          }
+        }
+        target.dataset.pendingRunId = "";
+      }
+    }
+
+    function onExecutionLogClick(event) {
+      const trigger =
+        event.target && event.target.closest("[data-role=\"execution-log-trigger\"]");
+      if (!trigger) {
+        return;
+      }
+      document.body.dataset.sceneLogStack = "pending";
+      window.setTimeout(() => {
+        if (document.body.dataset.sceneLogStack === "pending") {
+          document.body.dataset.sceneLogStack = "";
+        }
+      }, 1500);
+    }
+
+    function setupLaunchForm() {
+      const form = document.getElementById("run-launch-form");
+      const metadataElement = document.getElementById("run-launch-metadata");
+      if (!form || !metadataElement || form.dataset.sceneInit === "1") {
+        return;
+      }
+      let metadata;
+      try {
+        metadata = JSON.parse(metadataElement.textContent || "{}");
+      } catch (error) {
+        console.error("Failed to parse run launch metadata", error);
+        return;
+      }
+
+      const projectSelect = form.querySelector("[data-role=\"launch-project\"]");
+      const batchSelect = form.querySelector("[data-role=\"launch-batch\"]");
+      const purposeSelect = form.querySelector("[data-role=\"launch-purpose\"]");
+      const baselineField = form.querySelector("[data-role=\"baseline-field\"]");
+      const baselineSelect = form.querySelector("[data-role=\"baseline-select\"]");
+      const baselineInput = form.querySelector("[data-role=\"baseline-input\"]");
+      const baselineHelp = form.querySelector("[data-role=\"baseline-help\"]");
+      if (
+        !projectSelect ||
+        !batchSelect ||
+        !purposeSelect ||
+        !baselineField ||
+        !baselineSelect ||
+        !baselineInput ||
+        !baselineHelp
+      ) {
+        return;
+      }
+
+      const projects = metadata.projects || [];
+      const batchMap = metadata.batches || {};
+      const baselineMap = metadata.baselines || {};
+      const defaults = metadata.defaults || {};
+
+      const state = {
+        activeProject: "",
+        activeBatch: "",
+        baselineSelection: defaults.baseline_id || "",
+        customBaseline: defaults.baseline_input || "",
+        initializedBaseline: false,
+      };
+
+      function renderProjectOptions() {
+        if (!projects.length) {
+          projectSelect.innerHTML =
+            '<option value="" disabled>No projects available</option>';
+          projectSelect.disabled = true;
+          batchSelect.innerHTML =
+            '<option value="" disabled>No batches available</option>';
+          batchSelect.disabled = true;
+          state.activeProject = "";
+          state.activeBatch = "";
+          baselineSelect.classList.add("d-none");
+          baselineSelect.disabled = true;
+          baselineSelect.innerHTML = "";
+          baselineInput.classList.add("d-none");
+          baselineInput.disabled = true;
+          baselineInput.value = "";
+          baselineHelp.textContent =
+            "Create a project and batch to launch a run.";
+          baselineField.dataset.mode = "inactive";
+          baselineField.classList.add("opacity-50");
+          return;
+        }
+
+        const optionsHtml = projects
+          .map((project) => `<option value="${project.id}">${project.name}</option>`)
+          .join("");
+        projectSelect.innerHTML = optionsHtml;
+        projectSelect.disabled = false;
+
+        const defaultProjectId =
+          (defaults.project_id &&
+            projects.some((project) => project.id === defaults.project_id) &&
+            defaults.project_id) ||
+          projects[0].id;
+        if (
+          !state.activeProject ||
+          !projects.some((project) => project.id === state.activeProject)
+        ) {
+          state.activeProject = defaultProjectId;
+        }
+        projectSelect.value = state.activeProject;
+        baselineField.classList.remove("opacity-50");
+      }
+
+      function renderBaselineControls(options = {}) {
+        const resetSelection = Boolean(options.resetSelection);
+        const noBatch = Boolean(options.noBatch);
+        const purposeValue = purposeSelect.value;
+        const batchId = state.activeBatch || "";
+        const baselineOptions = baselineMap[batchId] || [];
+        const hasOptions = baselineOptions.length > 0;
+
+        baselineField.classList.remove("opacity-50");
+
+        if (noBatch || !batchId) {
+          baselineSelect.classList.add("d-none");
+          baselineSelect.disabled = true;
+          baselineSelect.innerHTML = "";
+          baselineInput.classList.add("d-none");
+          baselineInput.disabled = true;
+          baselineInput.value = "";
+          baselineHelp.textContent = "Select a project and batch to choose a baseline.";
+          baselineField.dataset.mode = "inactive";
+          baselineField.classList.add("opacity-50");
+          return;
+        }
+
+        if (!state.initializedBaseline) {
+          if (
+            defaults.batch_id === batchId &&
+            defaults.baseline_id &&
+            baselineOptions.some((option) => option.id === defaults.baseline_id)
+          ) {
+            state.baselineSelection = defaults.baseline_id;
+          } else if (
+            defaults.batch_id === batchId &&
+            defaults.baseline_input &&
+            !baselineOptions.some((option) => option.id === defaults.baseline_input)
+          ) {
+            state.baselineSelection = CUSTOM_BASELINE_OPTION;
+            state.customBaseline = defaults.baseline_input;
+          }
+          state.initializedBaseline = true;
+        }
+
+        if (resetSelection) {
+          if (purposeValue === "baseline_recording") {
+            state.baselineSelection = "";
+            state.customBaseline = "";
+          } else if (hasOptions) {
+            if (
+              state.baselineSelection &&
+              state.baselineSelection !== CUSTOM_BASELINE_OPTION &&
+              !baselineOptions.some(
+                (option) => option.id === state.baselineSelection
+              )
+            ) {
+              state.baselineSelection = "";
+            }
+          } else {
+            state.baselineSelection = CUSTOM_BASELINE_OPTION;
+          }
+        }
+
+        if (purposeValue === "baseline_recording") {
+          baselineSelect.classList.add("d-none");
+          baselineSelect.disabled = true;
+          baselineSelect.innerHTML = "";
+          baselineInput.classList.add("d-none");
+          baselineInput.disabled = true;
+          baselineInput.value = "";
+          baselineHelp.textContent =
+            "Baseline selection disabled when recording a new baseline.";
+          baselineField.dataset.mode = "disabled";
+          baselineField.classList.add("opacity-50");
+          return;
+        }
+
+        baselineField.dataset.mode = "comparison";
+        baselineInput.disabled = false;
+
+        if (hasOptions) {
+          baselineSelect.classList.remove("d-none");
+          baselineSelect.disabled = false;
+
+          const optionsHtml = ['<option value="">Latest baseline</option>'];
+          baselineOptions.forEach((option) => {
+            optionsHtml.push(`<option value="${option.id}">${option.label}</option>`);
+          });
+          optionsHtml.push(
+            `<option value="${CUSTOM_BASELINE_OPTION}">Enter custom baseline…</option>`
+          );
+          baselineSelect.innerHTML = optionsHtml.join("");
+
+          let selection = state.baselineSelection;
+          if (
+            selection &&
+            selection !== CUSTOM_BASELINE_OPTION &&
+            !baselineOptions.some((option) => option.id === selection)
+          ) {
+            selection = "";
+          }
+          if (!selection && state.customBaseline) {
+            selection = CUSTOM_BASELINE_OPTION;
+          }
+
+          baselineSelect.value = selection || "";
+
+          if (baselineSelect.value === CUSTOM_BASELINE_OPTION) {
+            state.baselineSelection = CUSTOM_BASELINE_OPTION;
+            baselineInput.classList.remove("d-none");
+            baselineInput.value = state.customBaseline;
+            baselineHelp.textContent =
+              "Enter a baseline id or prefix to compare against.";
+          } else {
+            state.baselineSelection = baselineSelect.value;
+            baselineInput.classList.add("d-none");
+            baselineInput.value = baselineSelect.value;
+            baselineHelp.textContent =
+              baselineSelect.value
+                ? "Comparing against the selected stored baseline."
+                : "Using the latest stored baseline for this batch.";
+          }
+        } else {
+          baselineSelect.classList.add("d-none");
+          baselineSelect.disabled = true;
+          baselineSelect.innerHTML = "";
+          state.baselineSelection = CUSTOM_BASELINE_OPTION;
+          baselineInput.classList.remove("d-none");
+          baselineInput.value = state.customBaseline;
+          baselineHelp.textContent =
+            "No stored baselines yet. Enter an id or leave blank to use the latest when available.";
+        }
+      }
+
+      function renderBatchOptions(options = {}) {
+        const useDefaults = Boolean(options.useDefaults);
+        const resetBaseline = Boolean(options.resetBaseline);
+        const projectId = projectSelect.value;
+        const batches = batchMap[projectId] || [];
+
+        if (!batches.length) {
+          batchSelect.innerHTML =
+            '<option value="" disabled>No batches available</option>';
+          batchSelect.disabled = true;
+          state.activeBatch = "";
+          state.initializedBaseline = false;
+          renderBaselineControls({ resetSelection: true, noBatch: true });
+          return;
+        }
+
+        const batchHtml = batches
+          .map((batch) => `<option value="${batch.id}">${batch.name}</option>`)
+          .join("");
+        batchSelect.innerHTML = batchHtml;
+        batchSelect.disabled = false;
+
+        let desired = state.activeBatch;
+        if (useDefaults) {
+          if (
+            defaults.project_id === projectId &&
+            defaults.batch_id &&
+            batches.some((batch) => batch.id === defaults.batch_id)
+          ) {
+            desired = defaults.batch_id;
+          } else {
+            desired = batches[0].id;
+          }
+        } else if (!desired || !batches.some((batch) => batch.id === desired)) {
+          desired = batches[0].id;
+        }
+
+        batchSelect.value = desired;
+        state.activeBatch = batchSelect.value || "";
+        if (resetBaseline) {
+          state.baselineSelection = "";
+          state.customBaseline = "";
+        }
+        state.initializedBaseline = false;
+        renderBaselineControls({ resetSelection: true });
+      }
+
+      projectSelect.addEventListener("change", () => {
+        state.activeProject = projectSelect.value || "";
+        state.baselineSelection = "";
+        state.customBaseline = "";
+        renderBatchOptions({ resetBaseline: true });
+      });
+
+      batchSelect.addEventListener("change", () => {
+        state.activeBatch = batchSelect.value || "";
+        state.baselineSelection = "";
+        renderBaselineControls({ resetSelection: true });
+      });
+
+      purposeSelect.addEventListener("change", () => {
+        if (purposeSelect.value === "baseline_recording") {
+          state.baselineSelection = "";
+          state.customBaseline = "";
+        }
+        renderBaselineControls({ resetSelection: false });
+      });
+
+      baselineSelect.addEventListener("change", () => {
+        const value = baselineSelect.value;
+        if (value === CUSTOM_BASELINE_OPTION) {
+          state.baselineSelection = CUSTOM_BASELINE_OPTION;
+        } else {
+          state.baselineSelection = value;
+          state.customBaseline = "";
+        }
+        renderBaselineControls({ resetSelection: false });
+      });
+
+      baselineInput.addEventListener("input", () => {
+        if (baselineInput.disabled) {
+          return;
+        }
+        state.customBaseline = baselineInput.value;
+        state.baselineSelection = CUSTOM_BASELINE_OPTION;
+      });
+
+      renderProjectOptions();
+      state.activeProject = projectSelect.value || "";
+      purposeSelect.value = defaults.purpose || purposeSelect.value || "comparison";
+      renderBatchOptions({ useDefaults: true, resetBaseline: false });
+      renderBaselineControls({ resetSelection: true });
+      form.dataset.sceneInit = "1";
+    }
+
+    if (!window.__sceneRunsDashboardGlobalInit) {
+      window.__sceneRunsDashboardGlobalInit = true;
+      document.body.addEventListener("htmx:configRequest", onConfigRequest);
+      document.body.addEventListener("htmx:beforeSwap", onBeforeSwap);
+      document.body.addEventListener("htmx:afterSwap", onAfterSwap);
+      document.addEventListener("click", onExecutionLogClick, true);
+    }
+
+    setupModals();
+    setupRunLogSync();
+    setupLaunchForm();
+  })();
+</script>

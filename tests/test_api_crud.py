@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routes import api as api_routes
+from app.routes import runs as runs_routes
 from app.services.storage import LocalDynamoStorage, SceneRepository, get_repository
 
 
@@ -15,6 +17,19 @@ def client(tmp_path) -> Generator[Tuple[TestClient, SceneRepository], None, None
     storage = LocalDynamoStorage(tmp_path / "db.json")
     repo = SceneRepository(storage)
 
+    class _NoopOrchestrator:
+        def enqueue(self, run_id: str) -> None:
+            return None
+
+    original_api_orchestrator = api_routes.get_orchestrator
+    original_runs_orchestrator = runs_routes.get_orchestrator
+
+    def override_orchestrator() -> _NoopOrchestrator:
+        return _NoopOrchestrator()
+
+    api_routes.get_orchestrator = override_orchestrator
+    runs_routes.get_orchestrator = override_orchestrator
+
     def override_repo() -> SceneRepository:
         return repo
 
@@ -22,6 +37,8 @@ def client(tmp_path) -> Generator[Tuple[TestClient, SceneRepository], None, None
     with TestClient(app) as test_client:
         yield test_client, repo
     app.dependency_overrides.clear()
+    api_routes.get_orchestrator = original_api_orchestrator
+    runs_routes.get_orchestrator = original_runs_orchestrator
 
 
 def test_project_crud(client: Tuple[TestClient, SceneRepository]) -> None:

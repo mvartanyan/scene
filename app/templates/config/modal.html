@@ -105,6 +105,132 @@
         </form>
       </div>
     </section>
+
+    <section class="card border">
+      <div class="card-header bg-white fw-semibold">Run Timeout</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/run-timeout"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="row g-3"
+        >
+          <div class="col-md-6">
+            <label class="form-label">Default run timeout (seconds)</label>
+            <input
+              type="number"
+              name="run_timeout_seconds"
+              class="form-control"
+              min="10"
+              value="{{ run_timeout_seconds }}"
+              required
+            />
+            <div class="form-text">Used for new runs; can be overridden per launch.</div>
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Save Timeout</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card border">
+      <div class="card-header bg-white fw-semibold">Run Concurrency</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/run-concurrency"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="row g-3"
+        >
+          <div class="col-md-6">
+            <label class="form-label">Maximum concurrent executions</label>
+            <input
+              type="number"
+              name="max_concurrent_executions"
+              class="form-control"
+              min="1"
+              max="32"
+              value="{{ max_concurrent_executions }}"
+              required
+            />
+            <div class="form-text">Scene launches up to this many Playwright containers per run.</div>
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Save Concurrency</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card border">
+      <div class="card-header bg-white fw-semibold">Scene Host URL</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/host-url"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="row g-3"
+        >
+          <div class="col-md-8">
+            <label class="form-label">Callback host for containers</label>
+            <input
+              type="url"
+              name="scene_host_url"
+              class="form-control"
+              value="{{ scene_host_url }}"
+              required
+            />
+            <div class="form-text">Used by Playwright containers when posting execution results.</div>
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Save Host URL</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card border">
+      <div class="card-header bg-white fw-semibold">Timestamp Display</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/display-timezone"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="d-flex flex-column gap-3"
+        >
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="radio"
+              name="display_timezone"
+              id="tz-utc"
+              value="utc"
+              {% if display_timezone == "utc" %}checked{% endif %}
+            />
+            <label class="form-check-label" for="tz-utc">
+              Coordinated Universal Time (UTC)
+            </label>
+          </div>
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="radio"
+              name="display_timezone"
+              id="tz-local"
+              value="local"
+              {% if display_timezone == "local" %}checked{% endif %}
+            />
+            <label class="form-check-label" for="tz-local">
+              Local browser timezone
+            </label>
+          </div>
+          <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Save Preference</button>
+          </div>
+        </form>
+      </div>
+    </section>
   </div>
 </div>
 <div class="modal-footer">

@@ -1,0 +1,341 @@
+{% set artifacts = execution.artifacts or {} %}
+{% set observed = artifacts.get("observed") %}
+{% set baseline_art = artifacts.get("baseline") %}
+{% set reference_art = artifacts.get("reference") %}
+{% set diff_art = artifacts.get("diff") %}
+{% set heatmap_art = artifacts.get("heatmap") %}
+{% set trace_art = artifacts.get("trace") %}
+{% set video_art = artifacts.get("video") %}
+{% set log_art = artifacts.get("log") %}
+
+<div class="modal-header">
+  <div>
+    <h5 class="modal-title mb-0">
+      {{ execution.task_name }} · {{ execution.browser }} · {{ execution.viewport.width }}×{{ execution.viewport.height }}
+    </h5>
+    <div class="text-muted small">
+      Run {{ run.id[:8] }} · Execution {{ execution.id[:8] }} · {{ execution.status.replace("_", " ") | title }}
+    </div>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+
+{% if observed %}
+  {% if baseline_art %}
+    {% set initial_mode = 'slider' %}
+  {% else %}
+    {% set initial_mode = 'observed' %}
+  {% endif %}
+{% else %}
+  {% set initial_mode = 'observed' %}
+{% endif %}
+
+<div class="modal-body">
+  <style>
+    .modal-body {
+      padding-bottom: 0;
+      overflow: hidden;
+    }
+    .execution-viewer-body {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-height: calc(100vh - 220px);
+      overflow: hidden;
+    }
+    .viewer-shell {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      overflow: hidden;
+    }
+    .viewer-metadata {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #fff;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.08);
+    }
+    .viewer-metadata .badge {
+      font-size: 0.75rem;
+    }
+    .viewer-mode-buttons .btn {
+      min-width: 5rem;
+    }
+    .viewer-stage-card {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      overflow: hidden;
+    }
+    .viewer-stage-scroll {
+      flex: 1 1 auto;
+      overflow: auto;
+      border: 1px solid #dee2e6;
+      border-radius: 0.75rem;
+      background: #000;
+      padding: 0.75rem;
+    }
+    .viewer-stage {
+      position: relative;
+      width: 100%;
+      min-height: 320px;
+    }
+    .viewer-stage [data-mode] {
+      display: none;
+    }
+    .viewer-stage[data-active="observed"] [data-mode="observed"],
+    .viewer-stage[data-active="baseline"] [data-mode="baseline"],
+    .viewer-stage[data-active="reference"] [data-mode="reference"],
+    .viewer-stage[data-active="diff"] [data-mode="diff"],
+    .viewer-stage[data-active="heatmap"] [data-mode="heatmap"],
+    .viewer-stage[data-active="slider"] [data-mode="slider"] {
+      display: block;
+    }
+    .viewer-mode-pane img.viewer-image {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .viewer-downloads .btn {
+      min-width: 7rem;
+    }
+    .viewer-slider-hint {
+      position: absolute;
+      right: 1rem;
+      bottom: 1rem;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+  </style>
+
+
+  {% macro compare_block(mode, artifact, label) -%}
+    {% if artifact %}
+      <div class="viewer-mode-pane" data-mode="{{ mode }}">
+        <div
+          class="image-compare"
+          data-role="image-compare"
+          data-compare-kind="{{ mode }}"
+          data-before-label="{{ label }}"
+          data-after-label="Observed"
+        >
+          <img src="{{ artifact.url }}" alt="{{ label }} screenshot" class="viewer-image" />
+          <img src="{{ observed.url }}" alt="Observed screenshot" class="viewer-image" />
+        </div>
+        <div class="viewer-slider-hint">Drag to compare</div>
+      </div>
+    {% endif %}
+  {%- endmacro %}
+
+  <div class="execution-viewer-body" id="execution-viewer-layout">
+    <div class="viewer-shell" data-role="viewer-root" data-initial-mode="{{ initial_mode }}">
+      <div class="viewer-metadata card">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-4">
+            <div class="flex-grow-1">
+              <div class="row g-3">
+                <div class="col-md-4 col-sm-6">
+                  <div class="text-uppercase small text-muted">Status</div>
+                  <div class="fw-semibold">{{ execution.status.replace("_", " ") | title }}</div>
+                  <div class="small text-muted">{{ execution.started_at or "—" }} → {{ execution.completed_at or "—" }}</div>
+                </div>
+                <div class="col-md-4 col-sm-6">
+                  <div class="text-uppercase small text-muted">Diff Level</div>
+                  <div class="d-flex align-items-center gap-2">
+                    {% if execution.diff_label %}
+                      <span class="badge text-bg-{{ execution.diff_badge }}">{{ execution.diff_label }}</span>
+                    {% endif %}
+                    <span>{{ '%.2f'|format(execution.diff_level or 0.0) }}%</span>
+                  </div>
+                  {% if execution.diff_threshold is not none %}
+                    <div class="small text-muted">Threshold {{ '%.2f'|format(execution.diff_threshold) }}%</div>
+                  {% endif %}
+                </div>
+                <div class="col-md-4 col-sm-6">
+                  <div class="text-uppercase small text-muted">Run Average</div>
+                  {% if run.diff_label %}
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="badge text-bg-{{ run.diff_badge }}">{{ run.diff_label }}</span>
+                      <span>{{ '%.2f'|format(run.diff_average or 0.0) }}%</span>
+                    </div>
+                    {% if run_diff_threshold is not none %}
+                      <div class="small text-muted">Threshold {{ '%.2f'|format(run_diff_threshold) }}%</div>
+                    {% endif %}
+                  {% else %}
+                    <div class="fw-semibold">—</div>
+                  {% endif %}
+                </div>
+              </div>
+              {% if execution.message %}
+                <div class="alert alert-warning mt-3 mb-0 py-2">{{ execution.message }}</div>
+              {% endif %}
+            </div>
+            <div class="viewer-mode-buttons btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Viewer controls">
+              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="observed" {% if not observed %}disabled{% endif %}>Observed</button>
+              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="baseline" {% if not baseline_art %}disabled{% endif %}>Baseline</button>
+              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="reference" {% if not reference_art %}disabled{% endif %}>Reference</button>
+              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="diff" {% if not diff_art %}disabled{% endif %}>Diff</button>
+              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="heatmap" {% if not heatmap_art %}disabled{% endif %}>Heatmap</button>
+              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="slider" {% if not (observed and baseline_art) %}disabled{% endif %}>Slider</button>
+              {% if trace_art %}
+                <a
+                  class="btn btn-outline-secondary"
+                  href="{{ trace_art.url }}"
+                  target="_blank"
+                  rel="noopener"
+                >Trace</a>
+              {% endif %}
+              {% if log_art %}
+                <a
+                  class="btn btn-outline-secondary"
+                  href="{{ log_art.url }}"
+                  target="_blank"
+                  rel="noopener"
+                >Log</a>
+              {% endif %}
+            </div>
+          </div>
+
+          {% set download_keys = ["video"] %}
+          {% set downloadable = [] %}
+          {% for key in download_keys %}
+            {% if artifacts.get(key) %}
+              {% set _ = downloadable.append(key) %}
+            {% endif %}
+          {% endfor %}
+          {% if downloadable %}
+            <div class="viewer-downloads d-flex flex-wrap gap-2 mt-3">
+              {% for key in downloadable %}
+                {% set artifact = artifacts.get(key) %}
+                <a
+                  class="btn btn-outline-secondary btn-sm"
+                  href="{{ artifact.url }}"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {{ key.replace("_", " ") | title }}
+                </a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="viewer-stage-card">
+        <div class="viewer-stage-scroll">
+          {% if observed %}
+            <div class="viewer-stage" data-role="viewer-stage" data-active="{{ initial_mode }}">
+              <div class="viewer-mode-pane" data-mode="observed">
+                <img src="{{ observed.url }}" alt="Observed screenshot" class="viewer-image" />
+              </div>
+              {% if baseline_art %}
+                <div class="viewer-mode-pane" data-mode="baseline">
+                  <img src="{{ baseline_art.url }}" alt="Baseline screenshot" class="viewer-image" />
+                </div>
+              {% endif %}
+              {{ compare_block('reference', reference_art, 'Reference') }}
+              {% if diff_art %}
+                <div class="viewer-mode-pane" data-mode="diff">
+                  <img src="{{ diff_art.url }}" alt="Pixel diff" class="viewer-image" />
+                </div>
+              {% endif %}
+              {% if heatmap_art %}
+                <div class="viewer-mode-pane" data-mode="heatmap">
+                  <img src="{{ heatmap_art.url }}" alt="Heatmap overlay" class="viewer-image" />
+                </div>
+              {% endif %}
+              {{ compare_block('slider', baseline_art, 'Baseline') }}
+            </div>
+          {% else %}
+            <div class="alert alert-warning mb-0">Observed screenshot not available.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const root = document.getElementById("execution-viewer-content");
+    if (!root) {
+      return;
+    }
+    const viewerRoot = root.querySelector('[data-role="viewer-root"]');
+    if (!viewerRoot) {
+      return;
+    }
+    const initialMode = viewerRoot.dataset.initialMode || "observed";
+    const stage = viewerRoot.querySelector('[data-role="viewer-stage"]');
+    const buttons = Array.from(viewerRoot.querySelectorAll('[data-role="viewer-mode"]'));
+    const compareElements = viewerRoot.querySelectorAll('[data-role="image-compare"]');
+    const compareInstances = new Map();
+
+    function ensureCompare(kind) {
+      if (typeof window.ImageCompare !== "function") {
+        return null;
+      }
+      if (compareInstances.has(kind)) {
+        return compareInstances.get(kind);
+      }
+      const element = Array.from(compareElements).find((el) => el.dataset.compareKind === kind);
+      if (!element) {
+        return null;
+      }
+      const instance = new window.ImageCompare(element, {
+        initial: 50,
+        beforeLabel: element.dataset.beforeLabel || "Baseline",
+        afterLabel: element.dataset.afterLabel || "Observed",
+      });
+      instance.mount();
+      compareInstances.set(kind, instance);
+      return instance;
+    }
+
+    function activate(mode) {
+      if (!stage) {
+        return;
+      }
+      stage.setAttribute("data-active", mode);
+      buttons.forEach((button) => {
+        if (button.dataset.mode === mode) {
+          button.classList.remove("btn-outline-secondary");
+          button.classList.add("btn-primary");
+          button.setAttribute("aria-pressed", "true");
+        } else {
+          button.classList.add("btn-outline-secondary");
+          button.classList.remove("btn-primary");
+          button.setAttribute("aria-pressed", "false");
+        }
+      });
+      if (mode === "slider") {
+        ensureCompare("slider");
+      } else if (mode === "reference") {
+        ensureCompare("reference");
+      }
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.disabled) {
+          return;
+        }
+        activate(button.dataset.mode);
+      });
+    });
+
+    ensureCompare("slider");
+    ensureCompare("reference");
+    activate(initialMode);
+  })();
+</script>

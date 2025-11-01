@@ -12,7 +12,9 @@ dependencies = [
     "pydantic>=2.6.0",
     "pydantic-settings>=2.2.1",
     "boto3>=1.34.0",
-    "python-multipart>=0.0.9"
+    "python-multipart>=0.0.9",
+    "pillow>=10.3.0",
+    "docker>=7.0.0"
 ]
 
 [project.optional-dependencies]
@@ -27,3 +29,7 @@ requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "integration: integration tests that require Docker and Playwright containers",
+    "unit: fast unit tests that run without external services"
+]

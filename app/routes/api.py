@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -8,6 +8,8 @@ from app.schemas import (
     Batch,
     BatchCreate,
     BatchUpdate,
+    Baseline,
+    ExecutionCallbackRequest,
     Page,
     PageCreate,
     PageUpdate,
@@ -17,10 +19,13 @@ from app.schemas import (
     Run,
     RunCreate,
     RunUpdate,
+    RunStatus,
     Task,
     TaskCreate,
     TaskUpdate,
+    TaskExecution,
 )
+from app.services.orchestrator import get_orchestrator
 from app.services.storage import RepositoryDep, SceneRepository
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -193,7 +198,10 @@ async def create_run(payload: RunCreate, repo: SceneRepository = RepositoryDep) 
     _ensure_project(repo, payload.project_id)
     if not repo.get_batch(payload.batch_id):
         raise HTTPException(status_code=404, detail="Batch not found")
-    return repo.create_run(payload.model_dump())
+    record = repo.create_run(payload.model_dump())
+    orchestrator = get_orchestrator()
+    orchestrator.enqueue(record["id"])
+    return record
 
 
 @router.get("/runs/{run_id}", response_model=Run)
@@ -217,3 +225,74 @@ async def update_run(
 @router.delete("/runs/{run_id}", status_code=204)
 async def delete_run(run_id: str, repo: SceneRepository = RepositoryDep) -> None:
     repo.delete_run(run_id)
+
+
+@router.post("/runs/{run_id}/cancel", response_model=Run)
+async def cancel_run(run_id: str, repo: SceneRepository = RepositoryDep) -> Run:
+    record = repo.get_run(run_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if record.get("status") == RunStatus.finished.value:
+        raise HTTPException(status_code=400, detail="Finished runs cannot be cancelled.")
+    orchestrator = get_orchestrator()
+    orchestrator.cancel_run(run_id)
+    updated = repo.get_run(run_id)
+    assert updated is not None
+    return updated
+
+
+@router.post("/executions/{execution_id}/cancel", response_model=TaskExecution)
+async def cancel_execution(execution_id: str, repo: SceneRepository = RepositoryDep) -> TaskExecution:
+    execution = repo.get_execution(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    run = repo.get_run(execution["run_id"])
+    if run and run.get("status") == RunStatus.finished.value:
+        raise HTTPException(status_code=400, detail="Finished runs cannot be modified.")
+    orchestrator = get_orchestrator()
+    orchestrator.cancel_execution(execution_id)
+    updated = repo.get_execution(execution_id)
+    assert updated is not None
+    return updated
+
+
+@router.get("/runs/{run_id}/executions", response_model=List[TaskExecution])
+async def list_run_executions(run_id: str, repo: SceneRepository = RepositoryDep) -> List[TaskExecution]:
+    if not repo.get_run(run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return repo.list_executions(run_id=run_id)
+
+
+@router.get("/executions/{execution_id}", response_model=TaskExecution)
+async def get_execution(execution_id: str, repo: SceneRepository = RepositoryDep) -> TaskExecution:
+    execution = repo.get_execution(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return execution
+
+
+@router.get("/orchestrator/ping")
+async def orchestrator_ping() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.post("/executions/{execution_id}/complete")
+async def complete_execution_callback(
+    execution_id: str,
+    payload: ExecutionCallbackRequest,
+    repo: SceneRepository = RepositoryDep,
+):
+    execution = repo.get_execution(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    orchestrator = get_orchestrator()
+    if not orchestrator.handle_execution_callback(execution_id, payload.model_dump()):
+        raise HTTPException(status_code=403, detail="Invalid completion token or execution not pending")
+    return {"status": "ok"}
+
+
+@router.get("/batches/{batch_id}/baselines", response_model=List[Baseline])
+async def list_batch_baselines(batch_id: str, repo: SceneRepository = RepositoryDep) -> List[Baseline]:
+    if not repo.get_batch(batch_id):
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return repo.list_baselines(batch_id=batch_id)

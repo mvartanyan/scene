@@ -1,0 +1,71 @@
+<div class="modal-header justify-content-between">
+  <h5 class="modal-title">Execution Log</h5>
+  <div class="d-flex align-items-center gap-2">
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm"
+      data-copy-target="#execution-log-body"
+      onclick="navigator.clipboard.writeText(document.querySelector('#execution-log-body').innerText || '').then(()=>this.classList.add('btn-success'));"
+    >
+      Copy
+    </button>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  </div>
+</div>
+<div class="modal-body">
+  <pre
+    id="execution-log-body"
+    class="bg-dark text-light rounded-3 p-3"
+    style="max-height:60vh; overflow:auto; white-space:pre-wrap;"
+    data-run-id="{{ run_id }}"
+    data-execution-id="{{ execution_id }}"
+    data-log-length="{{ log_length }}"
+  >{{ log_text }}</pre>
+</div>
+<script>
+  (function () {
+    const container = document.getElementById('execution-log-body');
+    if (!container) {
+      return;
+    }
+    const runId = container.dataset.runId;
+    const executionId = container.dataset.executionId;
+    let length = parseInt(container.dataset.logLength || '0', 10);
+    let cancelled = false;
+    const modal = document.getElementById('executionLogModal');
+    const stop = () => {
+      cancelled = true;
+      if (modal) {
+        modal.removeEventListener('hidden.bs.modal', stop);
+      }
+    };
+    if (modal) {
+      modal.addEventListener('hidden.bs.modal', stop);
+    }
+
+    const poll = async () => {
+      if (cancelled) {
+        return;
+      }
+      try {
+        const response = await fetch(`/runs/${runId}/executions/${executionId}/log/stream?since=${length}`, {
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const data = await response.json();
+        length = data.length || 0;
+        container.dataset.logLength = String(length);
+        container.textContent = data.text || '';
+        container.scrollTop = container.scrollHeight;
+      } catch (error) {
+        console.error('Log poll failed', error);
+      }
+      if (!cancelled) {
+        poll();
+      }
+    };
+    poll();
+  })();
+</script>

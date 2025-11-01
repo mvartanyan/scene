@@ -19,3 +19,8 @@ body {
   color: #475569;
   text-align: center;
 }
+
+.modal-body-scroll {
+  max-height: min(70vh, 720px);
+  overflow-y: auto;
+}

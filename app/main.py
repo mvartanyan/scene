@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.routes import api
+from app.routes import artifacts
 from app.routes import config as config_ui
 from app.routes import projects as projects_ui
 from app.routes import runs as runs_ui
@@ -10,6 +11,7 @@ from app.routes import runs as runs_ui
 app = FastAPI(title="Scene Visual Testing Dashboard")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(api.router)
+app.include_router(artifacts.router)
 app.include_router(config_ui.router)
 app.include_router(projects_ui.router)
 app.include_router(runs_ui.router)

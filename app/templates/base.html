@@ -11,7 +11,8 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}" />
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/image-compare-viewer.css') }}" />
+    <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
   </head>
   <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm">
@@ -98,5 +99,271 @@
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
+    <script src="{{ url_for('static', path='vendor/image-compare-viewer.js') }}"></script>
+    <script>
+      (function () {
+        var defaultRunDetailHtml = [
+          '<div id="run-detail-shell-inner" data-run-id="">',
+          '  <div class="modal-header">',
+          '    <h5 class="modal-title">Run Detail</h5>',
+          '    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>',
+          '  </div>',
+          '  <div class="modal-body">',
+          '    <div class="text-muted">Select a run from the log to inspect details.</div>',
+          '  </div>',
+          '  <div class="modal-footer">',
+          '    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>',
+          '  </div>',
+          '</div>'
+        ].join('');
+        var userSelectedRunId = '';
+        if (!document.body.dataset.runDetailOpen) {
+          document.body.dataset.runDetailOpen = 'false';
+        }
+
+        function getRunLog() {
+          return document.getElementById('run-log');
+        }
+
+        function getRunDetail() {
+          return document.getElementById('run-detail-shell');
+        }
+
+        function isBootstrapReady() {
+          return Boolean(window.bootstrap) && typeof window.bootstrap.Modal === 'function';
+        }
+
+        function highlightRuns(selectedId) {
+          var runLog = getRunLog();
+          if (!runLog) {
+            return;
+          }
+          var entries = runLog.querySelectorAll('.run-log-entry');
+          for (var i = 0; i < entries.length; i += 1) {
+            var entry = entries[i];
+            var entryId = entry.getAttribute('data-run-id');
+            entry.classList.toggle('selected-run', Boolean(selectedId) && entryId === selectedId);
+          }
+          var selectedInputs = runLog.querySelectorAll('[data-run-filter="selected_run_id"]');
+          for (var j = 0; j < selectedInputs.length; j += 1) {
+            selectedInputs[j].value = selectedId || '';
+          }
+        }
+
+        function ensureSelectedRun() {
+          var runLog = getRunLog();
+          if (!runLog) {
+            return '';
+          }
+
+          var bodySelected = (document.body && document.body.dataset.sceneSelectedRun) || '';
+          var selected = userSelectedRunId || bodySelected || runLog.dataset.selectedRunId || '';
+          if (
+            selected &&
+            !runLog.querySelector('.run-log-entry[data-run-id="' + selected + '"]')
+          ) {
+            selected = '';
+            runLog.dataset.selectedRunId = '';
+            if (selected === userSelectedRunId) {
+              userSelectedRunId = '';
+            }
+            if (document.body) {
+              document.body.dataset.sceneSelectedRun = '';
+            }
+          }
+
+          runLog.dataset.selectedRunId = selected || '';
+          highlightRuns(selected);
+          return selected;
+        }
+
+        function isModalOpen() {
+          var modalEl = document.getElementById('runDetailModal');
+          return Boolean(modalEl && modalEl.classList.contains('show'));
+        }
+
+        function showRunModal() {
+          var modalEl = document.getElementById('runDetailModal');
+          if (modalEl && isBootstrapReady()) {
+            window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+          }
+        }
+
+        function hideRunModal() {
+          var modalEl = document.getElementById('runDetailModal');
+          if (modalEl && isBootstrapReady()) {
+            var instance = window.bootstrap.Modal.getInstance(modalEl);
+            if (instance) {
+              instance.hide();
+            }
+          }
+        }
+
+        function resetRunDetail() {
+          var shell = document.getElementById('run-detail-shell');
+          if (shell) {
+            shell.dataset.runId = '';
+            shell.innerHTML = defaultRunDetailHtml;
+          }
+          hideRunModal();
+        }
+
+        function loadRunDetail(runId, force) {
+          if (force === void 0) {
+            force = false;
+          }
+          var detail = getRunDetail();
+          if (!window.htmx || !detail || !runId) {
+            return;
+          }
+          var current = detail.dataset.runId || '';
+          if (!force && current === runId) {
+            return;
+          }
+          detail.dataset.runId = runId;
+          detail.setAttribute('hx-get', '/runs/' + runId + '/overlay');
+          window.htmx.ajax('GET', '/runs/' + runId + '/overlay', '#run-detail-shell');
+        }
+
+        document.body.addEventListener('click', function (event) {
+          var el = event.target;
+          while (el && !el.classList.contains('run-select-btn')) {
+            el = el.parentElement;
+          }
+          if (!el) {
+            return;
+          }
+          var entry = el.closest ? el.closest('.run-log-entry') : null;
+          var runId = entry ? entry.getAttribute('data-run-id') : el.getAttribute('data-run-id');
+          if (!runId) {
+            return;
+          }
+          var runLog = getRunLog();
+          if (runLog) {
+            runLog.dataset.selectedRunId = runId;
+            highlightRuns(runId);
+          }
+          userSelectedRunId = runId;
+          if (document.body) {
+            document.body.dataset.sceneSelectedRun = runId;
+          }
+          loadRunDetail(runId, true);
+          showRunModal();
+        });
+
+        document.body.addEventListener('htmx:beforeRequest', function (event) {
+          var trigger = event.target;
+          if (!trigger || !trigger.classList || !trigger.classList.contains('run-select-btn')) {
+            return;
+          }
+          var entry = trigger.closest ? trigger.closest('.run-log-entry') : null;
+          var runId = entry
+            ? entry.getAttribute('data-run-id')
+            : trigger.getAttribute('data-run-id');
+          var runLog = getRunLog();
+          if (runLog && runId) {
+            runLog.dataset.selectedRunId = runId;
+            highlightRuns(runId);
+          }
+          if (runId && document.body) {
+            document.body.dataset.sceneSelectedRun = runId;
+          }
+        });
+
+        document.body.addEventListener('htmx:afterSwap', function (event) {
+          var target = event.target || null;
+          var targetId = target && target.id ? target.id : '';
+          if (targetId === 'run-detail-shell') {
+            var detail = target.querySelector('#run-detail-shell-inner');
+            var runId = detail && detail.dataset ? (detail.dataset.runId || '') : '';
+            target.dataset.runId = runId;
+            if (runId) {
+              target.setAttribute('hx-get', '/runs/' + runId + '/overlay');
+            } else {
+              target.removeAttribute('hx-get');
+            }
+            if (document.body.dataset.runDetailOpen === 'true' && runId === userSelectedRunId) {
+              target.setAttribute('hx-trigger', 'every 5s');
+            } else {
+              target.removeAttribute('hx-trigger');
+            }
+            initialiseRuns();
+            return;
+          }
+
+          if (targetId === 'runs-dashboard' || targetId === 'run-log') {
+            var runLog = getRunLog();
+            var selected =
+              userSelectedRunId ||
+              (document.body && document.body.dataset.sceneSelectedRun) ||
+              (runLog ? runLog.dataset.selectedRunId || '' : '');
+            if (runLog && selected) {
+              runLog.dataset.selectedRunId = selected;
+              highlightRuns(selected);
+            }
+            if (
+              document.body.dataset.runDetailOpen === 'true' &&
+              selected &&
+              selected === (document.body && document.body.dataset.sceneSelectedRun)
+            ) {
+              loadRunDetail(selected, true);
+            }
+            return;
+          }
+        });
+
+        function initialiseRuns() {
+          var selected = ensureSelectedRun();
+          if (selected && document.body) {
+            document.body.dataset.sceneSelectedRun = selected;
+          }
+          var detail = getRunDetail();
+          if (detail && !detail.getAttribute('data-run-id')) {
+            detail.setAttribute('data-run-id', selected || '');
+            if (document.body.dataset.runDetailOpen === 'true' && detail.dataset.runId) {
+              detail.setAttribute('hx-get', '/runs/' + detail.dataset.runId + '/overlay');
+              detail.setAttribute('hx-trigger', 'every 5s');
+            }
+          }
+          var modalEl = document.getElementById('runDetailModal');
+          if (modalEl && isBootstrapReady() && !modalEl.dataset.sceneRunModalInit) {
+            modalEl.addEventListener('hidden.bs.modal', function () {
+              var detailEl = getRunDetail();
+              if (detailEl) {
+                detailEl.dataset.runId = '';
+                detailEl.removeAttribute('hx-trigger');
+                detailEl.removeAttribute('hx-get');
+                detailEl.innerHTML = defaultRunDetailHtml;
+              }
+              document.body.dataset.runDetailOpen = 'false';
+              userSelectedRunId = '';
+              document.body.dataset.sceneSelectedRun = '';
+            });
+            modalEl.addEventListener('shown.bs.modal', function () {
+              document.body.dataset.runDetailOpen = 'true';
+          var detailEl = getRunDetail();
+          if (detailEl) {
+            detailEl.setAttribute('hx-trigger', 'every 5s');
+            var runId = userSelectedRunId || detailEl.dataset.runId;
+            if (runId) {
+              detailEl.dataset.runId = runId;
+              detailEl.setAttribute('hx-get', '/runs/' + runId + '/overlay');
+            }
+            if (runId && document.body) {
+              document.body.dataset.sceneSelectedRun = runId;
+            }
+          }
+            });
+            modalEl.dataset.sceneRunModalInit = '1';
+          }
+        }
+
+        if (window.htmx && typeof window.htmx.onLoad === 'function') {
+          window.htmx.onLoad(initialiseRuns);
+        } else {
+          document.addEventListener('DOMContentLoaded', initialiseRuns);
+        }
+      })();
+    </script>
   </body>
 </html>

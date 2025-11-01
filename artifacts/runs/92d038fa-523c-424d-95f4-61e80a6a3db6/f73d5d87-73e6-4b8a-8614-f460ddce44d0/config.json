@@ -1,0 +1,1 @@
+{"url": "https://iarc-training.spherical.horse/", "browser": "chromium", "viewport": {"width": 1920, "height": 1080}, "preparatory_js": null, "task_js": null, "post_wait_ms": 500, "goto_timeout_ms": 60000, "artifacts_dir": "."}

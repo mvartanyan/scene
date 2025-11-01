@@ -1,76 +1,219 @@
-<div class="card border shadow-sm mb-4">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <span class="fw-semibold">{{ project.name if project else "Unknown Project" }}</span>
-    <span class="badge text-bg-secondary">{{ run.status.replace("_", " ") | title }}</span>
-  </div>
-  <div class="card-body">
-    {% if run.jira_issue %}
-      <span class="badge text-bg-info mb-3">JIRA: {{ run.jira_issue }}</span>
-    {% endif %}
-    <p class="mb-3">
-      Purpose: {{ run.purpose.replace("_", " ") | title }} · Requested {{ run.created_at }}
-      {% if batch %} · Batch: {{ batch.name }}{% endif %}
-    </p>
-    <div class="row row-cols-1 row-cols-md-3 g-3">
-      <div class="col">
-        <div class="bg-light rounded-3 p-3 h-100">
-          <div class="text-uppercase small text-muted">Batch</div>
-          <div class="fw-semibold">{{ batch.name if batch else run.batch_id }}</div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="bg-light rounded-3 p-3 h-100">
-          <div class="text-uppercase small text-muted">Requested By</div>
-          <div class="fw-semibold">{{ run.requested_by or "mock_user" }}</div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="bg-light rounded-3 p-3 h-100">
-          <div class="text-uppercase small text-muted">Summary</div>
-          <div class="fw-semibold">
-            {% if run.summary %}
-              {{ run.summary.executions_finished or 0 }}/{{ run.summary.executions_total or 0 }} finished ·
-              {{ run.summary.executions_failed or 0 }} failed
-            {% else %}
-              Not available
-            {% endif %}
-          </div>
-        </div>
-      </div>
+{% set counts = counts or {} %}
+{% set status_badge = run.status_badge or 'secondary' %}
+
+<div id="run-detail-shell-inner" data-run-id="{{ run.id }}" data-run-hash="{{ overlay_hash }}">
+<div class="modal-header align-items-start">
+  <div class="me-auto">
+    <h5 class="modal-title mb-1">
+      {{ project.name if project else "Unknown Project" }}
+      {% if batch %}<small class="text-muted ms-2">/ {{ batch.name }}</small>{% endif %}
+    </h5>
+    <div class="small text-muted">
+      {{ run.purpose.replace('_', ' ') | title }} · {{ run.created_at | format_ts }}
     </div>
-    <p class="text-muted small mb-0 mt-3">
-      Execution details remain mocked until the worker pipeline wires in real artifacts and viewers.
-    </p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <span class="badge text-bg-{{ status_badge }} text-uppercase">{{ run.status.replace('_', ' ') | title }}</span>
+    {% if run.diff_grade in ['minor_diff', 'major_diff'] %}
+      <span class="badge text-bg-{{ run.diff_badge }}">
+        {{ run.diff_label }} · {{ '%.2f'|format(run.diff_average or 0.0) }}%
+      </span>
+    {% endif %}
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
   </div>
 </div>
 
-<div class="card border shadow-sm">
-  <div class="card-header bg-white fw-semibold">Executions</div>
-  <div class="card-body">
-    {% if executions %}
-      <div class="row row-cols-1 row-cols-md-2 g-3">
-        {% for exec in executions %}
-          <div class="col">
-            <div class="card h-100">
-              <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                  <div>
-                    <div class="fw-semibold">{{ exec.task_name }}</div>
-                    <small class="text-muted">{{ exec.browser }} · {{ exec.viewport }}</small>
-                  </div>
-                  <span class="badge text-bg-secondary">{{ exec.status.replace("_", " ") | title }}</span>
-                </div>
-                {% if exec.diff_pct is not none %}
-                  <div class="text-muted small mb-2">Diff: {{ exec.diff_pct }}%</div>
-                {% endif %}
-                <button class="btn btn-sm btn-outline-secondary" disabled>Viewer coming soon</button>
-              </div>
-            </div>
-          </div>
-        {% endfor %}
+<div class="modal-body modal-body-scroll">
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <div class="bg-light rounded-3 p-3 h-100">
+        <div class="text-uppercase small text-muted">Requested By</div>
+        <div class="fw-semibold">{{ run.requested_by or 'dashboard' }}</div>
+        <div class="text-muted small">Updated {{ run.updated_at | format_ts }}</div>
       </div>
-    {% else %}
-      <div class="empty-state">No executions recorded.</div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="bg-light rounded-3 p-3 h-100">
+        <div class="text-uppercase small text-muted">Finished</div>
+        <div class="fw-semibold">
+          {{ counts.get('finished', 0) }} /
+          {{ counts.get('queued', 0) + counts.get('executing', 0) + counts.get('finished', 0) + counts.get('failed', 0) + counts.get('cancelled', 0) }}
+        </div>
+        <div class="text-muted small">Executions</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="bg-light rounded-3 p-3 h-100">
+        <div class="text-uppercase small text-muted">Queued</div>
+        <div class="fw-semibold">{{ counts.get('queued', 0) }}</div>
+        <div class="text-muted small">Awaiting start</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="bg-light rounded-3 p-3 h-100">
+        <div class="text-uppercase small text-muted">In Progress</div>
+        <div class="fw-semibold">{{ counts.get('executing', 0) }}</div>
+        <div class="text-muted small">Running now</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    {% if run.jira_issue %}
+      <span class="badge text-bg-info">JIRA: {{ run.jira_issue }}</span>
+    {% endif %}
+    {% if baseline %}
+      <span class="badge text-bg-secondary">Baseline {{ baseline.id[:8] }} · {{ baseline.status.replace('_', ' ') | title }}</span>
+    {% elif run.purpose == 'comparison' %}
+      <span class="badge text-bg-warning text-dark">No baseline linked</span>
+    {% endif %}
+    {% if run_diff_threshold is defined and run_diff_threshold is not none %}
+      <span class="badge text-bg-light text-dark">Run threshold {{ '%.2f'|format(run_diff_threshold) }}%</span>
+    {% endif %}
+    {% if execution_diff_threshold is defined and execution_diff_threshold is not none %}
+      <span class="badge text-bg-light text-dark">Execution threshold {{ '%.2f'|format(execution_diff_threshold) }}%</span>
+    {% endif %}
+    {% if run.note %}
+      <span class="badge text-bg-light text-dark">Note: {{ run.note }}</span>
+    {% endif %}
+    {% if run.timeout_seconds %}
+      <span class="badge text-bg-light text-dark">Timeout {{ run.timeout_seconds }}s</span>
     {% endif %}
   </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">Execution</th>
+          <th scope="col">Status</th>
+          <th scope="col" class="timing-col">Timing</th>
+          <th scope="col" class="w-25"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exec in executions %}
+          {% set artifacts = exec.artifacts or {} %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ exec.task_name }}</div>
+              <div class="small text-muted">{{ exec.browser }} · {{ exec.viewport.width }}×{{ exec.viewport.height }}</div>
+              {% if exec.message_excerpt %}
+                <div class="small text-danger">{{ exec.message_excerpt }}</div>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex flex-column align-items-start gap-1">
+                <span class="badge text-bg-{{ exec.status_badge }}">{{ exec.status.replace('_', ' ') | title }}</span>
+                {% if exec.status == 'finished' and exec.diff_grade in ['minor_diff', 'major_diff'] %}
+                  <span class="badge text-bg-{{ exec.diff_badge }}">{{ exec.diff_label }}</span>
+                {% endif %}
+              </div>
+            </td>
+            <td class="small text-muted timing-col">
+              {{ exec.started_at | format_ts }} → {{ exec.completed_at | format_time }}
+            </td>
+            <td>
+              <div class="row g-1">
+                <div class="col-6">
+                  <button
+                    class="btn btn-outline-primary btn-sm w-100"
+                    hx-get="/runs/{{ run.id }}/executions/{{ exec.id }}/viewer"
+                    hx-target="#execution-viewer-content"
+                    hx-trigger="click"
+                    data-bs-toggle="modal"
+                    data-bs-target="#executionViewerModal"
+                    {% if exec.status in ['executing', 'queued'] %}disabled aria-disabled="true"{% endif %}
+                  >
+                    Viewer
+                  </button>
+                </div>
+                <div class="col-6">
+                  <button
+                    class="btn btn-outline-secondary btn-sm w-100"
+                    hx-get="/runs/{{ run.id }}/executions/{{ exec.id }}/log"
+                    hx-target="#execution-log-content"
+                    hx-trigger="click"
+                    data-bs-toggle="modal"
+                    data-bs-target="#executionLogModal"
+                    data-role="execution-log-trigger"
+                  >
+                    Log
+                  </button>
+                </div>
+                <div class="col-6">
+                  <button
+                    class="btn btn-outline-success btn-sm w-100"
+                    hx-post="/runs/{{ run.id }}/executions/{{ exec.id }}/retry"
+                    hx-target="#run-detail-shell-inner"
+                    hx-swap="outerHTML"
+                    {% if exec.status not in ['failed', 'cancelled'] %}disabled aria-disabled="true"{% endif %}
+                  >
+                    Retry
+                  </button>
+                </div>
+                <div class="col-6">
+                  {% if exec.status in ['executing', 'queued'] %}
+                    <button
+                      class="btn btn-outline-danger btn-sm w-100"
+                      hx-post="/runs/{{ run.id }}/executions/{{ exec.id }}/cancel"
+                      hx-target="#run-detail-shell-inner"
+                      hx-swap="outerHTML"
+                    >
+                      Kill
+                    </button>
+                  {% else %}
+                    <button class="btn btn-outline-danger btn-sm w-100" disabled aria-disabled="true">Kill</button>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>
+
+<script>
+  (function () {
+    const shell = document.getElementById('run-detail-shell');
+    if (shell) {
+      shell.dataset.runId = "{{ run.id }}";
+      shell.setAttribute('hx-get', '/runs/{{ run.id }}/overlay');
+      if (document.body && document.body.dataset.runDetailOpen === 'true') {
+        shell.setAttribute('hx-trigger', 'every 5s');
+      } else {
+        shell.removeAttribute('hx-trigger');
+      }
+      shell.dataset.sceneHash = "{{ overlay_hash }}";
+      shell.dataset.pendingRunId = "";
+    }
+    if (window.__sceneRunDetailScrollInit) {
+      return;
+    }
+    const storageKey = "__sceneRunDetailScrollTop";
+    document.addEventListener("htmx:beforeSwap", function (event) {
+      if (event.target && event.target.id === "run-detail-shell") {
+        const body = event.target.querySelector(".modal-body-scroll");
+        if (body) {
+          window[storageKey] = body.scrollTop;
+        }
+      }
+    });
+    document.addEventListener("htmx:afterSwap", function (event) {
+      if (event.target && event.target.id === "run-detail-shell") {
+        const body = event.target.querySelector(".modal-body-scroll");
+        if (body && typeof window[storageKey] === "number") {
+          body.scrollTop = window[storageKey];
+        }
+      }
+    });
+    window.__sceneRunDetailScrollInit = true;
+  })();
+</script>
 </div>

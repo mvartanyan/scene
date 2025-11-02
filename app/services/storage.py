@@ -37,6 +37,7 @@ def _default_state() -> Dict[str, Any]:
             "run_timeout_seconds": 600,
             "max_concurrent_executions": 4,
             "scene_host_url": "http://host.docker.internal:8000",
+            "capture_post_wait_ms": 7000,
         },
     }
 
@@ -92,6 +93,7 @@ class LocalDynamoStorage:
                     "run_timeout_seconds": 600,
                     "max_concurrent_executions": 4,
                     "scene_host_url": "http://host.docker.internal:8000",
+                    "capture_post_wait_ms": 7000,
                 }
             else:
                 state_config = state["config"]
@@ -101,6 +103,7 @@ class LocalDynamoStorage:
                 state_config.setdefault("run_timeout_seconds", 600)
                 state_config.setdefault("max_concurrent_executions", 4)
                 state_config.setdefault("scene_host_url", "http://host.docker.internal:8000")
+                state_config.setdefault("capture_post_wait_ms", 7000)
             for batch in state.get("batches", {}).values():
                 batch.setdefault("run_diff_threshold", None)
                 batch.setdefault("execution_diff_threshold", None)
@@ -133,6 +136,7 @@ class LocalDynamoStorage:
                 "run_timeout_seconds": 600,
                 "max_concurrent_executions": 4,
                 "scene_host_url": "http://host.docker.internal:8000",
+                "capture_post_wait_ms": 7000,
             },
         )
 
@@ -145,6 +149,7 @@ class LocalDynamoStorage:
         run_timeout_seconds: Optional[int] = None,
         max_concurrent_executions: Optional[int] = None,
         scene_host_url: Optional[str] = None,
+        capture_post_wait_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
         with self._lock:
             config = self.get_config()
@@ -160,6 +165,8 @@ class LocalDynamoStorage:
                 config["max_concurrent_executions"] = max_concurrent_executions
             if scene_host_url is not None:
                 config["scene_host_url"] = scene_host_url
+            if capture_post_wait_ms is not None:
+                config["capture_post_wait_ms"] = capture_post_wait_ms
             self._persist()
             return config
 
@@ -212,6 +219,7 @@ class SceneRepository:
             "run_timeout_seconds": int(config.get("run_timeout_seconds", 600)),
             "max_concurrent_executions": int(config.get("max_concurrent_executions", 4)),
             "scene_host_url": config.get("scene_host_url", "http://host.docker.internal:8000"),
+            "capture_post_wait_ms": int(config.get("capture_post_wait_ms", 7000)),
         }
 
     def set_available_browsers(self, browsers: List[str]) -> Dict[str, Any]:
@@ -270,6 +278,12 @@ class SceneRepository:
             )
 
         return self._storage.update_config(viewports=cleaned)
+
+    def set_capture_post_wait_ms(self, milliseconds: int) -> Dict[str, Any]:
+        if milliseconds < 0:
+            raise ValueError("Capture stabilization delay must be zero or greater.")
+        self._storage.update_config(capture_post_wait_ms=int(milliseconds))
+        return self.get_config()
 
     def set_display_timezone(self, timezone_pref: str) -> Dict[str, Any]:
         normalized = timezone_pref.lower()

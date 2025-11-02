@@ -1,27 +1,579 @@
 {
+  "baselines": {
+    "95d3d499-74f3-400a-882c-7bc70a944bc4": {
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-10-28T17:11:50.351258+00:00",
+      "id": "95d3d499-74f3-400a-882c-7bc70a944bc4",
+      "items": [],
+      "note": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "6d4edae5-1179-4284-8965-ea9ec5e32b8b",
+      "status": "failed",
+      "updated_at": "2025-10-28T17:12:04.782062+00:00"
+    },
+    "aaec8f0f-7d43-4a9e-8f96-6594eb695b4b": {
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-10-31T00:48:25.270919+00:00",
+      "id": "aaec8f0f-7d43-4a9e-8f96-6594eb695b4b",
+      "items": [
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/24741af3-67e4-4baa-b5c1-dfba32cc7c02.png",
+              "size_bytes": 330343,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/24741af3-67e4-4baa-b5c1-dfba32cc7c02.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-10-31T00:48:35",
+          "execution_id": "24741af3-67e4-4baa-b5c1-dfba32cc7c02",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 360
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/6c897c09-0e1b-45b9-adf4-54c0f9706d97.png",
+              "size_bytes": 768695,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/6c897c09-0e1b-45b9-adf4-54c0f9706d97.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-10-31T00:49:03",
+          "execution_id": "6c897c09-0e1b-45b9-adf4-54c0f9706d97",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 800
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/380553e4-f197-41a9-8ef6-6b066d6e91cd.png",
+              "size_bytes": 1246839,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/380553e4-f197-41a9-8ef6-6b066d6e91cd.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-10-31T00:49:03",
+          "execution_id": "380553e4-f197-41a9-8ef6-6b066d6e91cd",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 800
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/26bfc2e6-ceb6-4238-88fa-50c233bc4a72.png",
+              "size_bytes": 4315596,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/26bfc2e6-ceb6-4238-88fa-50c233bc4a72.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-10-31T00:49:04",
+          "execution_id": "26bfc2e6-ceb6-4238-88fa-50c233bc4a72",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 720,
+            "width": 1280
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/bd4cd963-28c7-42cf-861b-824c3f86a6b1.png",
+              "size_bytes": 581004,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/bd4cd963-28c7-42cf-861b-824c3f86a6b1.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-10-31T00:49:08",
+          "execution_id": "bd4cd963-28c7-42cf-861b-824c3f86a6b1",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 360
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/98c31dec-b5ef-4c46-948e-4a270305bad9.png",
+              "size_bytes": 190832,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/98c31dec-b5ef-4c46-948e-4a270305bad9.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-10-31T00:49:09",
+          "execution_id": "98c31dec-b5ef-4c46-948e-4a270305bad9",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 812,
+            "width": 375
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/9d8b04c4-ff9c-4356-ba4f-9de3023b7ef9.png",
+              "size_bytes": 674079,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/9d8b04c4-ff9c-4356-ba4f-9de3023b7ef9.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-10-31T00:49:12",
+          "execution_id": "9d8b04c4-ff9c-4356-ba4f-9de3023b7ef9",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 1080,
+            "width": 1920
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/e627bc19-9228-47e8-879b-dc270e81e4db.png",
+              "size_bytes": 805507,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/e627bc19-9228-47e8-879b-dc270e81e4db.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-10-31T00:49:12",
+          "execution_id": "e627bc19-9228-47e8-879b-dc270e81e4db",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 768,
+            "width": 1024
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/37a3b1af-1b71-4884-90d2-ffd90edcfc9b.png",
+              "size_bytes": 1019870,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/37a3b1af-1b71-4884-90d2-ffd90edcfc9b.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-10-31T00:49:16",
+          "execution_id": "37a3b1af-1b71-4884-90d2-ffd90edcfc9b",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 1080,
+            "width": 1920
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/cca3b8d0-a834-4de9-8a6b-1902b9fcc385.png",
+              "size_bytes": 1178038,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/cca3b8d0-a834-4de9-8a6b-1902b9fcc385.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-10-31T00:49:16",
+          "execution_id": "cca3b8d0-a834-4de9-8a6b-1902b9fcc385",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 768,
+            "width": 1024
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/0deebb28-6135-422f-a163-b7ffb47e881a.png",
+              "size_bytes": 280844,
+              "url": "/artifacts/baselines/aaec8f0f-7d43-4a9e-8f96-6594eb695b4b/0deebb28-6135-422f-a163-b7ffb47e881a.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-10-31T00:49:16",
+          "execution_id": "0deebb28-6135-422f-a163-b7ffb47e881a",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 812,
+            "width": 375
+          }
+        }
+      ],
+      "note": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "2686c898-ea82-4a7a-a030-7668fdf19530",
+      "status": "failed",
+      "updated_at": "2025-10-31T00:49:16.742185+00:00"
+    },
+    "c25b13b0-90d5-4ad0-ac63-5178c09d8d44": {
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-11-02T09:23:37.741938+00:00",
+      "id": "c25b13b0-90d5-4ad0-ac63-5178c09d8d44",
+      "items": [
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/0a528765-8177-4120-b065-efa52ba8c30c.png",
+              "size_bytes": 813255,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/0a528765-8177-4120-b065-efa52ba8c30c.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-11-02T09:24:02",
+          "execution_id": "0a528765-8177-4120-b065-efa52ba8c30c",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 800
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef.png",
+              "size_bytes": 3811265,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-11-02T09:24:06",
+          "execution_id": "82e718ea-c2b0-4e9e-9a36-1e9f9db54fef",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 720,
+            "width": 1280
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90.png",
+              "size_bytes": 135494,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-11-02T09:24:22",
+          "execution_id": "6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 360
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/2bfad950-7c8b-463d-bdc3-5d27283812d1.png",
+              "size_bytes": 5636281,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/2bfad950-7c8b-463d-bdc3-5d27283812d1.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-11-02T09:24:35",
+          "execution_id": "2bfad950-7c8b-463d-bdc3-5d27283812d1",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 720,
+            "width": 1280
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7.png",
+              "size_bytes": 1318831,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-11-02T09:24:46",
+          "execution_id": "1b3156c4-8314-42c0-b0f2-ce04fe95a1f7",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 800
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/d7911ae8-729d-4a8c-823e-c5b4f4f4d856.png",
+              "size_bytes": 127930,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/d7911ae8-729d-4a8c-823e-c5b4f4f4d856.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-11-02T09:24:57",
+          "execution_id": "d7911ae8-729d-4a8c-823e-c5b4f4f4d856",
+          "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+          "task_name": "WWW regression kit",
+          "viewport": {
+            "height": 1000,
+            "width": 360
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9af44943-7536-4104-aebd-04ac434bae87.png",
+              "size_bytes": 664144,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9af44943-7536-4104-aebd-04ac434bae87.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-11-02T09:25:06",
+          "execution_id": "9af44943-7536-4104-aebd-04ac434bae87",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 1080,
+            "width": 1920
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4.png",
+              "size_bytes": 794067,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-11-02T09:25:17",
+          "execution_id": "61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 768,
+            "width": 1024
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/f8c81499-81da-4526-aec5-a3a1642399ea.png",
+              "size_bytes": 227071,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/f8c81499-81da-4526-aec5-a3a1642399ea.png"
+            }
+          },
+          "browser": "chromium",
+          "captured_at": "2025-11-02T09:25:26",
+          "execution_id": "f8c81499-81da-4526-aec5-a3a1642399ea",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 812,
+            "width": 375
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9449b730-0d65-4120-8ccd-4ce534c06601.png",
+              "size_bytes": 1002854,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9449b730-0d65-4120-8ccd-4ce534c06601.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-11-02T09:25:39",
+          "execution_id": "9449b730-0d65-4120-8ccd-4ce534c06601",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 1080,
+            "width": 1920
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/81982dcc-44b7-4a09-8d60-359b8bf75ba7.png",
+              "size_bytes": 1158244,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/81982dcc-44b7-4a09-8d60-359b8bf75ba7.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-11-02T09:25:48",
+          "execution_id": "81982dcc-44b7-4a09-8d60-359b8bf75ba7",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 768,
+            "width": 1024
+          }
+        },
+        {
+          "artifacts": {
+            "baseline": {
+              "content_type": "image/png",
+              "kind": "baseline",
+              "label": "Baseline Screenshot",
+              "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1796c06e-a021-43d7-b08f-5f8d502c54b9.png",
+              "size_bytes": 325705,
+              "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1796c06e-a021-43d7-b08f-5f8d502c54b9.png"
+            }
+          },
+          "browser": "firefox",
+          "captured_at": "2025-11-02T09:25:59",
+          "execution_id": "1796c06e-a021-43d7-b08f-5f8d502c54b9",
+          "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+          "task_name": "Training regression kit",
+          "viewport": {
+            "height": 812,
+            "width": 375
+          }
+        }
+      ],
+      "note": null,
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "status": "completed",
+      "updated_at": "2025-11-02T09:45:22.645217+00:00"
+    }
+  },
   "batches": {
     "2419887b-4d23-4c83-9ec7-7818603fe6b6": {
       "created_at": "2025-10-23T22:55:15.556542+00:00",
-      "description": null,
+      "description": "None",
+      "execution_diff_threshold": 2.0,
       "id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
-      "jira_issue": null,
+      "jira_issue": "None",
       "name": "Three sites high level regression test ",
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_diff_threshold": 1.0,
       "task_ids": [
         "45bf140c-0e8a-4106-911b-421961b32eb7",
         "ce469c27-1ace-4869-a5b0-060b8b52c3b0"
       ],
-      "updated_at": "2025-10-23T23:29:51.870865+00:00"
+      "updated_at": "2025-10-31T23:12:11.023839+00:00"
     },
     "2852fb4d-feb9-49f1-a0c9-4cb1eb328a44": {
       "created_at": "2025-10-23T23:30:17.857728+00:00",
       "description": null,
+      "execution_diff_threshold": null,
       "id": "2852fb4d-feb9-49f1-a0c9-4cb1eb328a44",
       "jira_issue": null,
       "name": "Monographs-specific suite",
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_diff_threshold": null,
       "task_ids": [],
       "updated_at": "2025-10-23T23:30:17.857728+00:00"
+    },
+    "a8fbfd6f-67ad-42c1-b213-d4ad47aabc14": {
+      "created_at": "2025-10-24T15:15:15.968399+00:00",
+      "description": null,
+      "execution_diff_threshold": null,
+      "id": "a8fbfd6f-67ad-42c1-b213-d4ad47aabc14",
+      "jira_issue": null,
+      "name": "Visit home page",
+      "project_id": "022ad57c-f861-4107-9eea-362369aea2be",
+      "run_diff_threshold": null,
+      "task_ids": [
+        "3e2c7b1b-15c8-41e6-9266-7d99cc11e715"
+      ],
+      "updated_at": "2025-10-24T15:15:15.968399+00:00"
+    },
+    "d3ca2e93-6803-4cd4-b72b-65dc1ac6da3c": {
+      "created_at": "2025-10-24T12:30:30.625709+00:00",
+      "description": null,
+      "execution_diff_threshold": null,
+      "id": "d3ca2e93-6803-4cd4-b72b-65dc1ac6da3c",
+      "jira_issue": null,
+      "name": "GBTP Production healt state",
+      "project_id": "5e822d2a-7192-422a-ae30-00a6da4e81b5",
+      "run_diff_threshold": null,
+      "task_ids": [
+        "eaceb82d-624d-44a4-afe2-372ca5bf6a1a"
+      ],
+      "updated_at": "2025-10-24T12:30:30.625709+00:00"
     }
   },
   "config": {
@@ -29,6 +581,11 @@
       "chromium",
       "firefox"
     ],
+    "capture_post_wait_ms": 7000,
+    "display_timezone": "utc",
+    "max_concurrent_executions": 2,
+    "run_timeout_seconds": 600,
+    "scene_host_url": "http://host.docker.internal:8000",
     "viewports": [
       "1920x1080",
       "1600x900",
@@ -42,39 +599,2996 @@
       "360x640"
     ]
   },
+  "executions": {
+    "0a528765-8177-4120-b065-efa52ba8c30c": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/0a528765-8177-4120-b065-efa52ba8c30c.png",
+          "size_bytes": 813255,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/0a528765-8177-4120-b065-efa52ba8c30c.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/runner.log",
+          "size_bytes": 2185,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/observed.png",
+          "size_bytes": 813255,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/reference.png",
+          "size_bytes": 792661,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/trace.zip",
+          "size_bytes": 9004521,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/0a528765-8177-4120-b065-efa52ba8c30c/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:24:02",
+      "created_at": "2025-11-02T09:23:37.697465+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "0a528765-8177-4120-b065-efa52ba8c30c",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 2,
+      "started_at": "2025-11-02T09:23:38",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:24:02.064265+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 800
+      }
+    },
+    "1796c06e-a021-43d7-b08f-5f8d502c54b9": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1796c06e-a021-43d7-b08f-5f8d502c54b9.png",
+          "size_bytes": 325705,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1796c06e-a021-43d7-b08f-5f8d502c54b9.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/runner.log",
+          "size_bytes": 2211,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/observed.png",
+          "size_bytes": 325705,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/reference.png",
+          "size_bytes": 252104,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/trace.zip",
+          "size_bytes": 9603440,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1796c06e-a021-43d7-b08f-5f8d502c54b9/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:25:59",
+      "created_at": "2025-11-02T09:23:37.737066+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "1796c06e-a021-43d7-b08f-5f8d502c54b9",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 12,
+      "started_at": "2025-11-02T09:25:39",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:25:59.428747+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "1b3156c4-8314-42c0-b0f2-ce04fe95a1f7": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7.png",
+          "size_bytes": 1318831,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/runner.log",
+          "size_bytes": 2183,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/observed.png",
+          "size_bytes": 1318831,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/reference.png",
+          "size_bytes": 886270,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/trace.zip",
+          "size_bytes": 16394084,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/1b3156c4-8314-42c0-b0f2-ce04fe95a1f7/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:24:46",
+      "created_at": "2025-11-02T09:23:37.710978+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "1b3156c4-8314-42c0-b0f2-ce04fe95a1f7",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 5,
+      "started_at": "2025-11-02T09:24:23",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:24:46.066542+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 800
+      }
+    },
+    "245d4357-6d75-4944-96aa-c7c29210fcc9": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/baseline.png",
+          "size_bytes": 1318831,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/diff.png",
+          "size_bytes": 74790,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/heatmap.png",
+          "size_bytes": 935265,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/runner.log",
+          "size_bytes": 2183,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/observed.png",
+          "size_bytes": 1318831,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/reference.png",
+          "size_bytes": 886270,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/trace.zip",
+          "size_bytes": 16591213,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/245d4357-6d75-4944-96aa-c7c29210fcc9/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:28:46",
+      "created_at": "2025-11-02T09:27:38.397398+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "245d4357-6d75-4944-96aa-c7c29210fcc9",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 5,
+      "started_at": "2025-11-02T09:28:23",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:28:46.958755+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 800
+      }
+    },
+    "271b1bc3-4db1-4feb-9056-9c49c679e13d": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/baseline.png",
+          "size_bytes": 1318831,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/diff.png",
+          "size_bytes": 74790,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/heatmap.png",
+          "size_bytes": 935265,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/runner.log",
+          "size_bytes": 2183,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/observed.png",
+          "size_bytes": 1318831,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/reference.png",
+          "size_bytes": 886270,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/trace.zip",
+          "size_bytes": 16580886,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/271b1bc3-4db1-4feb-9056-9c49c679e13d/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:44:07",
+      "created_at": "2025-11-02T09:42:58.302405+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "271b1bc3-4db1-4feb-9056-9c49c679e13d",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 5,
+      "started_at": "2025-11-02T09:43:44",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:44:07.329122+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 800
+      }
+    },
+    "29111c24-9c9d-4a85-8ec7-f34b7d8a233d": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/baseline.png",
+          "size_bytes": 227071,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/diff.png",
+          "size_bytes": 12486,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/heatmap.png",
+          "size_bytes": 258132,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/runner.log",
+          "size_bytes": 2213,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/observed.png",
+          "size_bytes": 227071,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/reference.png",
+          "size_bytes": 215639,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/trace.zip",
+          "size_bytes": 3267216,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/29111c24-9c9d-4a85-8ec7-f34b7d8a233d/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:29:27",
+      "created_at": "2025-11-02T09:27:38.421339+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "29111c24-9c9d-4a85-8ec7-f34b7d8a233d",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 9,
+      "started_at": "2025-11-02T09:29:08",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:29:27.918932+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "2bfad950-7c8b-463d-bdc3-5d27283812d1": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/2bfad950-7c8b-463d-bdc3-5d27283812d1.png",
+          "size_bytes": 5636281,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/2bfad950-7c8b-463d-bdc3-5d27283812d1.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/runner.log",
+          "size_bytes": 2186,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/observed.png",
+          "size_bytes": 5636281,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/reference.png",
+          "size_bytes": 4721560,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/trace.zip",
+          "size_bytes": 23197645,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/2bfad950-7c8b-463d-bdc3-5d27283812d1/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:24:35",
+      "created_at": "2025-11-02T09:23:37.706541+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "2bfad950-7c8b-463d-bdc3-5d27283812d1",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 4,
+      "started_at": "2025-11-02T09:24:06",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:24:35.133155+00:00",
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    "2db7ac73-53b8-4187-906a-30cc1324f754": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/baseline.png",
+          "size_bytes": 3811265,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/diff.png",
+          "size_bytes": 155842,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/heatmap.png",
+          "size_bytes": 4327848,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/runner.log",
+          "size_bytes": 2188,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/observed.png",
+          "size_bytes": 3812008,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/reference.png",
+          "size_bytes": 3886466,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/trace.zip",
+          "size_bytes": 10185387,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/2db7ac73-53b8-4187-906a-30cc1324f754/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:43:27",
+      "created_at": "2025-11-02T09:42:58.254311+00:00",
+      "diff": {
+        "diff_level": 0.7641,
+        "percentage": 0.7641,
+        "pixel_count": 98433
+      },
+      "diff_level": 0.7641,
+      "id": "2db7ac73-53b8-4187-906a-30cc1324f754",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 1,
+      "started_at": "2025-11-02T09:42:58",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:43:27.479395+00:00",
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    "48767c69-dc01-4f9e-9882-bc4881414611": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/baseline.png",
+          "size_bytes": 664144,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/diff.png",
+          "size_bytes": 16209,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/heatmap.png",
+          "size_bytes": 755265,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/runner.log",
+          "size_bytes": 2225,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/observed.png",
+          "size_bytes": 664144,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/reference.png",
+          "size_bytes": 483526,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/trace.zip",
+          "size_bytes": 4477161,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/48767c69-dc01-4f9e-9882-bc4881414611/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:29:08",
+      "created_at": "2025-11-02T09:27:38.409964+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "48767c69-dc01-4f9e-9882-bc4881414611",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 7,
+      "started_at": "2025-11-02T09:28:47",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:29:08.005989+00:00",
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "4de479c7-a5f2-4698-b6bf-17eaa34a0397": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/baseline.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/diff.png",
+          "size_bytes": 74367,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/heatmap.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/runner.log",
+          "size_bytes": 2183,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/observed.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/reference.png",
+          "size_bytes": 443429,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/trace.zip",
+          "size_bytes": 9812167,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4de479c7-a5f2-4698-b6bf-17eaa34a0397/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:44:18",
+      "created_at": "2025-11-02T09:42:58.309930+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "4de479c7-a5f2-4698-b6bf-17eaa34a0397",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 6,
+      "started_at": "2025-11-02T09:43:56",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:44:18.804421+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 360
+      }
+    },
+    "4fc145be-b9f6-4f60-a6d3-104053819748": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/baseline.png",
+          "size_bytes": 794067,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/diff.png",
+          "size_bytes": 14969,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/heatmap.png",
+          "size_bytes": 900363,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/runner.log",
+          "size_bytes": 2221,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/observed.png",
+          "size_bytes": 794067,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/reference.png",
+          "size_bytes": 570958,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/trace.zip",
+          "size_bytes": 5784035,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/4fc145be-b9f6-4f60-a6d3-104053819748/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:44:39",
+      "created_at": "2025-11-02T09:42:58.323166+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "4fc145be-b9f6-4f60-a6d3-104053819748",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 8,
+      "started_at": "2025-11-02T09:44:19",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:44:39.691795+00:00",
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    "52e83be0-f220-4c1c-8026-71a417638f16": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/baseline.png",
+          "size_bytes": 664144,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/diff.png",
+          "size_bytes": 16209,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/heatmap.png",
+          "size_bytes": 755265,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/runner.log",
+          "size_bytes": 2225,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/observed.png",
+          "size_bytes": 664144,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/reference.png",
+          "size_bytes": 483526,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/trace.zip",
+          "size_bytes": 3672212,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/52e83be0-f220-4c1c-8026-71a417638f16/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:44:28",
+      "created_at": "2025-11-02T09:42:58.316576+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "52e83be0-f220-4c1c-8026-71a417638f16",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 7,
+      "started_at": "2025-11-02T09:44:07",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:44:28.504360+00:00",
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "58245f7d-3fb1-40d3-b84e-dc436739247c": {
+      "artifacts": {
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/32efb530-2820-414b-8ba1-d87207738892/58245f7d-3fb1-40d3-b84e-dc436739247c/runner.log",
+          "size_bytes": 74,
+          "url": "/artifacts/runs/32efb530-2820-414b-8ba1-d87207738892/58245f7d-3fb1-40d3-b84e-dc436739247c/runner.log"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T01:30:18",
+      "created_at": "2025-11-02T01:27:58.900018+00:00",
+      "diff": null,
+      "id": "58245f7d-3fb1-40d3-b84e-dc436739247c",
+      "message": "Execution cancelled before start (run cancellation).",
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "32efb530-2820-414b-8ba1-d87207738892",
+      "sequence": 12,
+      "started_at": null,
+      "status": "cancelled",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T01:30:18.389672+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4.png",
+          "size_bytes": 794067,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/runner.log",
+          "size_bytes": 2221,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/observed.png",
+          "size_bytes": 794067,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/reference.png",
+          "size_bytes": 570958,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/trace.zip",
+          "size_bytes": 5796377,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:25:17",
+      "created_at": "2025-11-02T09:23:37.722281+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "61f7b76b-42a3-4e6b-9faf-90b2bb60bcb4",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 8,
+      "started_at": "2025-11-02T09:24:58",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:25:17.713055+00:00",
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    "6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90.png",
+          "size_bytes": 135494,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/runner.log",
+          "size_bytes": 2185,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/observed.png",
+          "size_bytes": 135494,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/reference.png",
+          "size_bytes": 203549,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/trace.zip",
+          "size_bytes": 8230509,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:24:22",
+      "created_at": "2025-11-02T09:23:37.702413+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "6443cc1c-ae72-4b2a-ad59-b6fc5e5ded90",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 3,
+      "started_at": "2025-11-02T09:24:02",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:24:22.734631+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 360
+      }
+    },
+    "7a0335c9-681a-43d9-9cbb-3395a93029e0": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/baseline.png",
+          "size_bytes": 794067,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/diff.png",
+          "size_bytes": 14969,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/heatmap.png",
+          "size_bytes": 900363,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/runner.log",
+          "size_bytes": 2221,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/observed.png",
+          "size_bytes": 794067,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/reference.png",
+          "size_bytes": 570958,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/trace.zip",
+          "size_bytes": 6108657,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/7a0335c9-681a-43d9-9cbb-3395a93029e0/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:29:19",
+      "created_at": "2025-11-02T09:27:38.415775+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "7a0335c9-681a-43d9-9cbb-3395a93029e0",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 8,
+      "started_at": "2025-11-02T09:28:58",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:29:19.442614+00:00",
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    "81982dcc-44b7-4a09-8d60-359b8bf75ba7": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/81982dcc-44b7-4a09-8d60-359b8bf75ba7.png",
+          "size_bytes": 1158244,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/81982dcc-44b7-4a09-8d60-359b8bf75ba7.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/runner.log",
+          "size_bytes": 2219,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/observed.png",
+          "size_bytes": 1158244,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/reference.png",
+          "size_bytes": 689445,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/trace.zip",
+          "size_bytes": 16404804,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/81982dcc-44b7-4a09-8d60-359b8bf75ba7/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:25:48",
+      "created_at": "2025-11-02T09:23:37.733763+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "81982dcc-44b7-4a09-8d60-359b8bf75ba7",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 11,
+      "started_at": "2025-11-02T09:25:27",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:25:48.538357+00:00",
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    "82e718ea-c2b0-4e9e-9a36-1e9f9db54fef": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef.png",
+          "size_bytes": 3811265,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/runner.log",
+          "size_bytes": 2188,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/observed.png",
+          "size_bytes": 3811265,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/reference.png",
+          "size_bytes": 3881365,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/trace.zip",
+          "size_bytes": 10710763,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/82e718ea-c2b0-4e9e-9a36-1e9f9db54fef/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:24:06",
+      "created_at": "2025-11-02T09:23:37.689760+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "82e718ea-c2b0-4e9e-9a36-1e9f9db54fef",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 1,
+      "started_at": "2025-11-02T09:23:38",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:24:06.230510+00:00",
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    "870c9ce9-36e8-4f60-be91-0422e6a0e34d": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/baseline.png",
+          "size_bytes": 325705,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/diff.png",
+          "size_bytes": 12486,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/heatmap.png",
+          "size_bytes": 271005,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/runner.log",
+          "size_bytes": 2211,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/observed.png",
+          "size_bytes": 325705,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/reference.png",
+          "size_bytes": 252104,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/trace.zip",
+          "size_bytes": 9500470,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/870c9ce9-36e8-4f60-be91-0422e6a0e34d/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:30:01",
+      "created_at": "2025-11-02T09:27:38.435660+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "870c9ce9-36e8-4f60-be91-0422e6a0e34d",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 12,
+      "started_at": "2025-11-02T09:29:41",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:30:01.962637+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "9108db9e-253c-44bd-92e0-c7e83b779d36": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/baseline.png",
+          "size_bytes": 325705,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/diff.png",
+          "size_bytes": 12486,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/heatmap.png",
+          "size_bytes": 271005,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/runner.log",
+          "size_bytes": 2211,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/observed.png",
+          "size_bytes": 325705,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/reference.png",
+          "size_bytes": 252104,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/trace.zip",
+          "size_bytes": 9660198,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9108db9e-253c-44bd-92e0-c7e83b779d36/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:45:22",
+      "created_at": "2025-11-02T09:42:58.345986+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "9108db9e-253c-44bd-92e0-c7e83b779d36",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 12,
+      "started_at": "2025-11-02T09:45:01",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:45:22.615201+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "9255273a-e6fa-4709-92c1-c8d1f39972fa": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/baseline.png",
+          "size_bytes": 5636281,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/diff.png",
+          "size_bytes": 205598,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/heatmap.png",
+          "size_bytes": 4779434,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/runner.log",
+          "size_bytes": 2186,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/observed.png",
+          "size_bytes": 5639570,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/reference.png",
+          "size_bytes": 4720970,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/trace.zip",
+          "size_bytes": 22793001,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/9255273a-e6fa-4709-92c1-c8d1f39972fa/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:28:36",
+      "created_at": "2025-11-02T09:27:38.391014+00:00",
+      "diff": {
+        "diff_level": 0.7944,
+        "percentage": 0.7944,
+        "pixel_count": 102237
+      },
+      "diff_level": 0.7944,
+      "id": "9255273a-e6fa-4709-92c1-c8d1f39972fa",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 4,
+      "started_at": "2025-11-02T09:28:07",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:28:36.283890+00:00",
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    "9449b730-0d65-4120-8ccd-4ce534c06601": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9449b730-0d65-4120-8ccd-4ce534c06601.png",
+          "size_bytes": 1002854,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9449b730-0d65-4120-8ccd-4ce534c06601.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/runner.log",
+          "size_bytes": 2223,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/observed.png",
+          "size_bytes": 1002854,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/reference.png",
+          "size_bytes": 587886,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/trace.zip",
+          "size_bytes": 11618912,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9449b730-0d65-4120-8ccd-4ce534c06601/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:25:39",
+      "created_at": "2025-11-02T09:23:37.729909+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "9449b730-0d65-4120-8ccd-4ce534c06601",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 10,
+      "started_at": "2025-11-02T09:25:18",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:25:39.025172+00:00",
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "9607eb41-71a7-40f9-8824-305c60464fbd": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/baseline.png",
+          "size_bytes": 813255,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/diff.png",
+          "size_bytes": 74806,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/heatmap.png",
+          "size_bytes": 951758,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/runner.log",
+          "size_bytes": 2185,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/observed.png",
+          "size_bytes": 813255,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/reference.png",
+          "size_bytes": 792661,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/trace.zip",
+          "size_bytes": 8644107,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/9607eb41-71a7-40f9-8824-305c60464fbd/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:43:23",
+      "created_at": "2025-11-02T09:42:58.271215+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "9607eb41-71a7-40f9-8824-305c60464fbd",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 2,
+      "started_at": "2025-11-02T09:42:58",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:43:23.512319+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 800
+      }
+    },
+    "98a3c932-f3a0-4cd7-b2b6-4107476108bf": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/baseline.png",
+          "size_bytes": 1002854,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/diff.png",
+          "size_bytes": 16209,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/heatmap.png",
+          "size_bytes": 823228,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/runner.log",
+          "size_bytes": 2223,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/observed.png",
+          "size_bytes": 1002854,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/reference.png",
+          "size_bytes": 587886,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/trace.zip",
+          "size_bytes": 11455896,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/98a3c932-f3a0-4cd7-b2b6-4107476108bf/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:29:41",
+      "created_at": "2025-11-02T09:27:38.426338+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "98a3c932-f3a0-4cd7-b2b6-4107476108bf",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 10,
+      "started_at": "2025-11-02T09:29:19",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:29:41.009782+00:00",
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "9af44943-7536-4104-aebd-04ac434bae87": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9af44943-7536-4104-aebd-04ac434bae87.png",
+          "size_bytes": 664144,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/9af44943-7536-4104-aebd-04ac434bae87.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/runner.log",
+          "size_bytes": 2225,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/observed.png",
+          "size_bytes": 664144,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/reference.png",
+          "size_bytes": 483526,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/trace.zip",
+          "size_bytes": 4657357,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/9af44943-7536-4104-aebd-04ac434bae87/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:25:06",
+      "created_at": "2025-11-02T09:23:37.718792+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "9af44943-7536-4104-aebd-04ac434bae87",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 7,
+      "started_at": "2025-11-02T09:24:46",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:25:06.923810+00:00",
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "a65c643b-514a-45af-b26c-c2cc2e90a60a": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/baseline.png",
+          "size_bytes": 227071,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/diff.png",
+          "size_bytes": 12486,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/heatmap.png",
+          "size_bytes": 258132,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/runner.log",
+          "size_bytes": 2213,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/observed.png",
+          "size_bytes": 227071,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/reference.png",
+          "size_bytes": 215639,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/trace.zip",
+          "size_bytes": 3276230,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/a65c643b-514a-45af-b26c-c2cc2e90a60a/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:44:48",
+      "created_at": "2025-11-02T09:42:58.329131+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "a65c643b-514a-45af-b26c-c2cc2e90a60a",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 9,
+      "started_at": "2025-11-02T09:44:28",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:44:48.249684+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "a6cae64f-a38c-490c-87d3-d3d252fbbd6b": {
+      "artifacts": {
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ed8a9403-e764-4590-9f8f-721f5c9b09dc/a6cae64f-a38c-490c-87d3-d3d252fbbd6b/runner.log",
+          "size_bytes": 74,
+          "url": "/artifacts/runs/ed8a9403-e764-4590-9f8f-721f5c9b09dc/a6cae64f-a38c-490c-87d3-d3d252fbbd6b/runner.log"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T01:35:15",
+      "created_at": "2025-11-02T01:34:41.339472+00:00",
+      "diff": null,
+      "id": "a6cae64f-a38c-490c-87d3-d3d252fbbd6b",
+      "message": "Execution cancelled before start (run cancellation).",
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ed8a9403-e764-4590-9f8f-721f5c9b09dc",
+      "sequence": 12,
+      "started_at": null,
+      "status": "cancelled",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T01:35:15.453285+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "aa6d8aee-a301-45c0-93a1-c821444fb5ef": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/baseline.png",
+          "size_bytes": 1002854,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/diff.png",
+          "size_bytes": 16209,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/heatmap.png",
+          "size_bytes": 823228,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/runner.log",
+          "size_bytes": 2223,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/observed.png",
+          "size_bytes": 1002854,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/reference.png",
+          "size_bytes": 587886,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/trace.zip",
+          "size_bytes": 11571947,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/aa6d8aee-a301-45c0-93a1-c821444fb5ef/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:45:01",
+      "created_at": "2025-11-02T09:42:58.334980+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "aa6d8aee-a301-45c0-93a1-c821444fb5ef",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 10,
+      "started_at": "2025-11-02T09:44:39",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:45:01.343391+00:00",
+      "viewport": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "b4f77df0-250a-4d9c-aa9b-6c4af402902b": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/baseline.png",
+          "size_bytes": 1158244,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/diff.png",
+          "size_bytes": 14969,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/heatmap.png",
+          "size_bytes": 969334,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/runner.log",
+          "size_bytes": 2219,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/observed.png",
+          "size_bytes": 1158244,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/reference.png",
+          "size_bytes": 689445,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/trace.zip",
+          "size_bytes": 16728821,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/b4f77df0-250a-4d9c-aa9b-6c4af402902b/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:45:10",
+      "created_at": "2025-11-02T09:42:58.340817+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "b4f77df0-250a-4d9c-aa9b-6c4af402902b",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 11,
+      "started_at": "2025-11-02T09:44:48",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:45:10.558872+00:00",
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    "c3beac97-e721-4814-b26a-47e91129b3be": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/baseline.png",
+          "size_bytes": 813255,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/diff.png",
+          "size_bytes": 74806,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/heatmap.png",
+          "size_bytes": 951758,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/runner.log",
+          "size_bytes": 2185,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/observed.png",
+          "size_bytes": 813255,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/reference.png",
+          "size_bytes": 792661,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/trace.zip",
+          "size_bytes": 9219968,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/c3beac97-e721-4814-b26a-47e91129b3be/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:28:01",
+      "created_at": "2025-11-02T09:27:38.375827+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "c3beac97-e721-4814-b26a-47e91129b3be",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 2,
+      "started_at": "2025-11-02T09:27:38",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:28:01.171019+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 800
+      }
+    },
+    "d7911ae8-729d-4a8c-823e-c5b4f4f4d856": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/d7911ae8-729d-4a8c-823e-c5b4f4f4d856.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/d7911ae8-729d-4a8c-823e-c5b4f4f4d856.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/runner.log",
+          "size_bytes": 2183,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/observed.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/reference.png",
+          "size_bytes": 443429,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/trace.zip",
+          "size_bytes": 9855038,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/d7911ae8-729d-4a8c-823e-c5b4f4f4d856/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:24:57",
+      "created_at": "2025-11-02T09:23:37.714846+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "d7911ae8-729d-4a8c-823e-c5b4f4f4d856",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 6,
+      "started_at": "2025-11-02T09:24:35",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:24:57.908385+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 360
+      }
+    },
+    "d8e30bfc-6c10-445b-8020-54d69d3d838d": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/baseline.png",
+          "size_bytes": 5636281,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/diff.png",
+          "size_bytes": 194941,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/heatmap.png",
+          "size_bytes": 4772256,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/runner.log",
+          "size_bytes": 2186,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/observed.png",
+          "size_bytes": 5638241,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/reference.png",
+          "size_bytes": 4722597,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/trace.zip",
+          "size_bytes": 22818927,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/d8e30bfc-6c10-445b-8020-54d69d3d838d/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:43:56",
+      "created_at": "2025-11-02T09:42:58.293869+00:00",
+      "diff": {
+        "diff_level": 0.755,
+        "percentage": 0.755,
+        "pixel_count": 97166
+      },
+      "diff_level": 0.755,
+      "id": "d8e30bfc-6c10-445b-8020-54d69d3d838d",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 4,
+      "started_at": "2025-11-02T09:43:27",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:43:56.409397+00:00",
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    "dae9b30e-e1cc-412c-a28e-9b406283045c": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/baseline.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/diff.png",
+          "size_bytes": 74367,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/heatmap.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/runner.log",
+          "size_bytes": 2183,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/observed.png",
+          "size_bytes": 127930,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/reference.png",
+          "size_bytes": 443429,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/trace.zip",
+          "size_bytes": 9744875,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/dae9b30e-e1cc-412c-a28e-9b406283045c/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:28:58",
+      "created_at": "2025-11-02T09:27:38.403585+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "dae9b30e-e1cc-412c-a28e-9b406283045c",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 6,
+      "started_at": "2025-11-02T09:28:36",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:28:58.446148+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 360
+      }
+    },
+    "e026a0c6-ec20-400f-b5b5-ae26eb54dd75": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/baseline.png",
+          "size_bytes": 1158244,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/diff.png",
+          "size_bytes": 14969,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/heatmap.png",
+          "size_bytes": 969334,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/runner.log",
+          "size_bytes": 2219,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/observed.png",
+          "size_bytes": 1158244,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/reference.png",
+          "size_bytes": 689445,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/trace.zip",
+          "size_bytes": 16262749,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e026a0c6-ec20-400f-b5b5-ae26eb54dd75/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "firefox",
+      "completed_at": "2025-11-02T09:29:49",
+      "created_at": "2025-11-02T09:27:38.431062+00:00",
+      "diff": {
+        "diff_level": 0.0,
+        "percentage": 0.0,
+        "pixel_count": 0
+      },
+      "diff_level": 0.0,
+      "id": "e026a0c6-ec20-400f-b5b5-ae26eb54dd75",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 11,
+      "started_at": "2025-11-02T09:29:28",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:29:49.796971+00:00",
+      "viewport": {
+        "height": 768,
+        "width": 1024
+      }
+    },
+    "e24231cd-a81c-44ab-9624-ffc3cd27c3d9": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/baseline.png",
+          "size_bytes": 3811265,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/diff.png",
+          "size_bytes": 154458,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/heatmap.png",
+          "size_bytes": 4311580,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/runner.log",
+          "size_bytes": 2188,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/observed.png",
+          "size_bytes": 3820719,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/reference.png",
+          "size_bytes": 3881365,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/trace.zip",
+          "size_bytes": 9521894,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/e24231cd-a81c-44ab-9624-ffc3cd27c3d9/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:28:07",
+      "created_at": "2025-11-02T09:27:38.363158+00:00",
+      "diff": {
+        "diff_level": 0.7975,
+        "percentage": 0.7975,
+        "pixel_count": 102737
+      },
+      "diff_level": 0.7975,
+      "id": "e24231cd-a81c-44ab-9624-ffc3cd27c3d9",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 1,
+      "started_at": "2025-11-02T09:27:38",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:28:07.418784+00:00",
+      "viewport": {
+        "height": 720,
+        "width": 1280
+      }
+    },
+    "edfab954-aba7-49a6-acde-5d446a2e3eac": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/baseline.png",
+          "size_bytes": 135494,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/diff.png",
+          "size_bytes": 83727,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/heatmap.png",
+          "size_bytes": 153915,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/runner.log",
+          "size_bytes": 2185,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/observed.png",
+          "size_bytes": 135463,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/reference.png",
+          "size_bytes": 203508,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/trace.zip",
+          "size_bytes": 8274807,
+          "url": "/artifacts/runs/0d8e5b2b-2c65-496c-be66-72fbc064e647/edfab954-aba7-49a6-acde-5d446a2e3eac/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:28:22",
+      "created_at": "2025-11-02T09:27:38.383567+00:00",
+      "diff": {
+        "diff_level": 0.1645,
+        "percentage": 0.1645,
+        "pixel_count": 12931
+      },
+      "diff_level": 0.1645,
+      "id": "edfab954-aba7-49a6-acde-5d446a2e3eac",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "sequence": 3,
+      "started_at": "2025-11-02T09:28:01",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:28:22.978887+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 360
+      }
+    },
+    "f03b0406-c6ae-4ad2-8c3b-11a3755dca02": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/baseline.png",
+          "size_bytes": 135494,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/baseline.png"
+        },
+        "diff": {
+          "content_type": "image/png",
+          "kind": "diff",
+          "label": "Pixel Diff",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/diff.png",
+          "size_bytes": 83727,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/diff.png"
+        },
+        "heatmap": {
+          "content_type": "image/png",
+          "kind": "heatmap",
+          "label": "Heatmap Overlay",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/heatmap.png",
+          "size_bytes": 153915,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/heatmap.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/runner.log",
+          "size_bytes": 2185,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/observed.png",
+          "size_bytes": 135463,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/reference.png",
+          "size_bytes": 203582,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/trace.zip",
+          "size_bytes": 8229670,
+          "url": "/artifacts/runs/78f25e5b-8cec-44d8-9763-0ea0a542d0d6/f03b0406-c6ae-4ad2-8c3b-11a3755dca02/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:43:44",
+      "created_at": "2025-11-02T09:42:58.283725+00:00",
+      "diff": {
+        "diff_level": 0.1645,
+        "percentage": 0.1645,
+        "pixel_count": 12931
+      },
+      "diff_level": 0.1645,
+      "id": "f03b0406-c6ae-4ad2-8c3b-11a3755dca02",
+      "message": null,
+      "page_id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "sequence": 3,
+      "started_at": "2025-11-02T09:43:23",
+      "status": "finished",
+      "task_id": "45bf140c-0e8a-4106-911b-421961b32eb7",
+      "task_name": "WWW regression kit",
+      "updated_at": "2025-11-02T09:43:44.460123+00:00",
+      "viewport": {
+        "height": 1000,
+        "width": 360
+      }
+    },
+    "f8c81499-81da-4526-aec5-a3a1642399ea": {
+      "artifacts": {
+        "baseline": {
+          "content_type": "image/png",
+          "kind": "baseline",
+          "label": "Baseline Screenshot",
+          "path": "baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/f8c81499-81da-4526-aec5-a3a1642399ea.png",
+          "size_bytes": 227071,
+          "url": "/artifacts/baselines/c25b13b0-90d5-4ad0-ac63-5178c09d8d44/f8c81499-81da-4526-aec5-a3a1642399ea.png"
+        },
+        "log": {
+          "content_type": "text/plain",
+          "kind": "log",
+          "label": "Execution Log",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/runner.log",
+          "size_bytes": 2213,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/runner.log"
+        },
+        "observed": {
+          "content_type": "image/png",
+          "kind": "observed",
+          "label": "Observed Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/observed.png",
+          "size_bytes": 227071,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/observed.png"
+        },
+        "reference": {
+          "content_type": "image/png",
+          "kind": "reference",
+          "label": "Reference Screenshot",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/reference.png",
+          "size_bytes": 215639,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/reference.png"
+        },
+        "trace": {
+          "content_type": "application/zip",
+          "kind": "trace",
+          "label": "Playwright Trace",
+          "path": "runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/trace.zip",
+          "size_bytes": 3142486,
+          "url": "/artifacts/runs/ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a/f8c81499-81da-4526-aec5-a3a1642399ea/trace.zip"
+        }
+      },
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "browser": "chromium",
+      "completed_at": "2025-11-02T09:25:26",
+      "created_at": "2025-11-02T09:23:37.726276+00:00",
+      "diff": null,
+      "diff_level": 0.0,
+      "id": "f8c81499-81da-4526-aec5-a3a1642399ea",
+      "message": null,
+      "page_id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "run_id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "sequence": 9,
+      "started_at": "2025-11-02T09:25:07",
+      "status": "finished",
+      "task_id": "ce469c27-1ace-4869-a5b0-060b8b52c3b0",
+      "task_name": "Training regression kit",
+      "updated_at": "2025-11-02T09:25:26.793038+00:00",
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    }
+  },
   "pages": {
     "2228fcba-39a1-4006-b64b-afd340a93012": {
+      "basic_auth_password": ";;spherical.horse;;",
+      "basic_auth_username": "iarc",
       "created_at": "2025-10-23T22:23:27.933450+00:00",
       "id": "2228fcba-39a1-4006-b64b-afd340a93012",
       "name": "Monographs home page",
+      "preparatory_actions": [
+        {
+          "selector": ".cc-btn.cc-dismiss",
+          "timeout_ms": 5000,
+          "type": "click"
+        },
+        {
+          "type": "wait",
+          "wait_ms": 200
+        }
+      ],
       "preparatory_js": null,
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
       "reference_url": "https://monographs.iarc.who.int/",
-      "updated_at": "2025-10-23T22:23:27.933450+00:00",
+      "updated_at": "2025-10-31T22:56:41.207065+00:00",
       "url": "https://iarc-mono.spherical.horse/"
     },
+    "4de14995-8ee1-44f5-9002-aaa748cbfaa3": {
+      "basic_auth_password": null,
+      "basic_auth_username": null,
+      "created_at": "2025-10-24T15:14:46.967577+00:00",
+      "id": "4de14995-8ee1-44f5-9002-aaa748cbfaa3",
+      "name": "UNFCCC home",
+      "preparatory_js": null,
+      "project_id": "022ad57c-f861-4107-9eea-362369aea2be",
+      "reference_url": null,
+      "updated_at": "2025-10-24T15:14:46.967577+00:00",
+      "url": "https://unfccc.int"
+    },
+    "9965f794-9858-4ce2-9d83-f4455f157563": {
+      "basic_auth_password": null,
+      "basic_auth_username": null,
+      "created_at": "2025-10-24T15:13:32.909843+00:00",
+      "id": "9965f794-9858-4ce2-9d83-f4455f157563",
+      "name": "GBTP home",
+      "preparatory_js": null,
+      "project_id": "5e822d2a-7192-422a-ae30-00a6da4e81b5",
+      "reference_url": null,
+      "updated_at": "2025-10-24T15:13:32.909843+00:00",
+      "url": "https://www.greenbondtransparency.com/"
+    },
     "ba53a1af-ec40-41d5-8fab-d934e23af5ec": {
+      "basic_auth_password": ";;spherical.horse;;",
+      "basic_auth_username": "iarc",
       "created_at": "2025-10-23T22:21:27.768043+00:00",
       "id": "ba53a1af-ec40-41d5-8fab-d934e23af5ec",
-      "name": "WWW home page",
+      "name": "WWW home pagee",
+      "preparatory_actions": [
+        {
+          "selector": ".cc-btn.cc-dismiss",
+          "timeout_ms": 5000,
+          "type": "click"
+        },
+        {
+          "type": "wait",
+          "wait_ms": 200
+        }
+      ],
       "preparatory_js": null,
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
       "reference_url": "https://www.iarc.who.int/",
-      "updated_at": "2025-10-23T22:21:27.768043+00:00",
+      "updated_at": "2025-10-31T22:56:17.489298+00:00",
       "url": "https://iarc.spherical.horse"
     },
     "fdf57dbf-3c94-4a35-85f5-9ec0399231d9": {
+      "basic_auth_password": ";;spherical.horse;;",
+      "basic_auth_username": "iarc",
       "created_at": "2025-10-23T22:22:19.387376+00:00",
       "id": "fdf57dbf-3c94-4a35-85f5-9ec0399231d9",
       "name": "Training home page",
+      "preparatory_actions": [
+        {
+          "selector": ".cc-btn.cc-dismiss",
+          "timeout_ms": 5000,
+          "type": "click"
+        },
+        {
+          "type": "wait",
+          "wait_ms": 200
+        }
+      ],
       "preparatory_js": null,
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
       "reference_url": "https://training.iarc.who.int/",
-      "updated_at": "2025-10-23T22:22:19.387376+00:00",
+      "updated_at": "2025-10-31T22:56:32.006866+00:00",
       "url": "https://iarc-training.spherical.horse/"
     }
   },
   "projects": {
+    "022ad57c-f861-4107-9eea-362369aea2be": {
+      "created_at": "2025-10-24T15:14:30.599845+00:00",
+      "description": "",
+      "id": "022ad57c-f861-4107-9eea-362369aea2be",
+      "name": "UNFCCC",
+      "slug": "unfccc",
+      "updated_at": "2025-10-24T15:14:30.599845+00:00"
+    },
     "2d7b13fb-5233-405d-8b11-a72eb87d0d6c": {
       "created_at": "2025-10-23T15:43:03.976561+00:00",
       "description": "",
@@ -82,67 +3596,115 @@
       "name": "IARC WEB",
       "slug": "iarc",
       "updated_at": "2025-10-23T15:43:03.976561+00:00"
+    },
+    "5e822d2a-7192-422a-ae30-00a6da4e81b5": {
+      "created_at": "2025-10-24T12:28:42.402100+00:00",
+      "description": "",
+      "id": "5e822d2a-7192-422a-ae30-00a6da4e81b5",
+      "name": "GBTP",
+      "slug": "gbtp",
+      "updated_at": "2025-10-24T12:28:42.402100+00:00"
     }
   },
   "runs": {
-    "118dceb3-e22d-4e75-8bd4-df858a494c08": {
-      "baseline_id": null,
+    "0d8e5b2b-2c65-496c-be66-72fbc064e647": {
+      "baseline_id": "c25b13b0-90d5-4ad0-ac63-5178c09d8d44",
       "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
-      "created_at": "2025-10-23T23:27:17.639889+00:00",
-      "id": "118dceb3-e22d-4e75-8bd4-df858a494c08",
-      "jira_issue": null,
-      "note": null,
+      "created_at": "2025-11-02T09:27:38.355502+00:00",
+      "id": "0d8e5b2b-2c65-496c-be66-72fbc064e647",
+      "jira_issue": "None",
+      "note": "",
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
-      "project_name": "IARC WEB",
-      "purpose": "baseline_recording",
-      "requested_by": "mock_user",
-      "status": "queued",
+      "purpose": "comparison",
+      "requested_by": "dashboard",
+      "started_at": "2025-11-02T09:27:38",
+      "status": "finished",
       "summary": {
-        "executions_failed": 2,
-        "executions_finished": 2,
-        "executions_total": 3
-      },
-      "updated_at": "2025-10-23T23:27:17.639889+00:00"
-    },
-    "46090259-6584-4174-b674-7683fcfcabf3": {
-      "baseline_id": null,
-      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
-      "created_at": "2025-10-23T23:27:33.390769+00:00",
-      "id": "46090259-6584-4174-b674-7683fcfcabf3",
-      "jira_issue": null,
-      "note": null,
-      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
-      "purpose": "baseline_recording",
-      "requested_by": "mock_user",
-      "status": "queued",
-      "summary": {
+        "diff_average": 0.1464,
+        "diff_maximum": 0.7975,
+        "diff_samples": 12,
+        "executions_cancelled": 0,
         "executions_failed": 0,
-        "executions_finished": 5,
-        "executions_total": 5
+        "executions_finished": 12,
+        "executions_total": 12
       },
-      "updated_at": "2025-10-23T23:27:33.390769+00:00"
+      "timeout_deadline": 1762076258.440018,
+      "timeout_deadline_iso": "2025-11-02T09:37:38Z",
+      "timeout_seconds": 600,
+      "updated_at": "2025-11-02T09:30:01.987532+00:00"
     },
-    "76e3a6b0-bbf0-4e0a-b983-74838ea687bf": {
-      "baseline_id": null,
+    "78f25e5b-8cec-44d8-9763-0ea0a542d0d6": {
+      "baseline_id": "c25b13b0-90d5-4ad0-ac63-5178c09d8d44",
       "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
-      "created_at": "2025-10-23T22:56:07.980478+00:00",
-      "id": "76e3a6b0-bbf0-4e0a-b983-74838ea687bf",
-      "jira_issue": null,
-      "note": null,
+      "created_at": "2025-11-02T09:42:58.241326+00:00",
+      "id": "78f25e5b-8cec-44d8-9763-0ea0a542d0d6",
+      "jira_issue": "None",
+      "note": "",
       "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
-      "project_name": "IARC WEB",
-      "purpose": "baseline_recording",
-      "requested_by": "mock_user",
-      "status": "queued",
+      "purpose": "comparison",
+      "requested_by": "dashboard",
+      "started_at": "2025-11-02T09:42:58",
+      "status": "finished",
       "summary": {
-        "executions_failed": 1,
-        "executions_finished": 1,
-        "executions_total": 7
+        "diff_average": 0.1403,
+        "diff_maximum": 0.7641,
+        "diff_samples": 12,
+        "executions_cancelled": 0,
+        "executions_failed": 0,
+        "executions_finished": 12,
+        "executions_total": 12
       },
-      "updated_at": "2025-10-23T22:56:07.980478+00:00"
+      "timeout_deadline": 1762077178.3513558,
+      "timeout_deadline_iso": "2025-11-02T09:52:58Z",
+      "timeout_seconds": 600,
+      "updated_at": "2025-11-02T09:45:22.641575+00:00"
+    },
+    "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a": {
+      "baseline_id": "c25b13b0-90d5-4ad0-ac63-5178c09d8d44",
+      "batch_id": "2419887b-4d23-4c83-9ec7-7818603fe6b6",
+      "created_at": "2025-11-02T09:23:37.685759+00:00",
+      "id": "ecdfcf54-ccd0-44f2-88b7-56a5f3da2e7a",
+      "jira_issue": "None",
+      "note": "The first baseline",
+      "project_id": "2d7b13fb-5233-405d-8b11-a72eb87d0d6c",
+      "purpose": "baseline_recording",
+      "requested_by": "dashboard",
+      "started_at": "2025-11-02T09:23:37",
+      "status": "finished",
+      "summary": {
+        "diff_average": 0.0,
+        "diff_maximum": 0.0,
+        "diff_samples": 12,
+        "executions_cancelled": 0,
+        "executions_failed": 0,
+        "executions_finished": 12,
+        "executions_total": 12
+      },
+      "timeout_deadline": 1762076017.740502,
+      "timeout_deadline_iso": "2025-11-02T09:33:37Z",
+      "timeout_seconds": 600,
+      "updated_at": "2025-11-02T09:25:59.457341+00:00"
     }
   },
   "tasks": {
+    "3e2c7b1b-15c8-41e6-9266-7d99cc11e715": {
+      "browsers": [
+        "chromium"
+      ],
+      "created_at": "2025-10-24T15:15:02.931722+00:00",
+      "id": "3e2c7b1b-15c8-41e6-9266-7d99cc11e715",
+      "name": "Visit home page",
+      "page_id": "4de14995-8ee1-44f5-9002-aaa748cbfaa3",
+      "project_id": "022ad57c-f861-4107-9eea-362369aea2be",
+      "task_js": null,
+      "updated_at": "2025-10-24T15:15:02.931722+00:00",
+      "viewports": [
+        {
+          "height": 1080,
+          "width": 1920
+        }
+      ]
+    },
     "45bf140c-0e8a-4106-911b-421961b32eb7": {
       "browsers": [
         "chromium",

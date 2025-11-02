@@ -250,8 +250,11 @@
         <h5 class="modal-title">Run Detail</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
-        <div class="text-muted">Select a run from the log to inspect details.</div>
+      <div class="modal-body d-flex justify-content-center align-items-center" style="min-height: 12rem;">
+        <div class="text-muted d-flex align-items-center gap-2">
+          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+          <span>Loading run…</span>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -261,7 +264,7 @@
 </div>
 
 <div class="modal fade" id="executionViewerModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl">
+  <div class="modal-dialog modal-xxl">
     <div class="modal-content" id="execution-viewer-content">
       <div class="modal-header">
         <h5 class="modal-title">Execution Viewer</h5>
@@ -302,7 +305,36 @@
     function setupModals() {
       const viewer = document.getElementById("executionViewerModal");
       if (viewer && !viewer.dataset.sceneInit) {
-        viewer.addEventListener("hidden.bs.modal", ensureRunModalVisible);
+        viewer.addEventListener("show.bs.modal", (event) => {
+          document.body.dataset.sceneViewerStack = "active";
+          const trigger = event.relatedTarget || null;
+          let originatingRunId = "";
+          if (trigger) {
+            originatingRunId = trigger.getAttribute("data-run-id") || "";
+            if (!originatingRunId) {
+              const ancestor = trigger.closest("[data-run-id]");
+              if (ancestor) {
+                originatingRunId = ancestor.getAttribute("data-run-id") || "";
+              }
+            }
+          }
+          if (originatingRunId && document.body) {
+            document.body.dataset.sceneViewerOrigin = originatingRunId;
+            if (!document.body.dataset.sceneSelectedRun) {
+              document.body.dataset.sceneSelectedRun = originatingRunId;
+            }
+          }
+        });
+        viewer.addEventListener("hidden.bs.modal", () => {
+          document.body.dataset.sceneViewerStack = "";
+          const origin = document.body.dataset.sceneViewerOrigin || "";
+          if (origin && document.body) {
+            document.body.dataset.sceneSelectedRun = origin;
+          }
+          if (typeof window.SceneRunReopen === "function") {
+            window.SceneRunReopen();
+          }
+        });
         viewer.dataset.sceneInit = "1";
       }
 
@@ -323,8 +355,9 @@
       const runModal = document.getElementById("runDetailModal");
       if (runModal && !runModal.dataset.sceneLogGuard) {
         runModal.addEventListener("hide.bs.modal", (event) => {
-          const stackState = document.body.dataset.sceneLogStack || "";
-          if (stackState === "pending" || stackState === "active") {
+          const logStackState = document.body.dataset.sceneLogStack || "";
+          const viewerStackState = document.body.dataset.sceneViewerStack || "";
+          if (logStackState === "pending" || logStackState === "active" || viewerStackState === "active") {
             event.preventDefault();
           }
         });
@@ -410,23 +443,24 @@
         const responseRunId = xhr.getResponseHeader("X-Scene-Run-Id") || "";
         const responseHash = xhr.getResponseHeader("X-Scene-Run-Hash") || "";
         const currentRunId = target.dataset.runId || "";
-        const pendingRunId = target.dataset.pendingRunId || "";
-        const selectedRunId =
-          (document.body && document.body.dataset.sceneSelectedRun) || "";
-        if (responseRunId) {
-          const matchesPending = pendingRunId && responseRunId === pendingRunId;
-          const matchesCurrent = responseRunId === currentRunId;
-          const matchesSelected = selectedRunId && responseRunId === selectedRunId;
-          if (!matchesPending && !matchesCurrent && !matchesSelected) {
-            event.detail.shouldSwap = false;
-            event.preventDefault();
-            return;
-          }
-        }
-        if (responseHash && target.dataset.sceneHash === responseHash) {
+      const pendingRunId = target.dataset.pendingRunId || "";
+      const selectedRunId =
+        (document.body && document.body.dataset.sceneSelectedRun) || "";
+      const isLoading = target.querySelector('.modal-body') && target.querySelector('.modal-body').textContent.trim().toLowerCase().includes('loading run');
+      if (responseRunId) {
+        const matchesPending = pendingRunId && responseRunId === pendingRunId;
+        const matchesCurrent = responseRunId === currentRunId;
+        const matchesSelected = selectedRunId && responseRunId === selectedRunId;
+        if (!matchesPending && !matchesCurrent && !matchesSelected) {
           event.detail.shouldSwap = false;
           event.preventDefault();
+          return;
         }
+      }
+      if (responseHash && target.dataset.sceneHash === responseHash && !isLoading) {
+        event.detail.shouldSwap = false;
+        event.preventDefault();
+      }
       }
     }
 

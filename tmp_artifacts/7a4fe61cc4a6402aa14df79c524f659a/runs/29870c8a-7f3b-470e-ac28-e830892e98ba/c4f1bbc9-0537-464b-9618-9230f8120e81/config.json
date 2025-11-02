@@ -1,0 +1,1 @@
+{"url": "http://host.docker.internal:52891/index.html", "browser": "chromium", "viewport": {"width": 800, "height": 600}, "preparatory_js": "document.body.style.padding='20px';", "preparatory_actions": [], "task_js": "document.getElementById('headline').textContent = 'Baseline Ready';", "task_actions": [], "post_wait_ms": 500, "goto_timeout_ms": 60000, "artifacts_dir": "."}

@@ -108,8 +108,11 @@
           '    <h5 class="modal-title">Run Detail</h5>',
           '    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>',
           '  </div>',
-          '  <div class="modal-body">',
-          '    <div class="text-muted">Select a run from the log to inspect details.</div>',
+          '  <div class="modal-body d-flex justify-content-center align-items-center" style="min-height: 12rem;">',
+          '    <div class="text-muted d-flex align-items-center gap-2">',
+          '      <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>',
+          '      <span>Loading run…</span>',
+          '    </div>',
           '  </div>',
           '  <div class="modal-footer">',
           '    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>',
@@ -220,12 +223,38 @@
           if (!force && current === runId) {
             return;
           }
+          detail.innerHTML = defaultRunDetailHtml;
           detail.dataset.runId = runId;
           detail.setAttribute('hx-get', '/runs/' + runId + '/overlay');
+          detail.dataset.pendingRunId = runId;
+          if (document.body) {
+            document.body.dataset.pendingRunModal = 'true';
+          }
+          showRunModal();
           window.htmx.ajax('GET', '/runs/' + runId + '/overlay', '#run-detail-shell');
         }
 
+        function reopenRunDetail() {
+          var viewerOrigin =
+            (document.body && document.body.dataset.sceneViewerOrigin) || '';
+          var runId =
+            userSelectedRunId ||
+            viewerOrigin ||
+            (document.body && document.body.dataset.sceneSelectedRun) ||
+            '';
+          if (!runId) {
+            hideRunModal();
+            return;
+          }
+          loadRunDetail(runId, true);
+        }
+
         document.body.addEventListener('click', function (event) {
+          var clickedInsideViewer =
+            event.target && event.target.closest && event.target.closest('#execution-viewer-content');
+          if (clickedInsideViewer) {
+            return;
+          }
           var el = event.target;
           while (el && !el.classList.contains('run-select-btn')) {
             el = el.parentElement;
@@ -248,7 +277,6 @@
             document.body.dataset.sceneSelectedRun = runId;
           }
           loadRunDetail(runId, true);
-          showRunModal();
         });
 
         document.body.addEventListener('htmx:beforeRequest', function (event) {
@@ -287,6 +315,10 @@
             } else {
               target.removeAttribute('hx-trigger');
             }
+            if (document.body && document.body.dataset.pendingRunModal === 'true') {
+              showRunModal();
+              document.body.dataset.pendingRunModal = 'false';
+            }
             initialiseRuns();
             return;
           }
@@ -312,6 +344,32 @@
           }
         });
 
+        document.body.addEventListener('htmx:responseError', function (event) {
+          var target = event && event.target ? event.target : null;
+          if (!target || target.id !== 'run-detail-shell') {
+            return;
+          }
+          if (document.body) {
+            document.body.dataset.pendingRunModal = 'false';
+            document.body.dataset.sceneViewerStack = '';
+          }
+          target.innerHTML = [
+            '<div id="run-detail-shell-inner" data-run-id="">',
+            '  <div class="modal-header">',
+            '    <h5 class="modal-title">Run Detail</h5>',
+            '    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>',
+            '  </div>',
+            '  <div class="modal-body">',
+            '    <div class="alert alert-danger mb-0">Unable to load run details. Please try again.</div>',
+            '  </div>',
+            '  <div class="modal-footer">',
+            '    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>',
+            '  </div>',
+            '</div>'
+          ].join('');
+          showRunModal();
+        });
+
         function initialiseRuns() {
           var selected = ensureSelectedRun();
           if (selected && document.body) {
@@ -328,6 +386,12 @@
           var modalEl = document.getElementById('runDetailModal');
           if (modalEl && isBootstrapReady() && !modalEl.dataset.sceneRunModalInit) {
             modalEl.addEventListener('hidden.bs.modal', function () {
+              var viewerState = document.body.dataset.sceneViewerStack || '';
+              if (viewerState === 'active') {
+                document.body.dataset.runDetailOpen = 'false';
+                document.body.dataset.pendingRunModal = 'false';
+                return;
+              }
               var detailEl = getRunDetail();
               if (detailEl) {
                 detailEl.dataset.runId = '';
@@ -338,21 +402,24 @@
               document.body.dataset.runDetailOpen = 'false';
               userSelectedRunId = '';
               document.body.dataset.sceneSelectedRun = '';
+              document.body.dataset.pendingRunModal = 'false';
+              document.body.dataset.sceneViewerOrigin = '';
+              highlightRuns('');
             });
             modalEl.addEventListener('shown.bs.modal', function () {
               document.body.dataset.runDetailOpen = 'true';
-          var detailEl = getRunDetail();
-          if (detailEl) {
-            detailEl.setAttribute('hx-trigger', 'every 5s');
-            var runId = userSelectedRunId || detailEl.dataset.runId;
-            if (runId) {
-              detailEl.dataset.runId = runId;
-              detailEl.setAttribute('hx-get', '/runs/' + runId + '/overlay');
-            }
-            if (runId && document.body) {
-              document.body.dataset.sceneSelectedRun = runId;
-            }
-          }
+              var detailEl = getRunDetail();
+              if (detailEl) {
+                detailEl.setAttribute('hx-trigger', 'every 5s');
+                var runId = userSelectedRunId || detailEl.dataset.runId;
+                if (runId) {
+                  detailEl.dataset.runId = runId;
+                  detailEl.setAttribute('hx-get', '/runs/' + runId + '/overlay');
+                }
+                if (runId && document.body) {
+                  document.body.dataset.sceneSelectedRun = runId;
+                }
+              }
             });
             modalEl.dataset.sceneRunModalInit = '1';
           }
@@ -363,6 +430,9 @@
         } else {
           document.addEventListener('DOMContentLoaded', initialiseRuns);
         }
+
+        window.SceneRunReopen = reopenRunDetail;
+        window.SceneRunLoadDetail = loadRunDetail;
       })();
     </script>
   </body>

@@ -123,6 +123,7 @@
                     hx-trigger="click"
                     data-bs-toggle="modal"
                     data-bs-target="#executionViewerModal"
+                    data-run-id="{{ run.id }}"
                     {% if exec.status in ['executing', 'queued'] %}disabled aria-disabled="true"{% endif %}
                   >
                     Viewer

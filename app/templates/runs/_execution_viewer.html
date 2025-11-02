@@ -1,4 +1,11 @@
 {% set artifacts = execution.artifacts or {} %}
+{% set artifact_dims = artifact_dimensions or {} %}
+{% set observed_dims = artifact_dims.get("observed") %}
+{% set baseline_dims = artifact_dims.get("baseline") %}
+{% set reference_dims = artifact_dims.get("reference") %}
+{% set observed_dims_text = observed_dims and observed_dims.width ~ '×' ~ observed_dims.height %}
+{% set baseline_dims_text = baseline_dims and baseline_dims.width ~ '×' ~ baseline_dims.height %}
+{% set reference_dims_text = reference_dims and reference_dims.width ~ '×' ~ reference_dims.height %}
 {% set observed = artifacts.get("observed") %}
 {% set baseline_art = artifacts.get("baseline") %}
 {% set reference_art = artifacts.get("reference") %}
@@ -32,6 +39,9 @@
 
 <div class="modal-body">
   <style>
+    #executionViewerModal .modal-dialog {
+      max-width: min(96vw, 1600px);
+    }
     .modal-body {
       padding-bottom: 0;
       overflow: hidden;
@@ -58,11 +68,26 @@
       border-radius: 0.75rem;
       box-shadow: 0 0.75rem 1.5rem rgba(15, 23, 42, 0.08);
     }
+    .viewer-metadata .card-body {
+      padding: 1rem 1.25rem;
+    }
     .viewer-metadata .badge {
+      font-size: 0.75rem;
+    }
+    .viewer-meta-summary-info .badge {
       font-size: 0.75rem;
     }
     .viewer-mode-buttons .btn {
       min-width: 5rem;
+    }
+    .viewer-metadata[data-compact="true"] .viewer-meta-details {
+      display: none;
+    }
+    .viewer-metadata[data-compact="true"] .card-body {
+      padding: 0.75rem 1rem;
+    }
+    .viewer-metadata[data-compact="true"] .viewer-meta-summary-info {
+      gap: 0.5rem;
     }
     .viewer-stage-card {
       flex: 1 1 auto;
@@ -119,7 +144,7 @@
   </style>
 
 
-  {% macro compare_block(mode, artifact, label) -%}
+  {% macro compare_block(mode, artifact, label, artifact_dims, observed_dims) -%}
     {% if artifact %}
       <div class="viewer-mode-pane" data-mode="{{ mode }}">
         <div
@@ -128,6 +153,14 @@
           data-compare-kind="{{ mode }}"
           data-before-label="{{ label }}"
           data-after-label="Observed"
+          {% if artifact_dims %}
+            data-before-width="{{ artifact_dims.width }}"
+            data-before-height="{{ artifact_dims.height }}"
+          {% endif %}
+          {% if observed_dims %}
+            data-after-width="{{ observed_dims.width }}"
+            data-after-height="{{ observed_dims.height }}"
+          {% endif %}
         >
           <img src="{{ artifact.url }}" alt="{{ label }} screenshot" class="viewer-image" />
           <img src="{{ observed.url }}" alt="Observed screenshot" class="viewer-image" />
@@ -139,51 +172,59 @@
 
   <div class="execution-viewer-body" id="execution-viewer-layout">
     <div class="viewer-shell" data-role="viewer-root" data-initial-mode="{{ initial_mode }}">
-      <div class="viewer-metadata card">
+      <div class="viewer-metadata card" data-role="viewer-metadata">
         <div class="card-body">
-          <div class="d-flex flex-wrap justify-content-between align-items-start gap-4">
-            <div class="flex-grow-1">
-              <div class="row g-3">
-                <div class="col-md-4 col-sm-6">
-                  <div class="text-uppercase small text-muted">Status</div>
-                  <div class="fw-semibold">{{ execution.status.replace("_", " ") | title }}</div>
-                  <div class="small text-muted">{{ execution.started_at or "—" }} → {{ execution.completed_at or "—" }}</div>
-                </div>
-                <div class="col-md-4 col-sm-6">
-                  <div class="text-uppercase small text-muted">Diff Level</div>
-                  <div class="d-flex align-items-center gap-2">
-                    {% if execution.diff_label %}
-                      <span class="badge text-bg-{{ execution.diff_badge }}">{{ execution.diff_label }}</span>
-                    {% endif %}
-                    <span>{{ '%.2f'|format(execution.diff_level or 0.0) }}%</span>
-                  </div>
-                  {% if execution.diff_threshold is not none %}
-                    <div class="small text-muted">Threshold {{ '%.2f'|format(execution.diff_threshold) }}%</div>
-                  {% endif %}
-                </div>
-                <div class="col-md-4 col-sm-6">
-                  <div class="text-uppercase small text-muted">Run Average</div>
-                  {% if run.diff_label %}
-                    <div class="d-flex align-items-center gap-2">
-                      <span class="badge text-bg-{{ run.diff_badge }}">{{ run.diff_label }}</span>
-                      <span>{{ '%.2f'|format(run.diff_average or 0.0) }}%</span>
-                    </div>
-                    {% if run_diff_threshold is not none %}
-                      <div class="small text-muted">Threshold {{ '%.2f'|format(run_diff_threshold) }}%</div>
-                    {% endif %}
-                  {% else %}
-                    <div class="fw-semibold">—</div>
-                  {% endif %}
-                </div>
-              </div>
-              {% if execution.message %}
-                <div class="alert alert-warning mt-3 mb-0 py-2">{{ execution.message }}</div>
+          <div class="viewer-meta-summary d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="viewer-meta-summary-info d-flex flex-wrap align-items-center gap-2">
+              <span class="badge text-bg-{{ execution.status_badge }}">
+                {{ execution.status.replace("_", " ") | title }}
+              </span>
+              {% if execution.diff_label %}
+                <span class="badge text-bg-{{ execution.diff_badge }}">Diff {{ '%.2f'|format(execution.diff_level or 0.0) }}%</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Diff {{ '%.2f'|format(execution.diff_level or 0.0) }}%</span>
+              {% endif %}
+              {% if run.diff_label %}
+                <span class="badge text-bg-{{ run.diff_badge }}">Run {{ '%.2f'|format(run.diff_average or 0.0) }}%</span>
               {% endif %}
             </div>
-            <div class="viewer-mode-buttons btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Viewer controls">
-              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="observed" {% if not observed %}disabled{% endif %}>Observed</button>
-              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="baseline" {% if not baseline_art %}disabled{% endif %}>Baseline</button>
-              <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="reference" {% if not reference_art %}disabled{% endif %}>Reference</button>
+            <div class="viewer-mode-buttons btn-group btn-group-sm flex-wrap" role="group" aria-label="Viewer controls">
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                data-role="viewer-mode"
+                data-mode="observed"
+                {% if observed_dims_text %}
+                  data-bs-toggle="tooltip"
+                  data-bs-placement="bottom"
+                  title="Observed {{ observed_dims_text }}"
+                {% endif %}
+                {% if not observed %}disabled{% endif %}
+              >Observed</button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                data-role="viewer-mode"
+                data-mode="baseline"
+                {% if baseline_dims_text %}
+                  data-bs-toggle="tooltip"
+                  data-bs-placement="bottom"
+                  title="Baseline {{ baseline_dims_text }}"
+                {% endif %}
+                {% if not baseline_art %}disabled{% endif %}
+              >Baseline</button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                data-role="viewer-mode"
+                data-mode="reference"
+                {% if reference_dims_text %}
+                  data-bs-toggle="tooltip"
+                  data-bs-placement="bottom"
+                  title="Reference {{ reference_dims_text }}"
+                {% endif %}
+                {% if not reference_art %}disabled{% endif %}
+              >Reference</button>
               <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="diff" {% if not diff_art %}disabled{% endif %}>Diff</button>
               <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="heatmap" {% if not heatmap_art %}disabled{% endif %}>Heatmap</button>
               <button type="button" class="btn btn-outline-secondary" data-role="viewer-mode" data-mode="slider" {% if not (observed and baseline_art) %}disabled{% endif %}>Slider</button>
@@ -204,6 +245,35 @@
                 >Log</a>
               {% endif %}
             </div>
+          </div>
+          <div class="viewer-meta-details mt-3">
+            <div class="row g-3 small">
+              <div class="col-md-4 col-sm-6">
+                <div class="text-uppercase text-muted fw-semibold">Execution Window</div>
+                <div class="fw-semibold">{{ execution.started_at or "—" }} → {{ execution.completed_at or "—" }}</div>
+              </div>
+              <div class="col-md-4 col-sm-6">
+                <div class="text-uppercase text-muted fw-semibold">Execution Diff</div>
+                <div class="fw-semibold">{{ '%.2f'|format(execution.diff_level or 0.0) }}%</div>
+                {% if execution.diff_threshold is not none %}
+                  <div class="text-muted">Threshold {{ '%.2f'|format(execution.diff_threshold) }}%</div>
+                {% endif %}
+              </div>
+              <div class="col-md-4 col-sm-6">
+                <div class="text-uppercase text-muted fw-semibold">Run Average</div>
+                {% if run.diff_label %}
+                  <div class="fw-semibold">{{ '%.2f'|format(run.diff_average or 0.0) }}%</div>
+                  {% if run_diff_threshold is not none %}
+                    <div class="text-muted">Threshold {{ '%.2f'|format(run_diff_threshold) }}%</div>
+                  {% endif %}
+                {% else %}
+                  <div class="fw-semibold">—</div>
+                {% endif %}
+              </div>
+            </div>
+            {% if execution.message %}
+              <div class="alert alert-warning mt-3 mb-0 py-2">{{ execution.message }}</div>
+            {% endif %}
           </div>
 
           {% set download_keys = ["video"] %}
@@ -243,7 +313,7 @@
                   <img src="{{ baseline_art.url }}" alt="Baseline screenshot" class="viewer-image" />
                 </div>
               {% endif %}
-              {{ compare_block('reference', reference_art, 'Reference') }}
+              {{ compare_block('reference', reference_art, 'Reference', artifact_dims.get("reference"), observed_dims) }}
               {% if diff_art %}
                 <div class="viewer-mode-pane" data-mode="diff">
                   <img src="{{ diff_art.url }}" alt="Pixel diff" class="viewer-image" />
@@ -254,7 +324,7 @@
                   <img src="{{ heatmap_art.url }}" alt="Heatmap overlay" class="viewer-image" />
                 </div>
               {% endif %}
-              {{ compare_block('slider', baseline_art, 'Baseline') }}
+              {{ compare_block('slider', baseline_art, 'Baseline', artifact_dims.get("baseline"), observed_dims) }}
             </div>
           {% else %}
             <div class="alert alert-warning mb-0">Observed screenshot not available.</div>
@@ -280,6 +350,21 @@
     const buttons = Array.from(viewerRoot.querySelectorAll('[data-role="viewer-mode"]'));
     const compareElements = viewerRoot.querySelectorAll('[data-role="image-compare"]');
     const compareInstances = new Map();
+    const metadata = viewerRoot.querySelector('[data-role="viewer-metadata"]');
+    const scrollContainer = viewerRoot.querySelector('.viewer-stage-scroll');
+
+    if (metadata && scrollContainer) {
+      const updateCompact = () => {
+        if (scrollContainer.scrollTop > 120) {
+          metadata.setAttribute('data-compact', 'true');
+        } else {
+          metadata.removeAttribute('data-compact');
+        }
+      };
+      const handleScroll = () => window.requestAnimationFrame(updateCompact);
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+      updateCompact();
+    }
 
     function ensureCompare(kind) {
       if (typeof window.ImageCompare !== "function") {
@@ -291,6 +376,21 @@
       const element = Array.from(compareElements).find((el) => el.dataset.compareKind === kind);
       if (!element) {
         return null;
+      }
+      const beforeWidth = parseInt(element.dataset.beforeWidth || "", 10);
+      const beforeHeight = parseInt(element.dataset.beforeHeight || "", 10);
+      const afterWidth = parseInt(element.dataset.afterWidth || "", 10);
+      const afterHeight = parseInt(element.dataset.afterHeight || "", 10);
+      const resolvedBeforeWidth = Number.isFinite(beforeWidth) && beforeWidth > 0 ? beforeWidth : null;
+      const resolvedBeforeHeight = Number.isFinite(beforeHeight) && beforeHeight > 0 ? beforeHeight : null;
+      const resolvedAfterWidth = Number.isFinite(afterWidth) && afterWidth > 0 ? afterWidth : null;
+      const resolvedAfterHeight = Number.isFinite(afterHeight) && afterHeight > 0 ? afterHeight : null;
+      const targetWidth = resolvedAfterWidth || resolvedBeforeWidth;
+      const targetHeight = resolvedAfterHeight || resolvedBeforeHeight;
+      if (targetWidth && targetHeight) {
+        element.style.aspectRatio = `${targetWidth} / ${targetHeight}`;
+      } else {
+        element.style.removeProperty("aspect-ratio");
       }
       const instance = new window.ImageCompare(element, {
         initial: 50,
@@ -333,6 +433,13 @@
         activate(button.dataset.mode);
       });
     });
+
+    if (window.bootstrap && typeof window.bootstrap.Tooltip === "function") {
+      const tooltipElements = viewerRoot.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipElements.forEach((el) => {
+        window.bootstrap.Tooltip.getOrCreateInstance(el);
+      });
+    }
 
     ensureCompare("slider");
     ensureCompare("reference");

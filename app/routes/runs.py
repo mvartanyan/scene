@@ -9,6 +9,7 @@ import time
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from PIL import Image
 
 from app.schemas import ExecutionStatus, RunPurpose, RunStatus, TaskExecution
 from app.services.artifacts import get_artifact_store
@@ -309,8 +310,6 @@ def _build_runs_dashboard_context(
     if selected_run_id:
         if not any(run["id"] == selected_run_id for run in runs):
             selected_run_id = None
-    if not selected_run_id and runs:
-        selected_run_id = runs[0]["id"]
 
     snapshot_hash = _runs_log_signature(runs)
 
@@ -640,8 +639,6 @@ async def delete_run_entry(
         filter_status=filter_status,
         selected_run_id=selected_run_id if selected_run_id != run_id else None,
     )
-    if context["selected_run_id"] is None and context["runs"]:
-        context["selected_run_id"] = context["runs"][0]["id"]
     context["request"] = request
     return templates.TemplateResponse("runs/_dashboard.html", context)
 
@@ -657,6 +654,31 @@ async def execution_viewer(
     execution = next((item for item in run_context["executions"] if item["id"] == execution_id), None)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
+    artifacts = execution.get("artifacts") or {}
+    store = get_artifact_store()
+
+    def _dimensions(key: str) -> Optional[Dict[str, int]]:
+        artifact = artifacts.get(key)
+        if not artifact:
+            return None
+        path = artifact.get("path")
+        if not path:
+            return None
+        image_path = store.root / path
+        if not image_path.exists():
+            return None
+        try:
+            with Image.open(image_path) as img:
+                width, height = img.size
+        except Exception:  # noqa: BLE001
+            return None
+        return {"width": int(width), "height": int(height)}
+
+    artifact_dimensions = {
+        "observed": _dimensions("observed"),
+        "baseline": _dimensions("baseline"),
+        "reference": _dimensions("reference"),
+    }
     context = {
         "request": request,
         "run": run_context["run"],
@@ -665,6 +687,7 @@ async def execution_viewer(
         "artifact_order": ARTIFACT_ORDER,
         "execution_diff_threshold": run_context.get("execution_diff_threshold"),
         "run_diff_threshold": run_context.get("run_diff_threshold"),
+        "artifact_dimensions": artifact_dimensions,
     }
     return templates.TemplateResponse("runs/_execution_viewer.html", context)
 

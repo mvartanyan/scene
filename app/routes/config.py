@@ -44,6 +44,7 @@ def _build_config_context(
     run_timeout_seconds = int(config.get("run_timeout_seconds", 600))
     max_concurrent = int(config.get("max_concurrent_executions", 4))
     scene_host_url = config.get("scene_host_url", "http://host.docker.internal:8000")
+    capture_post_wait_ms = int(config.get("capture_post_wait_ms", 7000))
 
     browser_options = sorted(set(DEFAULT_BROWSERS) | set(selected_browsers) | used_browsers)
     available_viewports = sorted(
@@ -62,6 +63,7 @@ def _build_config_context(
         "run_timeout_seconds": run_timeout_seconds,
         "max_concurrent_executions": max_concurrent,
         "scene_host_url": scene_host_url,
+        "capture_post_wait_ms": capture_post_wait_ms,
         "message": message,
         "error": error,
     }
@@ -100,6 +102,22 @@ async def update_run_timeout(
     try:
         repo.set_run_timeout_seconds(run_timeout_seconds)
         context = _build_config_context(request, repo, message="Run timeout updated.")
+    except ValueError as exc:
+        context = _build_config_context(request, repo, error=str(exc))
+    return templates.TemplateResponse("config/modal.html", context)
+
+
+@router.post("/config/capture-delay", response_class=HTMLResponse)
+async def update_capture_delay(
+    request: Request,
+    capture_post_wait_ms: int = Form(...),
+    repo: SceneRepository = RepositoryDep,
+) -> HTMLResponse:
+    try:
+        repo.set_capture_post_wait_ms(capture_post_wait_ms)
+        orchestrator = get_orchestrator()
+        orchestrator.update_capture_delay(capture_post_wait_ms)
+        context = _build_config_context(request, repo, message="Capture stabilization delay updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
     return templates.TemplateResponse("config/modal.html", context)

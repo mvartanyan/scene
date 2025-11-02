@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageOps
 
 from app.schemas import (
     ArtifactKind,
@@ -272,6 +272,45 @@ def _run_actions(page, actions, label: str) -> None:
             raise
 
 
+def _auto_scroll(page, label: str) -> None:
+    try:
+        _log(f"Auto-scrolling {label} page before capture")
+        page.evaluate(
+            "() => new Promise((resolve) => {"
+            "  try {"
+            "    const doc = document.scrollingElement || document.documentElement || document.body;"
+            "    if (!doc) { resolve(); return; }"
+            "    const maxScroll = doc.scrollHeight || 0;"
+            "    const viewport = Math.max(window.innerHeight || 0, 400);"
+            "    if (maxScroll <= viewport) {"
+            "      resolve();"
+            "      return;"
+            "    }"
+            "    const step = Math.max(Math.floor(viewport * 0.8), 200);"
+            "    let position = 0;"
+            "    let steps = 0;"
+            "    const maxSteps = 80;"
+            "    function stepScroll() {"
+            "      position = Math.min(maxScroll, position + step);"
+            "      window.scrollTo(0, position);"
+            "      steps += 1;"
+            "      if (position + viewport < maxScroll && steps < maxSteps) {"
+            "        window.setTimeout(stepScroll, 120);"
+            "        return;"
+            "      }"
+            "      window.scrollTo(0, 0);"
+            "      resolve();"
+            "    }"
+            "    stepScroll();"
+            "  } catch (err) {"
+            "    resolve();"
+            "  }"
+            "})"
+        )
+    except Exception as scroll_exc:  # noqa: BLE001
+        _log(f"Auto-scroll skipped ({label}): {scroll_exc}")
+
+
 def main(config_path: str) -> None:
     with Path(config_path).open("r", encoding="utf-8") as handle:
         config = json.load(handle)
@@ -289,6 +328,7 @@ def main(config_path: str) -> None:
         "video": None,
         "error": None,
     }
+    auto_scroll_enabled = bool(config.get("auto_scroll", True))
 
     try:
         target_url = config.get("url", "<unknown>")
@@ -321,6 +361,7 @@ def main(config_path: str) -> None:
 
             max_attempts = 3
             last_error = None
+            capture_success = False
             for attempt in range(max_attempts):
                 if context is not None:
                     try:
@@ -344,11 +385,22 @@ def main(config_path: str) -> None:
                 _log(f"Launched {browser_name} browser (attempt {attempt_no})")
 
                 context = browser.new_context(**context_kwargs)
+                context.add_init_script(
+                    "() => {"
+                    "  try {"
+                    "    const style = document.createElement('style');"
+                    "    style.id = 'scene-stabilizer-style';"
+                    "    style.textContent = 'html{scrollbar-gutter:stable both-edges;}*,*::before,*::after{animation:none!important;transition:none!important;}';"
+                    "    document.documentElement.appendChild(style);"
+                    "  } catch (err) { console.warn('Scene stabilizer init failed', err); }"
+                    "}"
+                )
                 context.tracing.start(screenshots=True, snapshots=True, sources=True)
                 _log(f"Navigation target {target_url} (attempt {attempt_no})")
 
                 page = context.new_page()
                 goto_timeout = int(config.get("goto_timeout_ms", 45000))
+                success = True
                 try:
                     response = page.goto(config["url"], wait_until="networkidle", timeout=goto_timeout)
                     status_code = "unknown"
@@ -413,6 +465,23 @@ def main(config_path: str) -> None:
                         _log(f"Waiting {post_wait}ms before capture")
                         page.wait_for_timeout(post_wait)
 
+                    try:
+                        metrics = page.evaluate(
+                            "() => ({"
+                            "  scrollWidth: document.documentElement.scrollWidth || document.body.scrollWidth || 0,"
+                            "  scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,"
+                            "  clientWidth: document.documentElement.clientWidth || document.body.clientWidth || 0,"
+                            "  clientHeight: document.documentElement.clientHeight || document.body.clientHeight || 0,"
+                            "  innerWidth: window.innerWidth,"
+                            "  innerHeight: window.innerHeight"
+                            "})"
+                        )
+                        _log(f"Observed metrics: {json.dumps(metrics)}")
+                    except Exception as metric_exc:  # noqa: BLE001
+                        _log(f"Observed metrics unavailable: {metric_exc}")
+
+                    if auto_scroll_enabled:
+                        _auto_scroll(page, "Observed")
                     _log("Capturing observed screenshot")
                     page.screenshot(path=str(screenshot_path), full_page=True, timeout=60000)
                     _log("Screenshot captured successfully")
@@ -440,6 +509,22 @@ def main(config_path: str) -> None:
                             ref_wait = int(reference_cfg.get("post_wait_ms", config.get("post_wait_ms", 500)))
                             if ref_wait:
                                 ref_page.wait_for_timeout(ref_wait)
+                            try:
+                                ref_metrics = ref_page.evaluate(
+                                    "() => ({"
+                                    "  scrollWidth: document.documentElement.scrollWidth || document.body.scrollWidth || 0,"
+                                    "  scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,"
+                                    "  clientWidth: document.documentElement.clientWidth || document.body.clientWidth || 0,"
+                                    "  clientHeight: document.documentElement.clientHeight || document.body.clientHeight || 0,"
+                                    "  innerWidth: window.innerWidth,"
+                                    "  innerHeight: window.innerHeight"
+                                    "})"
+                                )
+                                _log(f"Reference metrics: {json.dumps(ref_metrics)}")
+                            except Exception as ref_metric_exc:  # noqa: BLE001
+                                _log(f"Reference metrics unavailable: {ref_metric_exc}")
+                            if auto_scroll_enabled:
+                                _auto_scroll(ref_page, "Reference")
                             ref_page.screenshot(path=str(reference_path), full_page=True, timeout=60000)
                             result["reference"] = reference_path.name
                             _log("Reference screenshot captured successfully")
@@ -451,9 +536,9 @@ def main(config_path: str) -> None:
                                     ref_page.close()
                                 except Exception:
                                     pass
-                    break
                 except Exception as exc:
                     last_error = exc
+                    success = False
                     _log(f"Screenshot attempt {attempt_no} failed: {type(exc).__name__}: {exc}")
                     traceback.print_exc()
                     try:
@@ -461,8 +546,11 @@ def main(config_path: str) -> None:
                     except Exception:
                         pass
                     page = None
+                if not success:
                     continue
-            else:
+                capture_success = True
+                break
+            if not capture_success:
                 raise RuntimeError(f"Unable to capture screenshot after {max_attempts} attempts: {last_error}")
 
             trace_path = artifacts_dir / "trace.zip"
@@ -788,10 +876,9 @@ class DockerCLIBackend(DockerBackend):
         extra_hosts: Optional[Dict[str, str]],
     ) -> DockerContainerHandleProtocol:
         args = ["docker", "run", "-d"]
+        # Do not use --rm so logs remain accessible after the container exits; cleanup happens elsewhere.
         if shm_size:
             args.extend(["--shm-size", shm_size])
-        if auto_remove:
-            args.append("--rm")
         if name:
             args.extend(["--name", name])
         for host, value in (extra_hosts or {}).items():
@@ -857,6 +944,9 @@ class DiffEngine:
         }
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 class RunOrchestrator:
     """Expand runs into Playwright executions and manage artifact persistence."""
 
@@ -875,6 +965,8 @@ class RunOrchestrator:
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._inflight: set[str] = set()
         self._lock = threading.Lock()
+        self._image_lock = threading.Lock()
+        self._runner_image_verified = False
         self._cancelled_runs: set[str] = set()
         self._cancelled_executions: set[str] = set()
         if docker_backend is not None:
@@ -890,6 +982,7 @@ class RunOrchestrator:
         config_defaults = self._repo.get_config()
         self._scene_host_url = config_defaults.get("scene_host_url", "http://host.docker.internal:8000")
         self._max_concurrent = int(config_defaults.get("max_concurrent_executions", 4))
+        self._post_wait_ms = int(config_defaults.get("capture_post_wait_ms", 7000))
         interval_value = config_defaults.get("watchdog_interval_seconds", 5)
         try:
             self._watchdog_interval = max(1.0, float(interval_value))
@@ -956,6 +1049,45 @@ class RunOrchestrator:
         thread.start()
         self._ensure_log_artifact(run_id, execution_id)
         return stop_event, thread
+
+    def _harmonize_reference_dimensions(self, execution_dir: Path) -> None:
+        observed_path = execution_dir / "observed.png"
+        reference_path = execution_dir / "reference.png"
+        if not observed_path.exists() or not reference_path.exists():
+            return
+        try:
+            with Image.open(observed_path) as observed_img, Image.open(reference_path) as reference_img:
+                target_width = max(observed_img.width, reference_img.width)
+                target_height = max(observed_img.height, reference_img.height)
+        except Exception:
+            return
+
+        self._pad_image_to_size(observed_path, target_width, target_height)
+        self._pad_image_to_size(reference_path, target_width, target_height)
+
+    @staticmethod
+    def _pad_image_to_size(path: Path, target_width: int, target_height: int) -> None:
+        if target_width <= 0 or target_height <= 0:
+            return
+        try:
+            with Image.open(path) as img:
+                if img.width == target_width and img.height == target_height:
+                    return
+                right = max(target_width - img.width, 0)
+                bottom = max(target_height - img.height, 0)
+                if right == 0 and bottom == 0:
+                    return
+                if "A" in img.getbands():
+                    fill = (0, 0, 0, 0)
+                else:
+                    try:
+                        fill = img.getpixel((max(img.width - 1, 0), max(img.height - 1, 0)))
+                    except Exception:
+                        fill = 0
+                padded = ImageOps.expand(img, border=(0, 0, right, bottom), fill=fill)
+                padded.save(path)
+        except Exception:
+            return
 
     def _stop_log_stream(self, context: ExecutionContext) -> None:
         context.log_stop.set()
@@ -1191,6 +1323,7 @@ class RunOrchestrator:
         result: RunnerResult,
     ) -> None:
         execution_id = execution["id"]
+        self._harmonize_reference_dimensions(execution_dir)
         artifacts = self._artifact_payload(result, execution_dir)
 
         if run["purpose"] == RunPurpose.baseline_recording.value and baseline:
@@ -1297,17 +1430,20 @@ class RunOrchestrator:
         execution_id = execution["id"]
         run_id = run["id"]
         with self._lock:
-            if execution_id in self._cancelled_executions or run_id in self._cancelled_runs:
-                self._repo.update_execution(
-                    execution_id,
-                    {
-                        "status": ExecutionStatus.cancelled.value,
-                        "completed_at": _utcnow(),
-                        "message": "Execution cancelled before start.",
-                    },
-                )
-                self._append_log(run_id, execution_id, "Execution cancelled before start")
-                return None
+            execution_cancelled = execution_id in self._cancelled_executions
+            run_cancelled = run_id in self._cancelled_runs
+        if execution_cancelled or run_cancelled:
+            reason = "run cancellation" if run_cancelled else "execution cancellation"
+            self._repo.update_execution(
+                execution_id,
+                {
+                    "status": ExecutionStatus.cancelled.value,
+                    "completed_at": _utcnow(),
+                    "message": f"Execution cancelled before start ({reason}).",
+                },
+            )
+            self._append_log(run_id, execution_id, f"Execution cancelled before start ({reason})")
+            return None
 
         execution_dir = self._artifacts.execution_dir(run_id, execution_id)
         config = {
@@ -1318,7 +1454,7 @@ class RunOrchestrator:
             "preparatory_actions": _clean_actions(page.get("preparatory_actions")),
             "task_js": _clean_js(task.get("task_js")),
             "task_actions": _clean_actions(task.get("task_actions")),
-            "post_wait_ms": 3000,
+            "post_wait_ms": self._post_wait_ms,
             "goto_timeout_ms": 60000,
         }
         if page.get("basic_auth_username"):
@@ -1329,7 +1465,7 @@ class RunOrchestrator:
         if page.get("reference_url"):
             config["reference"] = {
                 "url": page.get("reference_url"),
-                "post_wait_ms": 500,
+                "post_wait_ms": config.get("post_wait_ms", self._post_wait_ms),
             }
 
         self._runner.prepare_workspace(config, execution_dir)
@@ -1367,6 +1503,7 @@ class RunOrchestrator:
                 extra_hosts[host] = ip
 
         try:
+            self._ensure_runner_image(run_id, execution_id)
             self._append_log(run_id, execution_id, "Container launch initiated")
             container_handle = self._docker_backend.run_container(
                 getattr(self._runner, 'image', 'scene-playwright-runner:latest'),
@@ -1417,6 +1554,50 @@ class RunOrchestrator:
         self._execution_contexts[execution_id] = context
         self._execution_tokens[execution_id] = token
         return context
+
+    def _ensure_runner_image(self, run_id: Optional[str], execution_id: Optional[str]) -> None:
+        image = getattr(self._runner, "image", "scene-playwright-runner:latest")
+        with self._image_lock:
+            if self._runner_image_verified:
+                return
+            inspect_cmd = ["docker", "image", "inspect", image]
+            inspect_proc = subprocess.run(
+                inspect_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if inspect_proc.returncode == 0:
+                self._runner_image_verified = True
+                return
+
+            dockerfile_path = PROJECT_ROOT / "Dockerfile.playwright"
+            if not dockerfile_path.exists():
+                raise RuntimeError(
+                    f"Docker image '{image}' not found and {dockerfile_path.name} is missing. "
+                    "Build the runner image manually or configure an alternate image."
+                )
+
+            message = f"Runner image '{image}' not found; building from {dockerfile_path.name}"
+            LOGGER.info(message)
+            if run_id and execution_id:
+                self._append_log(run_id, execution_id, message)
+            build_cmd = [
+                "docker",
+                "build",
+                "-f",
+                str(dockerfile_path),
+                "-t",
+                image,
+                str(PROJECT_ROOT),
+            ]
+            build_proc = subprocess.run(build_cmd, capture_output=True, text=True, check=False)
+            if build_proc.returncode != 0:
+                error_output = build_proc.stderr.strip() or build_proc.stdout.strip() or "docker build failed"
+                raise RuntimeError(f"Failed to build runner image '{image}': {error_output}")
+            self._runner_image_verified = True
+            if run_id and execution_id:
+                self._append_log(run_id, execution_id, "Runner image build complete")
 
     def enqueue(self, run_id: str) -> None:
         with self._lock:
@@ -2107,10 +2288,19 @@ class RunOrchestrator:
         baseline_copy = execution_dir / "baseline.png"
         if not baseline_copy.exists():
             shutil.copy2(baseline_path, baseline_copy)
+        try:
+            with Image.open(observed) as obs_img, Image.open(baseline_copy) as base_img:
+                target_width = max(obs_img.width, base_img.width)
+                target_height = max(obs_img.height, base_img.height)
+        except Exception:
+            target_width = target_height = None
+        if target_width and target_height:
+            self._pad_image_to_size(observed, target_width, target_height)
+            self._pad_image_to_size(baseline_copy, target_width, target_height)
 
         diff_path = execution_dir / "diff.png"
         heatmap_path = execution_dir / "heatmap.png"
-        stats = self._diffs.generate(baseline_path, observed, diff_path, heatmap_path)
+        stats = self._diffs.generate(baseline_copy, observed, diff_path, heatmap_path)
 
         artifacts = {
             ArtifactKind.baseline.value: self._build_artifact(
@@ -2146,6 +2336,11 @@ class RunOrchestrator:
         with self._lock:
             self._scene_host_url = host_url
         LOGGER.info("Updated scene host callback URL to %s", host_url)
+
+    def update_capture_delay(self, milliseconds: int) -> None:
+        with self._lock:
+            self._post_wait_ms = max(0, int(milliseconds))
+        LOGGER.info("Updated capture stabilization delay to %sms", milliseconds)
 
     def handle_execution_callback(self, execution_id: str, payload: Dict[str, object]) -> bool:
         token = payload.get("token") if isinstance(payload, dict) else None

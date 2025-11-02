@@ -135,6 +135,34 @@
     </section>
 
     <section class="card border">
+      <div class="card-header bg-white fw-semibold">Capture Stabilization</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/capture-delay"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="row g-3"
+        >
+          <div class="col-md-6">
+            <label class="form-label">Delay after page load (milliseconds)</label>
+            <input
+              type="number"
+              name="capture_post_wait_ms"
+              class="form-control"
+              min="0"
+              value="{{ capture_post_wait_ms }}"
+              required
+            />
+            <div class="form-text">Applied before each observed and reference screenshot.</div>
+          </div>
+          <div class="col-12 d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Save Delay</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card border">
       <div class="card-header bg-white fw-semibold">Run Concurrency</div>
       <div class="card-body">
         <form

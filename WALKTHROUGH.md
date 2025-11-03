@@ -19,14 +19,15 @@ The UI is organised into three primary areas:
 1. **Define a project**: add pages (optionally with preparatory JS, basic-auth), attach tasks, bundle them into batches.
    - Prefer the **Preparatory Actions (JSON)** field to declaratively describe cookie-dismissals, animation suppression, or other Playwright steps before the page stabilises.
    - Custom `preparatory_js` remains available and runs after the action list.
-2. **Launch a run**: choose project/batch, set purpose (baseline/comparison), adjust timeout if desired, and submit.
+2. **Launch a run**: choose project/batch, set purpose (baseline/comparison), adjust timeout if desired, and submit. The baseline dropdown only lists completed baselines and refreshes in-place when you change project/batch or focus the field, so stale/failed recordings never appear.
 3. **Observe progress**: the run log polls every 5s. Selecting an entry opens the modal, displaying execution status and artifact links.
 4. **Inspect artifacts**: each execution exposes Observed/Baseline/Diff/Heatmap downloads and in-app viewers; trace/log/video are available when captured.
    - The execution viewer now keeps metadata pinned, with Observed/Baseline/Reference/Diff/Heatmap/Slider modes. Reference mode uses the same image-compare slider as Baseline so the layouts stay identical.
 5. **Reconcile configuration**: update browsers/viewports or the default timeout in the Config modal as requirements evolve.
 
 ## Files & Directories
-- `app/services/orchestrator.py` — queue-backed orchestrator, Docker runner integration, diffing.
+- `app/services/orchestrator.py` — queue-backed orchestrator, Docker runner integration, diffing, and runtime loading of the Playwright runner script.
+- `app/services/runner_script.py` — the executable Playwright runner injected into containers (auto-scrolls the detected scrollable element and waits for lazy content).
 - `app/services/storage.py` — JSON-backed persistence, including config defaults and run timeout.
 - `app/templates/runs/*.html` — HTMX partials for the run log, dashboards, viewers, detail modal.
 - `artifacts/` — persisted screenshots, traces, videos, logs.
@@ -38,3 +39,4 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
 - Playwright runs are robust but can still fail sporadically with renderer crashes/timeouts; re-running usually succeeds, and further hardening is planned.
 - Concurrency above two simultaneous executions still causes resource contention (CPU/memory/disk) and target-site throttling. Keep the cap at two until the host is upsized or a job queue is introduced.
 - The run detail modal refreshes only while open; occasional flicker remains while polling. Debounce or SSE-based updates are possible future improvements.
+- Auto-scroll relies on detecting the active scroll container; pages that inject bespoke scroll hosts after load may still need bespoke preparatory actions.

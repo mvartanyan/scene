@@ -267,6 +267,13 @@ class Baseline(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BaselineOption(BaseModel):
+    id: str
+    label: str
+    status: Optional[str] = None
+    created_at: Optional[str] = None
+
+
 class RunBase(BaseModel):
     project_id: str
     batch_id: str

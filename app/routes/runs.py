@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 
-from app.schemas import ExecutionStatus, RunPurpose, RunStatus, TaskExecution
+from app.schemas import BaselineStatus, ExecutionStatus, RunPurpose, RunStatus, TaskExecution
 from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import get_orchestrator
 from app.services.storage import RepositoryDep, SceneRepository
@@ -239,7 +239,11 @@ def _build_runs_dashboard_context(
     batch_baselines: Dict[str, List[Dict[str, str]]] = {}
     for batches in project_batches.values():
         for batch in batches:
-            baselines = repo.list_baselines(batch_id=batch["id"])
+            baselines = [
+                item
+                for item in repo.list_baselines(batch_id=batch["id"])
+                if item.get("status") == BaselineStatus.completed.value
+            ]
             batch_baselines[batch["id"]] = [
                 {
                     "id": item["id"],

@@ -9,6 +9,8 @@ from app.schemas import (
     BatchCreate,
     BatchUpdate,
     Baseline,
+    BaselineOption,
+    BaselineStatus,
     ExecutionCallbackRequest,
     Page,
     PageCreate,
@@ -276,6 +278,24 @@ async def orchestrator_ping() -> Dict[str, str]:
     return {"status": "ok"}
 
 
+def _format_baseline_option_payload(baseline: Dict[str, object]) -> BaselineOption:
+    created_raw = str(baseline.get("created_at") or "Unknown")
+    status_raw = str(baseline.get("status") or "pending")
+    status_label = status_raw.replace("_", " ").title()
+    baseline_id = str(baseline.get("id") or "")
+    short_id = baseline_id[:8] if baseline_id else ""
+    parts = [created_raw, status_label]
+    if short_id:
+        parts.append(short_id)
+    label = " · ".join(parts)
+    return BaselineOption(
+        id=baseline_id,
+        label=label,
+        status=status_raw,
+        created_at=created_raw,
+    )
+
+
 @router.post("/executions/{execution_id}/complete")
 async def complete_execution_callback(
     execution_id: str,
@@ -291,8 +311,15 @@ async def complete_execution_callback(
     return {"status": "ok"}
 
 
-@router.get("/batches/{batch_id}/baselines", response_model=List[Baseline])
-async def list_batch_baselines(batch_id: str, repo: SceneRepository = RepositoryDep) -> List[Baseline]:
+@router.get("/batches/{batch_id}/baselines", response_model=List[BaselineOption])
+async def list_batch_baselines(
+    batch_id: str, repo: SceneRepository = RepositoryDep
+) -> List[BaselineOption]:
     if not repo.get_batch(batch_id):
         raise HTTPException(status_code=404, detail="Batch not found")
-    return repo.list_baselines(batch_id=batch_id)
+    baselines = repo.list_baselines(batch_id=batch_id)
+    return [
+        _format_baseline_option_payload(item)
+        for item in baselines
+        if item.get("status") == BaselineStatus.completed.value
+    ]

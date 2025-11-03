@@ -162,7 +162,10 @@
 
 ## Session Updates
 - ESC from the execution viewer now reopens the originating run modal, while ESC from the run modal returns the dashboard to `/runs`.
-- The Playwright runner auto-scrolls before captures so narrow/mobile viewports produce full-height screenshots instead of truncating long pages.
+- The run launcher dropdown now filters out failed baselines and refreshes completed options via the API, so the latest recordings appear without a full-page reload.
+- Auto-scroll now adapts to dynamically growing pages and flags narrow viewports as mobile/touch contexts, preventing the truncated mobile screenshots we were seeing earlier.
+- The Playwright runner now lives in `app/services/runner_script.py`; the orchestrator reads the file at runtime, simplifying maintenance and hot patches.
+- Base layout now links the local favicon set (`favicon.ico`, `favicon-32.png`, `apple-touch-icon.png`) so browsers pick up the supplied artwork in all contexts.
 - Missing `scene-playwright-runner:latest` images now trigger an automatic `Dockerfile.playwright` build before launching containers, with run logs capturing the build status.
 - Execution cancellation logging now distinguishes between run-level and per-execution cancels to simplify diagnosis when orchestration aborts early.
 - Docker CLI launches no longer pass `--rm`, keeping containers around long enough for log streaming before the orchestrator removes them explicitly.

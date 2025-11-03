@@ -552,8 +552,43 @@
 
       const projects = metadata.projects || [];
       const batchMap = metadata.batches || {};
-      const baselineMap = metadata.baselines || {};
       const defaults = metadata.defaults || {};
+      const baselineInitial = metadata.baselines || {};
+
+      function formatBaselineLabel(option) {
+        const created = String(option.created_at || option.createdAt || "Unknown");
+        const statusRaw = String(option.status || "pending");
+        const status = statusRaw.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+        const id = String(option.id || "");
+        const shortId = id ? id.slice(0, 8) : "";
+        const parts = [created, status];
+        if (shortId) {
+          parts.push(shortId);
+        }
+        return parts.join(" · ");
+      }
+
+      const baselineCache = new Map(
+        Object.entries(baselineInitial).map(([batchId, options]) => [
+          batchId,
+          Array.isArray(options)
+            ? options
+                .map((option) => {
+                  if (!option || typeof option !== "object") {
+                    return null;
+                  }
+                  const id = String(option.id || "").trim();
+                  if (!id) {
+                    return null;
+                  }
+                  const label = String(option.label || "").trim() || formatBaselineLabel(option);
+                  return { id, label };
+                })
+                .filter(Boolean)
+            : [],
+        ])
+      );
+      const baselineRequests = new Map();
 
       const state = {
         activeProject: "",
@@ -563,57 +598,69 @@
         initializedBaseline: false,
       };
 
-      function renderProjectOptions() {
-        if (!projects.length) {
-          projectSelect.innerHTML =
-            '<option value="" disabled>No projects available</option>';
-          projectSelect.disabled = true;
-          batchSelect.innerHTML =
-            '<option value="" disabled>No batches available</option>';
-          batchSelect.disabled = true;
-          state.activeProject = "";
-          state.activeBatch = "";
-          baselineSelect.classList.add("d-none");
-          baselineSelect.disabled = true;
-          baselineSelect.innerHTML = "";
-          baselineInput.classList.add("d-none");
-          baselineInput.disabled = true;
-          baselineInput.value = "";
-          baselineHelp.textContent =
-            "Create a project and batch to launch a run.";
-          baselineField.dataset.mode = "inactive";
-          baselineField.classList.add("opacity-50");
-          return;
-        }
-
-        const optionsHtml = projects
-          .map((project) => `<option value="${project.id}">${project.name}</option>`)
-          .join("");
-        projectSelect.innerHTML = optionsHtml;
-        projectSelect.disabled = false;
-
-        const defaultProjectId =
-          (defaults.project_id &&
-            projects.some((project) => project.id === defaults.project_id) &&
-            defaults.project_id) ||
-          projects[0].id;
-        if (
-          !state.activeProject ||
-          !projects.some((project) => project.id === state.activeProject)
-        ) {
-          state.activeProject = defaultProjectId;
-        }
-        projectSelect.value = state.activeProject;
-        baselineField.classList.remove("opacity-50");
+      function getBaselineOptions(batchId) {
+        return baselineCache.get(batchId) || [];
       }
 
-      function renderBaselineControls(options = {}) {
+      function normalizeBaselineEntries(items) {
+        if (!Array.isArray(items)) {
+          return [];
+        }
+        return items
+          .map((item) => {
+            if (!item || typeof item !== "object") {
+              return null;
+            }
+            const id = String(item.id || "").trim();
+            if (!id) {
+              return null;
+            }
+            const label = String(item.label || "").trim() || formatBaselineLabel(item);
+            return { id, label };
+          })
+          .filter(Boolean);
+      }
+
+      async function fetchBaselineOptions(batchId, forceRefresh = false) {
+        if (!batchId) {
+          return [];
+        }
+        if (!forceRefresh && baselineRequests.has(batchId)) {
+          return baselineRequests.get(batchId);
+        }
+        const request = (async () => {
+          try {
+            const response = await fetch(`/api/batches/${batchId}/baselines`);
+            if (!response.ok) {
+              throw new Error(`Failed to load baselines (${response.status})`);
+            }
+            const data = await response.json();
+            const normalized = normalizeBaselineEntries(data);
+            baselineCache.set(batchId, normalized);
+            return normalized;
+          } catch (error) {
+            console.error("Unable to fetch baselines", error);
+            return getBaselineOptions(batchId);
+          } finally {
+            baselineRequests.delete(batchId);
+          }
+        })();
+        baselineRequests.set(batchId, request);
+        return request;
+      }
+
+      const scheduleBaselineRender = (options = {}) =>
+        renderBaselineControls(options).catch((error) => {
+          console.error("Failed to render baseline controls", error);
+        });
+
+      async function renderBaselineControls(options = {}) {
         const resetSelection = Boolean(options.resetSelection);
         const noBatch = Boolean(options.noBatch);
         const purposeValue = purposeSelect.value;
         const batchId = state.activeBatch || "";
-        const baselineOptions = baselineMap[batchId] || [];
-        const hasOptions = baselineOptions.length > 0;
+        const refresh = options.refresh !== false;
+        const forceRefresh = Boolean(options.forceRefresh);
 
         baselineField.classList.remove("opacity-50");
 
@@ -629,6 +676,25 @@
           baselineField.classList.add("opacity-50");
           return;
         }
+
+        let baselineOptions = getBaselineOptions(batchId);
+        if (refresh) {
+          baselineField.dataset.loading = "true";
+          try {
+            baselineOptions = await fetchBaselineOptions(batchId, forceRefresh);
+          } finally {
+            delete baselineField.dataset.loading;
+          }
+        }
+
+        applyBaselineOptions(baselineOptions, { resetSelection, purposeValue });
+      }
+
+      function applyBaselineOptions(baselineOptions, context) {
+        const resetSelection = Boolean(context.resetSelection);
+        const purposeValue = context.purposeValue;
+        const batchId = state.activeBatch || "";
+        const hasOptions = baselineOptions.length > 0;
 
         if (!state.initializedBaseline) {
           if (
@@ -656,9 +722,7 @@
             if (
               state.baselineSelection &&
               state.baselineSelection !== CUSTOM_BASELINE_OPTION &&
-              !baselineOptions.some(
-                (option) => option.id === state.baselineSelection
-              )
+              !baselineOptions.some((option) => option.id === state.baselineSelection)
             ) {
               state.baselineSelection = "";
             }
@@ -738,6 +802,50 @@
         }
       }
 
+      function renderProjectOptions() {
+        if (!projects.length) {
+          projectSelect.innerHTML =
+            '<option value="" disabled>No projects available</option>';
+          projectSelect.disabled = true;
+          batchSelect.innerHTML =
+            '<option value="" disabled>No batches available</option>';
+          batchSelect.disabled = true;
+          state.activeProject = "";
+          state.activeBatch = "";
+          baselineSelect.classList.add("d-none");
+          baselineSelect.disabled = true;
+          baselineSelect.innerHTML = "";
+          baselineInput.classList.add("d-none");
+          baselineInput.disabled = true;
+          baselineInput.value = "";
+          baselineHelp.textContent =
+            "Create a project and batch to launch a run.";
+          baselineField.dataset.mode = "inactive";
+          baselineField.classList.add("opacity-50");
+          return;
+        }
+
+        const optionsHtml = projects
+          .map((project) => `<option value="${project.id}">${project.name}</option>`)
+          .join("");
+        projectSelect.innerHTML = optionsHtml;
+        projectSelect.disabled = false;
+
+        const defaultProjectId =
+          (defaults.project_id &&
+            projects.some((project) => project.id === defaults.project_id) &&
+            defaults.project_id) ||
+          projects[0].id;
+        if (
+          !state.activeProject ||
+          !projects.some((project) => project.id === state.activeProject)
+        ) {
+          state.activeProject = defaultProjectId;
+        }
+        projectSelect.value = state.activeProject;
+        baselineField.classList.remove("opacity-50");
+      }
+
       function renderBatchOptions(options = {}) {
         const useDefaults = Boolean(options.useDefaults);
         const resetBaseline = Boolean(options.resetBaseline);
@@ -750,7 +858,7 @@
           batchSelect.disabled = true;
           state.activeBatch = "";
           state.initializedBaseline = false;
-          renderBaselineControls({ resetSelection: true, noBatch: true });
+          scheduleBaselineRender({ resetSelection: true, noBatch: true, refresh: false });
           return;
         }
 
@@ -782,7 +890,7 @@
           state.customBaseline = "";
         }
         state.initializedBaseline = false;
-        renderBaselineControls({ resetSelection: true });
+        scheduleBaselineRender({ resetSelection: true, refresh: true, forceRefresh: true });
       }
 
       projectSelect.addEventListener("change", () => {
@@ -795,7 +903,8 @@
       batchSelect.addEventListener("change", () => {
         state.activeBatch = batchSelect.value || "";
         state.baselineSelection = "";
-        renderBaselineControls({ resetSelection: true });
+        state.initializedBaseline = false;
+        scheduleBaselineRender({ resetSelection: true, refresh: true, forceRefresh: true });
       });
 
       purposeSelect.addEventListener("change", () => {
@@ -803,7 +912,7 @@
           state.baselineSelection = "";
           state.customBaseline = "";
         }
-        renderBaselineControls({ resetSelection: false });
+        scheduleBaselineRender({ resetSelection: false, refresh: false });
       });
 
       baselineSelect.addEventListener("change", () => {
@@ -814,7 +923,23 @@
           state.baselineSelection = value;
           state.customBaseline = "";
         }
-        renderBaselineControls({ resetSelection: false });
+        scheduleBaselineRender({ resetSelection: false, refresh: false });
+      });
+
+      baselineSelect.addEventListener("focus", () => {
+        scheduleBaselineRender({
+          resetSelection: false,
+          refresh: true,
+          forceRefresh: true,
+        });
+      });
+
+      baselineInput.addEventListener("focus", () => {
+        scheduleBaselineRender({
+          resetSelection: false,
+          refresh: true,
+          forceRefresh: true,
+        });
       });
 
       baselineInput.addEventListener("input", () => {
@@ -829,7 +954,6 @@
       state.activeProject = projectSelect.value || "";
       purposeSelect.value = defaults.purpose || purposeSelect.value || "comparison";
       renderBatchOptions({ useDefaults: true, resetBaseline: false });
-      renderBaselineControls({ resetSelection: true });
       form.dataset.sceneInit = "1";
     }
 

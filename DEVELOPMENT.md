@@ -174,6 +174,16 @@
 - Hardened the runner retry loop so the success `break` now executes via an `else` clause, eliminating syntax errors and preserving retry semantics.
 - Restored the capture attempt block to live inside the retry loop, preventing invalid `except` placement and allowing retries to run as intended.
 
+
+
+## Unresolved Issues
+
+### Mobile Auto-scroll Stagnation
+- **Symptoms:** Mobile viewport captures still report stagnation after a handful of scroll attempts, even though the page height later expands to ~21 k px. Resulting screenshots include a white tail after the first screenful.
+- **What we tried:** Incremental scroll via `window.scrollBy`, forcing bottom-jump fallback, deferring scroll until `scrollHeight` growth, and detecting the active scroll container. Despite these adjustments, Firefox-like stagnation persists.
+- **Open instructions:** You asked to avoid CSS/viewport hacks and preferred virtualization/timing fixes or segmented capture as a last resort. Diagnosing the true scroll container and capturing by segments remains on hold pending further direction.
+- **Next steps:** Instrument the runner to log the element actually scrolling (`tag/id`), experiment with Playwright gestures (`page.mouse.wheel` or `touchscreen.swipe`), or add a segmented capture fallback for stubborn pages.
+
 ## Pending Issues for Next Session
 
 ### Process hygiene

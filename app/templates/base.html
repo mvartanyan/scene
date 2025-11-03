@@ -22,7 +22,10 @@
   <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm">
       <div class="container">
-        <a class="navbar-brand fw-semibold" href="/">Scene</a>
+        <a class="navbar-brand fw-semibold d-flex align-items-center gap-2" href="/">
+          <img src="{{ url_for("static", path="favicon-32.png") }}" alt="Scene logo" width="28" height="28" class="rounded" />
+          <span>Scene</span>
+        </a>
         <button
           class="navbar-toggler"
           type="button"

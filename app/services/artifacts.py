@@ -1,15 +1,28 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Optional
+
+SCENE_ARTIFACT_ROOT_ENV = "SCENE_ARTIFACT_ROOT"
+SCENE_ARTIFACT_BASE_URL_ENV = "SCENE_ARTIFACT_BASE_URL"
+DEFAULT_LOCAL_ROOT = Path(".scene")
+DEFAULT_ARTIFACT_ROOT = DEFAULT_LOCAL_ROOT / "artifacts"
+
+
+def resolve_artifact_root() -> Path:
+    configured = os.environ.get(SCENE_ARTIFACT_ROOT_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    return DEFAULT_ARTIFACT_ROOT
 
 
 class ArtifactStore:
     """Manage on-disk locations for run and baseline artifacts."""
 
     def __init__(self, root: Optional[Path] = None, base_url: str = "/artifacts") -> None:
-        resolved_root = root or Path.cwd() / "artifacts"
+        resolved_root = root or resolve_artifact_root()
         self._root = resolved_root.resolve()
         self._base_url = base_url.rstrip("/")
         self._root.mkdir(parents=True, exist_ok=True)
@@ -66,5 +79,7 @@ _artifact_store: Optional[ArtifactStore] = None
 def get_artifact_store() -> ArtifactStore:
     global _artifact_store
     if _artifact_store is None:
-        _artifact_store = ArtifactStore()
+        _artifact_store = ArtifactStore(
+            base_url=os.environ.get(SCENE_ARTIFACT_BASE_URL_ENV, "/artifacts")
+        )
     return _artifact_store

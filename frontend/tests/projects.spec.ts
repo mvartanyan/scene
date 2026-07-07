@@ -15,10 +15,14 @@ test.describe('Projects dashboard', () => {
     expect(response.ok()).toBeTruthy();
     const project = await response.json();
 
-    await page.goto('/projects');
-    await expect(page.locator('.list-group-item', { hasText: name })).toBeVisible();
-
-    await request.delete(`${apiBase}/projects/${project.id}`);
+    try {
+      await page.goto('/projects');
+      await expect(
+        page.locator('#project-dashboard .list-group-item').filter({ hasText: name })
+      ).toBeVisible();
+    } finally {
+      await request.delete(`${apiBase}/projects/${project.id}`);
+    }
   });
 
   test('renders run dashboard filters', async ({ page }) => {

@@ -17,6 +17,18 @@ uvicorn app.main:app --reload
 ```
 - App served on `http://127.0.0.1:8000/`.
 - Hot reload is enabled via `--reload`.
+- Runtime state is written to `.scene/dev.dynamodb.json` and artifacts to `.scene/artifacts/` by default.
+- Override those locations with `SCENE_STATE_PATH=/path/to/state.json` and `SCENE_ARTIFACT_ROOT=/path/to/artifacts`.
+
+## Runtime Data Policy
+- `dev.dynamodb.json` is a tracked demo/seed snapshot, not the default mutable development database.
+- To seed a local runtime database from the tracked snapshot:
+  ```bash
+  mkdir -p .scene
+  cp dev.dynamodb.json .scene/dev.dynamodb.json
+  ```
+- Local runtime data, Playwright reports, traces, videos, screenshots, and temp DB files are ignored. They can be removed when no longer needed; use `rm -rf .scene frontend/playwright-report frontend/test-results` for a local cleanup.
+- Tests should create state and artifact roots under pytest temporary directories or explicit env-configured paths, never by writing to `dev.dynamodb.json`.
 
 ## Key Screens & Workflows
 - **Projects**: Select a project then manage Pages, Tasks, and Batches via Bootstrap tabs. Inline edit/delete is available via collapsible forms.
@@ -32,7 +44,7 @@ pytest
 ## Orchestration Notes
 - Docker is required; the Playwright container image is `scene-playwright-runner:latest` (built from `Dockerfile.playwright`).
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
-- Artifacts are stored under `artifacts/runs/<run>/<execution>/` and exposed via `/artifacts/...`.
+- Artifacts are stored under `.scene/artifacts/runs/<run>/<execution>/` by default and exposed via `/artifacts/...`.
 - Each execution waits up to 60 s for `page.goto(..., networkidle)` and then idles an additional 7 s by default (`post_wait_ms`, configurable under *Capture Stabilization*) before capturing; add preparatory actions such as `disable_animations` or `wait` to tune per-page behaviour. The same actions/JS are replayed for reference URLs prior to their capture, and reference screenshots are padded server-side to match the observed dimensions so sliders stay aligned. The runner logic now lives in `app/services/runner_script.py` (imported at runtime by the orchestrator) and auto-scrolls lazily rendered pages by driving the actual scrolling container, backing off only when `scrollHeight` stops growing.
 
 ### Preparatory Actions

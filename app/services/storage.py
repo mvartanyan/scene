@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -13,6 +14,62 @@ from app.constants import DEFAULT_BROWSERS, DEFAULT_VIEWPORTS
 from app.services.artifacts import get_artifact_store
 
 STATE_VERSION = 1
+SCENE_STATE_PATH_ENV = "SCENE_STATE_PATH"
+SCENE_HOST_URL_ENV = "SCENE_HOST_URL"
+SCENE_MAX_CONCURRENT_EXECUTIONS_ENV = "SCENE_MAX_CONCURRENT_EXECUTIONS"
+SCENE_RUN_TIMEOUT_SECONDS_ENV = "SCENE_RUN_TIMEOUT_SECONDS"
+SCENE_CAPTURE_DELAY_MS_ENV = "SCENE_CAPTURE_DELAY_MS"
+SCENE_DIFF_PIXEL_TOLERANCE_ENV = "SCENE_DIFF_PIXEL_TOLERANCE"
+DEFAULT_LOCAL_ROOT = Path(".scene")
+DEFAULT_STATE_PATH = DEFAULT_LOCAL_ROOT / "dev.dynamodb.json"
+
+
+def resolve_state_path() -> Path:
+    configured = os.environ.get(SCENE_STATE_PATH_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    return DEFAULT_STATE_PATH
+
+
+def _env_int(name: str, default: int) -> int:
+    configured = os.environ.get(name)
+    if not configured:
+        return default
+    try:
+        return int(configured)
+    except ValueError:
+        return default
+
+
+def _default_config() -> Dict[str, Any]:
+    return {
+        "browsers": DEFAULT_BROWSERS.copy(),
+        "viewports": DEFAULT_VIEWPORTS.copy(),
+        "display_timezone": "utc",
+        "run_timeout_seconds": _env_int(SCENE_RUN_TIMEOUT_SECONDS_ENV, 600),
+        "max_concurrent_executions": _env_int(SCENE_MAX_CONCURRENT_EXECUTIONS_ENV, 4),
+        "scene_host_url": os.environ.get(
+            SCENE_HOST_URL_ENV,
+            "http://host.docker.internal:8000",
+        ),
+        "capture_post_wait_ms": _env_int(SCENE_CAPTURE_DELAY_MS_ENV, 7000),
+        "diff_pixel_tolerance": _env_int(SCENE_DIFF_PIXEL_TOLERANCE_ENV, 0),
+    }
+
+
+def _apply_config_env_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
+    overridden = dict(config)
+    if os.environ.get(SCENE_HOST_URL_ENV):
+        overridden["scene_host_url"] = os.environ[SCENE_HOST_URL_ENV]
+    for env_name, key in [
+        (SCENE_MAX_CONCURRENT_EXECUTIONS_ENV, "max_concurrent_executions"),
+        (SCENE_RUN_TIMEOUT_SECONDS_ENV, "run_timeout_seconds"),
+        (SCENE_CAPTURE_DELAY_MS_ENV, "capture_post_wait_ms"),
+        (SCENE_DIFF_PIXEL_TOLERANCE_ENV, "diff_pixel_tolerance"),
+    ]:
+        if os.environ.get(env_name):
+            overridden[key] = _env_int(env_name, int(overridden.get(key, 0) or 0))
+    return overridden
 
 
 def _utcnow() -> str:
@@ -30,15 +87,7 @@ def _default_state() -> Dict[str, Any]:
         "runs": {},
         "executions": {},
         "baselines": {},
-        "config": {
-            "browsers": DEFAULT_BROWSERS.copy(),
-            "viewports": DEFAULT_VIEWPORTS.copy(),
-            "display_timezone": "utc",
-            "run_timeout_seconds": 600,
-            "max_concurrent_executions": 4,
-            "scene_host_url": "http://host.docker.internal:8000",
-            "capture_post_wait_ms": 7000,
-        },
+        "config": _default_config(),
     }
 
 
@@ -86,15 +135,7 @@ class LocalDynamoStorage:
             state.setdefault("baselines", {})
             state.setdefault("executions", {})
             if "config" not in state:
-                state["config"] = {
-                    "browsers": DEFAULT_BROWSERS.copy(),
-                    "viewports": DEFAULT_VIEWPORTS.copy(),
-                    "display_timezone": "utc",
-                    "run_timeout_seconds": 600,
-                    "max_concurrent_executions": 4,
-                    "scene_host_url": "http://host.docker.internal:8000",
-                    "capture_post_wait_ms": 7000,
-                }
+                state["config"] = _default_config()
             else:
                 state_config = state["config"]
                 state_config.setdefault("browsers", DEFAULT_BROWSERS.copy())
@@ -127,17 +168,8 @@ class LocalDynamoStorage:
         return self._state.setdefault(name, {})
 
     def get_config(self) -> Dict[str, Any]:
-        return self._state.setdefault(
-            "config",
-            {
-                "browsers": DEFAULT_BROWSERS.copy(),
-                "viewports": DEFAULT_VIEWPORTS.copy(),
-                "display_timezone": "utc",
-                "run_timeout_seconds": 600,
-                "max_concurrent_executions": 4,
-                "scene_host_url": "http://host.docker.internal:8000",
-                "capture_post_wait_ms": 7000,
-            },
+        return _apply_config_env_overrides(
+            self._state.setdefault("config", _default_config())
         )
 
     def update_config(
@@ -150,9 +182,10 @@ class LocalDynamoStorage:
         max_concurrent_executions: Optional[int] = None,
         scene_host_url: Optional[str] = None,
         capture_post_wait_ms: Optional[int] = None,
+        diff_pixel_tolerance: Optional[int] = None,
     ) -> Dict[str, Any]:
         with self._lock:
-            config = self.get_config()
+            config = self._state.setdefault("config", _default_config())
             if browsers is not None:
                 config["browsers"] = browsers
             if viewports is not None:
@@ -167,8 +200,10 @@ class LocalDynamoStorage:
                 config["scene_host_url"] = scene_host_url
             if capture_post_wait_ms is not None:
                 config["capture_post_wait_ms"] = capture_post_wait_ms
+            if diff_pixel_tolerance is not None:
+                config["diff_pixel_tolerance"] = diff_pixel_tolerance
             self._persist()
-            return config
+            return _apply_config_env_overrides(config)
 
     def upsert(self, collection: str, item_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self._lock:
@@ -220,6 +255,7 @@ class SceneRepository:
             "max_concurrent_executions": int(config.get("max_concurrent_executions", 4)),
             "scene_host_url": config.get("scene_host_url", "http://host.docker.internal:8000"),
             "capture_post_wait_ms": int(config.get("capture_post_wait_ms", 7000)),
+            "diff_pixel_tolerance": int(config.get("diff_pixel_tolerance", 0)),
         }
 
     def set_available_browsers(self, browsers: List[str]) -> Dict[str, Any]:
@@ -311,6 +347,12 @@ class SceneRepository:
         if not normalized:
             raise ValueError("Scene host URL cannot be blank.")
         self._storage.update_config(scene_host_url=normalized)
+        return self.get_config()
+
+    def set_diff_pixel_tolerance(self, tolerance: int) -> Dict[str, Any]:
+        if tolerance < 0 or tolerance > 255:
+            raise ValueError("Diff pixel tolerance must be between 0 and 255.")
+        self._storage.update_config(diff_pixel_tolerance=int(tolerance))
         return self.get_config()
 
     # -- Projects -----------------------------------------------------------------
@@ -409,10 +451,8 @@ class SceneRepository:
             return None
         updates = {}
         for key, value in payload.items():
-            if value is None:
-                continue
             if key in {"url", "reference_url"}:
-                updates[key] = str(value)
+                updates[key] = str(value) if value is not None else None
             else:
                 if key in {"basic_auth_username", "basic_auth_password"} and not value:
                     updates[key] = None
@@ -466,7 +506,13 @@ class SceneRepository:
         record = self.get_task(task_id)
         if not record:
             return None
-        record.update({k: v for k, v in payload.items() if v is not None})
+        for key, value in payload.items():
+            if key == "task_js":
+                record[key] = _sanitize_script(value)
+            elif key == "task_actions":
+                record[key] = _sanitize_actions(value)
+            else:
+                record[key] = value
         record["updated_at"] = _utcnow()
         return self._storage.upsert("tasks", task_id, record)
 
@@ -536,7 +582,9 @@ class SceneRepository:
         for key in threshold_keys:
             if key in payload:
                 record[key] = payload[key]
-        record.update({k: v for k, v in payload.items() if v is not None and k not in threshold_keys})
+        for key, value in payload.items():
+            if key not in threshold_keys:
+                record[key] = value
         record["updated_at"] = _utcnow()
         return self._storage.upsert("batches", batch_id, record)
 
@@ -807,7 +855,7 @@ def get_repository() -> SceneRepository:
     """FastAPI dependency to retrieve the singleton repository instance."""
     global _repository
     if _repository is None:
-        storage_path = Path("dev.dynamodb.json")
+        storage_path = resolve_state_path()
         backend = LocalDynamoStorage(storage_path)
         _repository = SceneRepository(backend)
     return _repository

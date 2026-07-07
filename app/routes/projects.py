@@ -14,6 +14,10 @@ from app.templating import templates
 router = APIRouter(tags=["projects"])
 
 
+class ProjectFormError(ValueError):
+    pass
+
+
 def _parse_viewport_tokens(tokens: List[str]) -> Tuple[List[dict], List[str]]:
     viewports: List[dict] = []
     normalized: List[str] = []
@@ -55,18 +59,18 @@ def _parse_actions_payload(raw: Optional[str], *, label: str) -> List[dict]:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=400, detail=f"{label} must be valid JSON.") from exc
+            raise ProjectFormError(f"{label} must be valid JSON.") from exc
     else:
         data = raw
     if not isinstance(data, list):
-        raise HTTPException(status_code=400, detail=f"{label} must be a JSON array of action objects.")
+        raise ProjectFormError(f"{label} must be a JSON array of action objects.")
     cleaned: List[dict] = []
     for index, item in enumerate(data, 1):
         if not isinstance(item, dict):
-            raise HTTPException(status_code=400, detail=f"{label} item {index} must be an object.")
+            raise ProjectFormError(f"{label} item {index} must be an object.")
         action_type = item.get("type")
         if not isinstance(action_type, str) or not action_type.strip():
-            raise HTTPException(status_code=400, detail=f"{label} item {index} is missing a 'type'.")
+            raise ProjectFormError(f"{label} item {index} is missing a 'type'.")
         cleaned.append(dict(item))
     return cleaned
 
@@ -139,6 +143,7 @@ def _render_project_detail(
     editing_task: Optional[dict] = None,
     editing_batch: Optional[dict] = None,
     flash_message: Optional[Tuple[str, str]] = None,
+    error_message: Optional[str] = None,
 ) -> HTMLResponse:
     context = _build_project_context(
         repo,
@@ -149,7 +154,7 @@ def _render_project_detail(
         editing_batch=editing_batch,
     )
     context["request"] = request
-    context["flash_message"] = flash_message
+    context["flash_message"] = flash_message or (("danger", error_message) if error_message else None)
     return templates.TemplateResponse("projects/_project_detail.html", context)
 
 
@@ -269,7 +274,16 @@ async def create_page(
     active_tab: str = Form("pages"),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
-    actions_payload = _parse_actions_payload(preparatory_actions, label="Preparatory actions")
+    try:
+        actions_payload = _parse_actions_payload(preparatory_actions, label="Preparatory actions")
+    except ProjectFormError as exc:
+        return _render_project_detail(
+            request,
+            repo,
+            project_id,
+            active_tab=active_tab,
+            error_message=str(exc),
+        )
 
     repo.create_page(
         {
@@ -309,17 +323,27 @@ async def edit_page(
     existing = repo.get_page(page_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Page not found")
-    actions_payload = _parse_actions_payload(preparatory_actions, label="Preparatory actions")
+    try:
+        actions_payload = _parse_actions_payload(preparatory_actions, label="Preparatory actions")
+    except ProjectFormError as exc:
+        return _render_project_detail(
+            request,
+            repo,
+            existing["project_id"],
+            active_tab=active_tab,
+            editing_page=existing,
+            error_message=str(exc),
+        )
 
     page = repo.update_page(
         page_id,
         {
             "name": name,
             "url": url,
-            "reference_url": reference_url or None,
-            "preparatory_js": preparatory_js or None,
+            "reference_url": (reference_url or "").strip() or None,
+            "preparatory_js": preparatory_js or "",
             "preparatory_actions": actions_payload,
-            "basic_auth_username": basic_auth_username or None,
+            "basic_auth_username": (basic_auth_username or "").strip() or None,
             "basic_auth_password": basic_auth_password or None,
         },
     )
@@ -356,6 +380,7 @@ async def create_task(
     browsers: Optional[List[str]] = Form(default=None),
     viewports: Optional[List[str]] = Form(default=None),
     task_js: Optional[str] = Form(None),
+    task_actions: Optional[str] = Form(None),
     active_tab: str = Form("tasks"),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
@@ -371,6 +396,16 @@ async def create_task(
             status_code=400,
             detail="Unsupported viewports: " + ", ".join(sorted(invalid_viewports)),
         )
+    try:
+        actions_payload = _parse_actions_payload(task_actions, label="Task actions")
+    except ProjectFormError as exc:
+        return _render_project_detail(
+            request,
+            repo,
+            project_id,
+            active_tab=active_tab,
+            error_message=str(exc),
+        )
 
     repo.create_task(
         {
@@ -378,6 +413,7 @@ async def create_task(
             "page_id": page_id,
             "name": name,
             "task_js": task_js or None,
+            "task_actions": actions_payload,
             "browsers": selected_browsers,
             "viewports": viewport_dicts,
         }
@@ -400,6 +436,7 @@ async def edit_task(
     browsers: Optional[List[str]] = Form(default=None),
     viewports: Optional[List[str]] = Form(default=None),
     task_js: Optional[str] = Form(None),
+    task_actions: Optional[str] = Form(None),
     active_tab: str = Form("tasks"),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
@@ -418,6 +455,17 @@ async def edit_task(
             status_code=400,
             detail="Unsupported viewports: " + ", ".join(sorted(invalid_viewports)),
         )
+    try:
+        actions_payload = _parse_actions_payload(task_actions, label="Task actions")
+    except ProjectFormError as exc:
+        return _render_project_detail(
+            request,
+            repo,
+            task["project_id"],
+            active_tab=active_tab,
+            editing_task=task,
+            error_message=str(exc),
+        )
 
     repo.update_task(
         task_id,
@@ -426,7 +474,8 @@ async def edit_task(
             "page_id": page_id,
             "browsers": selected_browsers,
             "viewports": viewport_dicts,
-            "task_js": task_js or None,
+            "task_js": task_js or "",
+            "task_actions": actions_payload,
         },
     )
     return _render_project_detail(

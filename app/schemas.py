@@ -274,6 +274,59 @@ class BaselineOption(BaseModel):
     created_at: Optional[str] = None
 
 
+class CheckCandidate(BaseModel):
+    project_id: str
+    project_name: str
+    batch_id: str
+    batch_name: str
+    task_count: int
+    latest_baseline_id: Optional[str] = None
+    completed_baseline_count: int = 0
+    run_diff_threshold: Optional[float] = None
+    execution_diff_threshold: Optional[float] = None
+    can_compare: bool
+    unavailable_reasons: List[str] = Field(default_factory=list)
+
+
+class BatchComparisonRunCreate(BaseModel):
+    baseline_id: Optional[str] = None
+    requested_by: Optional[str] = None
+    note: Optional[str] = None
+    jira_issue: Optional[str] = None
+    timeout_seconds: Optional[int] = Field(default=None, ge=1)
+
+
+class RunFailureStatus(BaseModel):
+    scope: str
+    status: str
+    message: Optional[str] = None
+    execution_id: Optional[str] = None
+    task_id: Optional[str] = None
+    task_name: Optional[str] = None
+    browser: Optional[str] = None
+    viewport: Optional[Dict[str, int]] = None
+
+
+class IntegrationRunResult(BaseModel):
+    run_id: str
+    status: RunStatus
+    batch_id: str
+    baseline_id: Optional[str] = None
+    executions_total: int
+    executions_finished: int
+    executions_failed: int
+    executions_cancelled: int
+    diff_average: float
+    diff_maximum: float
+    run_diff_threshold: Optional[float] = None
+    execution_diff_threshold: Optional[float] = None
+    threshold_passed: Optional[bool] = None
+    threshold_failures: List[str] = Field(default_factory=list)
+    artifact_url: Optional[str] = None
+    viewer_url: Optional[str] = None
+    failure_statuses: List[RunFailureStatus] = Field(default_factory=list)
+
+
 class RunBase(BaseModel):
     project_id: str
     batch_id: str

@@ -45,6 +45,7 @@ def _build_config_context(
     max_concurrent = int(config.get("max_concurrent_executions", 4))
     scene_host_url = config.get("scene_host_url", "http://host.docker.internal:8000")
     capture_post_wait_ms = int(config.get("capture_post_wait_ms", 7000))
+    diff_pixel_tolerance = int(config.get("diff_pixel_tolerance", 0))
 
     browser_options = sorted(set(DEFAULT_BROWSERS) | set(selected_browsers) | used_browsers)
     available_viewports = sorted(
@@ -64,6 +65,7 @@ def _build_config_context(
         "max_concurrent_executions": max_concurrent,
         "scene_host_url": scene_host_url,
         "capture_post_wait_ms": capture_post_wait_ms,
+        "diff_pixel_tolerance": diff_pixel_tolerance,
         "message": message,
         "error": error,
     }
@@ -118,6 +120,22 @@ async def update_capture_delay(
         orchestrator = get_orchestrator()
         orchestrator.update_capture_delay(capture_post_wait_ms)
         context = _build_config_context(request, repo, message="Capture stabilization delay updated.")
+    except ValueError as exc:
+        context = _build_config_context(request, repo, error=str(exc))
+    return templates.TemplateResponse("config/modal.html", context)
+
+
+@router.post("/config/diff-pixel-tolerance", response_class=HTMLResponse)
+async def update_diff_pixel_tolerance(
+    request: Request,
+    diff_pixel_tolerance: int = Form(...),
+    repo: SceneRepository = RepositoryDep,
+) -> HTMLResponse:
+    try:
+        repo.set_diff_pixel_tolerance(diff_pixel_tolerance)
+        orchestrator = get_orchestrator()
+        orchestrator.update_diff_pixel_tolerance(diff_pixel_tolerance)
+        context = _build_config_context(request, repo, message="Diff pixel tolerance updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
     return templates.TemplateResponse("config/modal.html", context)

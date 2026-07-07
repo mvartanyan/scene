@@ -794,10 +794,18 @@ def main(config_path: str) -> None:
         _log("Execution failed; see traceback below")
         result["error"] = traceback.format_exc()
 
+    result_path = artifacts_dir / "result.json"
+    try:
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        _log(f"Unable to write result.json to {result_path}")
+
     if not _post_result(result):
         _log("Callback failed; emitting JSON payload to stdout")
         json.dump(result, sys.stdout)
         sys.stdout.write("\n")
+    if result.get("status") != "ok":
+        sys.exit(1)
 
 
 if __name__ == "__main__":

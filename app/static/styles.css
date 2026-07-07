@@ -24,3 +24,133 @@ body {
   max-height: min(70vh, 720px);
   overflow-y: auto;
 }
+
+.configuration-stack,
+.configuration-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.configuration-card {
+  border-radius: 0.5rem;
+}
+
+.configuration-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.configuration-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+}
+
+.configuration-field {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.configuration-field-half,
+.configuration-field-narrow {
+  grid-column: span 1;
+}
+
+.configuration-field-wide {
+  grid-column: 1 / -1;
+}
+
+.configuration-form-grid .configuration-field {
+  grid-column: auto;
+}
+
+.configuration-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.configuration-actions-grid {
+  grid-column: auto;
+}
+
+.configuration-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.5rem 1rem;
+  align-items: start;
+}
+
+.configuration-choice-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.configuration-list-item,
+.configuration-list-copy {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.configuration-list-copy {
+  width: 100%;
+}
+
+.configuration-list-label,
+.configuration-list-copy > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.configuration-item-actions,
+.configuration-row-actions {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 575.98px) {
+  .configuration-form,
+  .configuration-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .configuration-field,
+  .configuration-field-half,
+  .configuration-field-narrow,
+  .configuration-field-wide,
+  .configuration-form-grid .configuration-field,
+  .configuration-actions,
+  .configuration-actions-grid {
+    grid-column: 1 / -1;
+  }
+
+  .configuration-list-item,
+  .configuration-list-copy {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .configuration-actions,
+  .configuration-item-actions,
+  .configuration-row-actions {
+    justify-content: stretch;
+  }
+
+  .configuration-actions > .btn,
+  .configuration-item-actions > .btn,
+  .configuration-row-actions > .btn,
+  .configuration-row-actions > form,
+  .configuration-row-actions > form > .btn {
+    width: 100%;
+  }
+
+  .configuration-row-actions > form {
+    margin-left: 0 !important;
+  }
+}

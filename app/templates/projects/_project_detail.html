@@ -92,8 +92,8 @@
                 {% if pages %}
                   <div class="list-group list-group-flush">
                     {% for page in pages %}
-                      <div class="list-group-item">
-                        <div class="d-flex justify-content-between align-items-start">
+                      <div class="list-group-item configuration-list-item">
+                        <div class="configuration-list-copy">
                           <div class="me-3">
                             <div class="fw-semibold">{{ page.name }}</div>
                             <div class="small text-muted">{{ page.url }}</div>
@@ -104,7 +104,7 @@
                               <div class="small text-muted">Basic Auth: {{ page.basic_auth_username }}</div>
                             {% endif %}
                           </div>
-                          <div class="btn-group">
+                          <div class="btn-group configuration-row-actions">
                             <button
                               type="button"
                               class="btn btn-outline-primary btn-sm"
@@ -154,10 +154,11 @@
                   hx-post="{{ page_form_action }}"
                   hx-target="#project-detail"
                   hx-swap="innerHTML"
-                  class="row g-3"
+                  class="configuration-form"
+                  data-testid="page-configuration-form"
                 >
                   <input type="hidden" name="active_tab" value="pages" />
-                  <div class="col-12">
+                  <div class="configuration-field">
                     <label class="form-label">Name</label>
                     <input
                       type="text"
@@ -167,7 +168,7 @@
                       value="{{ editing_page.name if editing_page else '' }}"
                     />
                   </div>
-                  <div class="col-12">
+                  <div class="configuration-field">
                     <label class="form-label">URL</label>
                     <input
                       type="url"
@@ -178,7 +179,7 @@
                       value="{{ editing_page.url if editing_page else '' }}"
                     />
                   </div>
-                  <div class="col-12">
+                  <div class="configuration-field">
                     <label class="form-label">Reference URL</label>
                     <input
                       type="url"
@@ -188,7 +189,7 @@
                       value="{{ editing_page.reference_url if editing_page else '' }}"
                     />
                   </div>
-                  <div class="col-md-6">
+                  <div class="configuration-field configuration-field-half">
                     <label class="form-label">Basic Auth Username</label>
                     <input
                       type="text"
@@ -197,7 +198,7 @@
                       value="{{ editing_page.basic_auth_username if editing_page else '' }}"
                     />
                   </div>
-                  <div class="col-md-6">
+                  <div class="configuration-field configuration-field-half">
                     <label class="form-label">Basic Auth Password</label>
                     <input
                       type="text"
@@ -207,7 +208,7 @@
                       value="{{ editing_page.basic_auth_password if editing_page else '' }}"
                     />
                   </div>
-                  <div class="col-12">
+                  <div class="configuration-field">
                     <label class="form-label">Preparatory Actions (JSON)</label>
                     <textarea
                       name="preparatory_actions"
@@ -221,7 +222,7 @@
                       Provide an array of action objects (e.g. click, wait_for_selector, disable_animations, evaluate). Leave blank if not needed.
                     </div>
                   </div>
-                  <div class="col-12">
+                  <div class="configuration-field">
                     <label class="form-label">Preparatory JS</label>
                     <textarea
                       name="preparatory_js"
@@ -230,7 +231,7 @@
                       placeholder="// Optional setup script"
                     >{{ editing_page.preparatory_js or "" if editing_page else "" }}</textarea>
                   </div>
-                  <div class="col-12 d-flex justify-content-end gap-2">
+                  <div class="configuration-actions">
                     {% if editing_page %}
                       <button
                         type="button"
@@ -271,8 +272,8 @@
                       {% for vp in task.viewports %}
                         {% set _ = vp_ns.values.append(vp.width|string ~ 'x' ~ vp.height|string) %}
                       {% endfor %}
-                      <div class="list-group-item">
-                        <div class="d-flex justify-content-between align-items-start">
+                      <div class="list-group-item configuration-list-item">
+                        <div class="configuration-list-copy">
                           <div>
                             <div class="fw-semibold">{{ task.name }}</div>
                             <div class="small text-muted">
@@ -290,7 +291,7 @@
                               {% endif %}
                             </div>
                           </div>
-                          <div class="btn-group">
+                          <div class="btn-group configuration-row-actions">
                             <button
                               type="button"
                               class="btn btn-outline-primary btn-sm"
@@ -348,10 +349,11 @@
                     hx-post="{{ task_form_action }}"
                     hx-target="#project-detail"
                     hx-swap="innerHTML"
-                    class="row g-3"
+                    class="configuration-form"
+                    data-testid="task-configuration-form"
                   >
                     <input type="hidden" name="active_tab" value="tasks" />
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Name</label>
                       <input
                         type="text"
@@ -361,7 +363,7 @@
                         value="{{ editing_task.name if editing_task else '' }}"
                       />
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Page</label>
                       <select name="page_id" class="form-select" required>
                         {% for page in pages %}
@@ -374,9 +376,9 @@
                         {% endfor %}
                       </select>
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Browsers</label>
-                      <div class="d-flex flex-wrap gap-3">
+                      <div class="configuration-choice-grid">
                         {% for browser in available_browsers %}
                           <div class="form-check">
                             <input
@@ -394,9 +396,9 @@
                         {% endfor %}
                       </div>
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Viewports</label>
-                      <div class="d-flex flex-wrap gap-3">
+                      <div class="configuration-choice-grid">
                         {% for viewport in available_viewports %}
                           <div class="form-check">
                             <input
@@ -414,7 +416,7 @@
                         {% endfor %}
                       </div>
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Task JS</label>
                       <textarea
                         name="task_js"
@@ -423,7 +425,21 @@
                         placeholder="// Optional run script"
                       >{{ editing_task.task_js if editing_task else "" }}</textarea>
                     </div>
-                    <div class="col-12 d-flex justify-content-end gap-2">
+                    <div class="configuration-field">
+                      <label class="form-label">Task Actions (JSON)</label>
+                      <textarea
+                        name="task_actions"
+                        rows="4"
+                        class="form-control font-monospace"
+                        placeholder='[
+  { "type": "click", "selector": "#open-menu" }
+]'
+                      >{{ editing_task.task_actions | default([], true) | tojson if editing_task else "" }}</textarea>
+                      <div class="form-text">
+                        Provide an array of action objects to run after the page loads. Leave blank if not needed.
+                      </div>
+                    </div>
+                    <div class="configuration-actions">
                       {% if editing_task %}
                         <button
                           type="button"
@@ -461,8 +477,8 @@
                 {% if batches %}
                   <div class="list-group list-group-flush">
                     {% for batch in batches %}
-                      <div class="list-group-item">
-                        <div class="d-flex justify-content-between align-items-start">
+                      <div class="list-group-item configuration-list-item">
+                        <div class="configuration-list-copy">
                           <div>
                             <div class="fw-semibold">{{ batch.name }}</div>
                             <div class="small text-muted">{{ batch.description or "No description" }}</div>
@@ -482,7 +498,7 @@
                               <span class="badge text-bg-info mt-2">JIRA: {{ batch.jira_issue }}</span>
                             {% endif %}
                           </div>
-                          <div class="btn-group">
+                          <div class="btn-group configuration-row-actions">
                             <button
                               type="button"
                               class="btn btn-outline-primary btn-sm"
@@ -535,10 +551,11 @@
                     hx-post="{{ batch_form_action }}"
                     hx-target="#project-detail"
                     hx-swap="innerHTML"
-                    class="row g-3"
+                    class="configuration-form"
+                    data-testid="batch-configuration-form"
                   >
                     <input type="hidden" name="active_tab" value="batches" />
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Name</label>
                       <input
                         type="text"
@@ -548,7 +565,7 @@
                         value="{{ editing_batch.name if editing_batch else '' }}"
                       />
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Description</label>
                       <textarea
                         name="description"
@@ -556,9 +573,9 @@
                         class="form-control"
                       >{{ editing_batch.description if editing_batch else "" }}</textarea>
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">Linked Tasks</label>
-                      <div class="d-flex flex-column gap-2">
+                      <div class="configuration-choice-stack">
                         {% for task in tasks %}
                           <div class="form-check">
                             <input
@@ -576,7 +593,7 @@
                         {% endfor %}
                       </div>
                     </div>
-                    <div class="col-12">
+                    <div class="configuration-field">
                       <label class="form-label">JIRA Issue</label>
                       <input
                         type="text"
@@ -586,7 +603,7 @@
                         value="{{ editing_batch.jira_issue if editing_batch else '' }}"
                       />
                     </div>
-                    <div class="col-md-6">
+                    <div class="configuration-field configuration-field-half">
                       <label class="form-label">Run Diff Threshold (%)</label>
                       <input
                         type="number"
@@ -598,7 +615,7 @@
                       />
                       <div class="form-text">Average diff percentage that triggers a major run badge.</div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="configuration-field configuration-field-half">
                       <label class="form-label">Execution Diff Threshold (%)</label>
                       <input
                         type="number"
@@ -610,7 +627,7 @@
                       />
                       <div class="form-text">Per-execution diff percentage that triggers a major badge.</div>
                     </div>
-                    <div class="col-12 d-flex justify-content-end gap-2">
+                    <div class="configuration-actions">
                       {% if editing_batch %}
                         <button
                           type="button"

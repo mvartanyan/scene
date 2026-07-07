@@ -1,9 +1,9 @@
 # Development Notes
 
 ## Repository Snapshot
-- Current structure includes FastAPI application scaffolding under `app/` (routes, schemas, storage service, templates, static assets) plus `pyproject.toml`, `DEVELOPMENT.md`, and `REQUIREMENTS.md`.
+- Current structure includes FastAPI application scaffolding under `app/` (routes, schemas, storage service, templates, static assets) plus `pyproject.toml`, `DEVELOPMENT.md`, `WALKTHROUGH.md`, and `REQUIREMENTS.md`.
 - `REQUIREMENTS.md` remains the authoritative product brief outlining the FastAPI + htmx stack orchestrating Playwright runners in Docker.
-- `DEVELOPMENT.md` inaugurated this session; no `WALKTHROUGH.md` exists yet.
+- `DEVELOPMENT.md` is the chronological development log; `WALKTHROUGH.md` is the current operator-oriented guide.
 
 ## Key Implementation Guidance (from REQUIREMENTS.md)
 - Core services to build: FastAPI app (REST + htmx partials), worker service managing a queue, Dockerised Playwright runner, artifact storage abstraction, diff/heatmap generator.
@@ -20,7 +20,7 @@
 ## Orchestration Implementation Plan (2024-08-17)
 - Received directive to replace mocked execution data with a fully functioning orchestration layer that launches Playwright inside Docker, records baselines, compares subsequent runs, and surfaces screenshots/diffs/heatmaps/traces in the UI.
 - Architectural outline:
-  - Extend `SceneRepository` to persist Baselines, Task Executions, and Artifact metadata alongside existing entities; introduce deterministic artifact paths under a new `artifacts/` directory.
+  - Extend `SceneRepository` to persist Baselines, Task Executions, and Artifact metadata alongside existing entities; introduce deterministic artifact paths under the configured local artifact root.
   - Add an `ArtifactStore` helper responsible for creating per-run/per-execution folders, writing binary assets, and returning stable URLs routed through FastAPI.
   - Implement a `RunOrchestrator` service with an internal queue and worker thread that expands runs into execution matrices, launches a `DockerPlaywrightRunner`, and updates execution/run/baseline status as containers complete.
   - Provide a container runner abstraction that shells out to `docker run mcr.microsoft.com/playwright/python`, mounting a generated `runner.py` + `config.json`; the script will load page/task configuration, execute preparatory/task JavaScript within the page context, capture screenshots, record trace/video, and emit a structured JSON summary.
@@ -33,11 +33,11 @@
   1. Playwright work executes inside a custom image tagged `scene-playwright-runner:latest`, built from `Dockerfile.playwright` (base `mcr.microsoft.com/playwright/python:v1.47.0-jammy`) which pre-installs the Python Playwright package and browsers and still runs containers with `--add-host=host.docker.internal:host-gateway` for host connectivity.
   2. Both `preparatory_js` and `task_js` snippets are executed within the loaded page via `page.evaluate` (browser context). Support for raw Playwright `page.*` API scripts would require a separate execution pipeline.
   3. Artifact diffs/heatmaps are produced with Pillow; swapping to `odiff` or ImageMagick is deferred until we need closer parity with production expectations.
-  4. Artifacts are stored under `artifacts/` in the project workspace and served read-only via new FastAPI endpoints; caller environments tolerate local disk growth.
+  4. Artifacts are stored under `.scene/artifacts/` by default or `SCENE_ARTIFACT_ROOT` when configured, and served read-only via FastAPI endpoints; caller environments tolerate local disk growth.
 
 ## Session Progress
 - Added `pyproject.toml` with FastAPI, Jinja2, boto3 (for eventual DynamoDB parity), and test tooling dependencies.
-- Implemented `LocalDynamoStorage` (`app/services/storage.py`) persisting JSON to `dev.dynamodb.json`, plus `SceneRepository` helpers covering Projects, Pages, Tasks, Batches, and Runs.
+- Implemented `LocalDynamoStorage` (`app/services/storage.py`) persisting JSON to `.scene/dev.dynamodb.json` by default or `SCENE_STATE_PATH` when configured, plus `SceneRepository` helpers covering Projects, Pages, Tasks, Batches, and Runs.
 - Exposed matching JSON APIs under `/api/...` (`app/routes/api.py`) using new Pydantic schemas in `app/schemas.py`.
 - Built htmx-driven configuration UI (`app/routes/projects.py`, templates under `app/templates/projects/`) supporting project selection, create/delete, and inline creation/removal of pages, tasks, and batches.
 - Created mocked runs dashboard (`app/routes/runs.py`, `app/templates/runs/`) that lists stored runs, supports generating placeholder runs, and renders execution tiles with stubbed artifacts to allow UI iteration ahead of worker/runner integration.

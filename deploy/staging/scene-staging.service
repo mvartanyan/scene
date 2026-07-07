@@ -1,0 +1,18 @@
+[Unit]
+Description=SCENE staging Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/scene
+EnvironmentFile=/opt/scene/.env.staging
+ExecStartPre=/bin/sh -lc 'if docker compose version >/dev/null 2>&1; then docker compose --env-file /opt/scene/.env.staging -f /opt/scene/docker-compose.staging.yml --profile runner-image build runner-image; else docker-compose --env-file /opt/scene/.env.staging -f /opt/scene/docker-compose.staging.yml --profile runner-image build runner-image; fi'
+ExecStart=/bin/sh -lc 'if docker compose version >/dev/null 2>&1; then docker compose --env-file /opt/scene/.env.staging -f /opt/scene/docker-compose.staging.yml up -d --build scene; else docker-compose --env-file /opt/scene/.env.staging -f /opt/scene/docker-compose.staging.yml up -d --build scene; fi'
+ExecStop=/bin/sh -lc 'if docker compose version >/dev/null 2>&1; then docker compose --env-file /opt/scene/.env.staging -f /opt/scene/docker-compose.staging.yml down; else docker-compose --env-file /opt/scene/.env.staging -f /opt/scene/docker-compose.staging.yml down; fi'
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

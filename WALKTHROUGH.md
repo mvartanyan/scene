@@ -1,7 +1,7 @@
 # Scene Walkthrough
 
 ## Overview
-Scene is a FastAPI + HTMX application that manages visual regression “projects”, orchestrates Playwright-based screenshot runs inside Docker, and records artifacts (screenshots, diffs, traces, logs) to the local filesystem under `artifacts/`.
+Scene is a FastAPI + HTMX application that manages visual regression "projects", orchestrates Playwright-based screenshot runs inside Docker, and records artifacts (screenshots, diffs, traces, logs) to the local filesystem under `.scene/artifacts/` by default.
 
 The UI is organised into three primary areas:
 
@@ -14,6 +14,10 @@ The UI is organised into three primary areas:
 - `Dockerfile.playwright` produces the `scene-playwright-runner:latest` image used for orchestration.
 - HTMX is vendored locally at `app/static/htmx.min.js` to avoid CDN hiccups.
 - Pillow is bundled into the runner image so reference screenshots can be resized to match observed dimensions before slider display.
+- Mutable runtime state defaults to `.scene/dev.dynamodb.json`; set `SCENE_STATE_PATH` to point at a different JSON state file.
+- Mutable artifacts default to `.scene/artifacts/`; set `SCENE_ARTIFACT_ROOT` to point at another artifact directory.
+- `dev.dynamodb.json` is retained as a tracked demo/seed snapshot. Seed a local runtime copy with `mkdir -p .scene && cp dev.dynamodb.json .scene/dev.dynamodb.json`.
+- Local runtime roots, Playwright reports, traces, videos, screenshots, and temp DBs are ignored. Clean disposable local state with `rm -rf .scene frontend/playwright-report frontend/test-results` when retention is no longer useful.
 
 ## Typical Flow
 1. **Define a project**: add pages (optionally with preparatory JS, basic-auth), attach tasks, bundle them into batches.
@@ -30,7 +34,8 @@ The UI is organised into three primary areas:
 - `app/services/runner_script.py` — the executable Playwright runner injected into containers (auto-scrolls the detected scrollable element and waits for lazy content).
 - `app/services/storage.py` — JSON-backed persistence, including config defaults and run timeout.
 - `app/templates/runs/*.html` — HTMX partials for the run log, dashboards, viewers, detail modal.
-- `artifacts/` — persisted screenshots, traces, videos, logs.
+- `.scene/artifacts/` — default local screenshots, traces, videos, logs.
+- `dev.dynamodb.json` — tracked demo/seed snapshot, not the mutable default runtime database.
 - `tests/` — unit/integration coverage for CRUD, orchestrator behaviour, and dashboard rendering.
 
 Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding issues, and next steps.

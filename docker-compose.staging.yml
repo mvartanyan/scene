@@ -1,0 +1,36 @@
+name: scene-staging
+
+services:
+  scene:
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+    image: ${SCENE_APP_IMAGE:-scene-app:staging}
+    restart: unless-stopped
+    ports:
+      - "${SCENE_BIND_IP:-127.0.0.1}:${SCENE_HTTP_PORT:-8010}:8000"
+    environment:
+      SCENE_STATE_PATH: ${SCENE_STATE_PATH:-/var/lib/scene/staging/state/scene.dynamodb.json}
+      SCENE_ARTIFACT_ROOT: ${SCENE_ARTIFACT_ROOT:-/var/lib/scene/staging/artifacts}
+      SCENE_ARTIFACT_BASE_URL: ${SCENE_ARTIFACT_BASE_URL:-/artifacts}
+      SCENE_HOST_URL: ${SCENE_HOST_URL:-http://host.docker.internal:8010}
+      SCENE_RUNNER_IMAGE: ${SCENE_RUNNER_IMAGE:-scene-playwright-runner:1.47.0-jammy}
+      SCENE_MAX_CONCURRENT_EXECUTIONS: ${SCENE_MAX_CONCURRENT_EXECUTIONS:-2}
+      SCENE_RUN_TIMEOUT_SECONDS: ${SCENE_RUN_TIMEOUT_SECONDS:-900}
+      SCENE_CAPTURE_DELAY_MS: ${SCENE_CAPTURE_DELAY_MS:-7000}
+      SCENE_DIFF_PIXEL_TOLERANCE: ${SCENE_DIFF_PIXEL_TOLERANCE:-0}
+    volumes:
+      - ${SCENE_STATE_DIR:-/var/lib/scene/staging/state}:${SCENE_STATE_DIR:-/var/lib/scene/staging/state}
+      - ${SCENE_ARTIFACT_ROOT:-/var/lib/scene/staging/artifacts}:${SCENE_ARTIFACT_ROOT:-/var/lib/scene/staging/artifacts}
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  runner-image:
+    profiles:
+      - runner-image
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    image: ${SCENE_RUNNER_IMAGE:-scene-playwright-runner:1.47.0-jammy}
+    command: ["python", "-c", "import playwright; print('scene runner image ready')"]

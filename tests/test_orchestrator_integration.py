@@ -8,7 +8,6 @@ from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, Thread
 from pathlib import Path
 from typing import Tuple
 import shutil
-import uuid
 import subprocess
 
 import pytest
@@ -104,7 +103,7 @@ def test_playwright_baseline_and_comparison(tmp_path: Path) -> None:
 
     storage = LocalDynamoStorage(tmp_path / "db.json")
     repo = SceneRepository(storage)
-    artifact_root = Path.cwd() / "tmp_artifacts" / uuid.uuid4().hex
+    artifact_root = tmp_path / "artifacts"
     artifact_store = ArtifactStore(root=artifact_root)
     orchestrator = RunOrchestrator(repo=repo, artifacts=artifact_store, auto_start=False)
     callback_server, callback_thread, callback_port = _start_callback_server(orchestrator)

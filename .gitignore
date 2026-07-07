@@ -1,4 +1,27 @@
+# Scene runtime state and generated artifacts
+.scene/
 artifacts/
+tmp_artifacts/
+dev.dynamodb.json
+dev.dynamodb.local.json
+*.dynamodb.local.json
+*.sqlite
+*.sqlite3
+*.db
+.DS_Store
+app/static/dyson_sphere_vac_*.png
+
+# Playwright reports and captures
+playwright-report/
+frontend/playwright-report/
+test-results/
+frontend/test-results/
+traces/
+videos/
+screenshots/
+trace.zip
+*.webm
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -103,6 +126,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.staging
 .venv
 env/
 venv/

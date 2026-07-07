@@ -9,18 +9,19 @@
     <div class="alert alert-success" role="alert">{{ message }}</div>
   {% endif %}
 
-  <div class="d-flex flex-column gap-4">
-    <section class="card border">
+  <div class="configuration-stack">
+    <section class="card border configuration-card" data-testid="global-config-browsers">
       <div class="card-header bg-white fw-semibold">Browsers</div>
       <div class="card-body">
         <form
           hx-post="/config/browsers"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="row g-3"
+          class="configuration-form"
         >
-          <div class="col-12">
-            <div class="d-flex flex-wrap gap-3">
+          <div class="configuration-field">
+            <label class="form-label">Available Browsers</label>
+            <div class="configuration-choice-grid">
               {% for browser in browser_options %}
                 <div class="form-check">
                   <input
@@ -45,24 +46,24 @@
               {% endfor %}
             </div>
           </div>
-          <div class="col-md-6">
+          <div class="configuration-field configuration-field-narrow">
             <label class="form-label">Add Browser</label>
             <input type="text" name="new_browser" class="form-control" placeholder="e.g. msedge" />
           </div>
-          <div class="col-12 d-flex justify-content-end">
+          <div class="configuration-actions">
             <button type="submit" class="btn btn-primary btn-sm">Save Browsers</button>
           </div>
         </form>
       </div>
     </section>
 
-    <section class="card border">
+    <section class="card border configuration-card" data-testid="global-config-viewports">
       <div class="card-header bg-white fw-semibold">Viewport Presets</div>
-      <div class="card-body d-flex flex-column gap-3">
+      <div class="card-body configuration-section-body">
         <div class="list-group list-group-flush">
           {% for viewport in available_viewports %}
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-              <span>
+            <div class="list-group-item configuration-list-item">
+              <span class="configuration-list-label">
                 {{ viewport.replace('x', ' × ') }}
                 {% if viewport in locked_viewports %}
                   <span class="text-muted small">(in use)</span>
@@ -72,6 +73,7 @@
                 hx-post="/config/viewports/remove"
                 hx-target="#config-modal-content"
                 hx-swap="innerHTML"
+                class="configuration-item-actions"
               >
                 <input type="hidden" name="viewport" value="{{ viewport }}" />
                 <button
@@ -89,33 +91,33 @@
           hx-post="/config/viewports/add"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="row g-3 align-items-end"
+          class="configuration-form configuration-form-grid"
         >
-          <div class="col-6">
+          <div class="configuration-field">
             <label class="form-label">Width</label>
             <input type="number" name="width" min="1" class="form-control" required />
           </div>
-          <div class="col-6">
+          <div class="configuration-field">
             <label class="form-label">Height</label>
             <input type="number" name="height" min="1" class="form-control" required />
           </div>
-          <div class="col-12 d-flex justify-content-end">
+          <div class="configuration-actions configuration-actions-grid">
             <button type="submit" class="btn btn-primary btn-sm">Add Viewport</button>
           </div>
         </form>
       </div>
     </section>
 
-    <section class="card border">
+    <section class="card border configuration-card" data-testid="global-config-run-timeout">
       <div class="card-header bg-white fw-semibold">Run Timeout</div>
       <div class="card-body">
         <form
           hx-post="/config/run-timeout"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="row g-3"
+          class="configuration-form"
         >
-          <div class="col-md-6">
+          <div class="configuration-field configuration-field-narrow">
             <label class="form-label">Default run timeout (seconds)</label>
             <input
               type="number"
@@ -127,23 +129,23 @@
             />
             <div class="form-text">Used for new runs; can be overridden per launch.</div>
           </div>
-          <div class="col-12 d-flex justify-content-end">
+          <div class="configuration-actions">
             <button type="submit" class="btn btn-primary btn-sm">Save Timeout</button>
           </div>
         </form>
       </div>
     </section>
 
-    <section class="card border">
+    <section class="card border configuration-card" data-testid="global-config-capture-delay">
       <div class="card-header bg-white fw-semibold">Capture Stabilization</div>
       <div class="card-body">
         <form
           hx-post="/config/capture-delay"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="row g-3"
+          class="configuration-form"
         >
-          <div class="col-md-6">
+          <div class="configuration-field configuration-field-narrow">
             <label class="form-label">Delay after page load (milliseconds)</label>
             <input
               type="number"
@@ -155,23 +157,52 @@
             />
             <div class="form-text">Applied before each observed and reference screenshot.</div>
           </div>
-          <div class="col-12 d-flex justify-content-end">
+          <div class="configuration-actions">
             <button type="submit" class="btn btn-primary btn-sm">Save Delay</button>
           </div>
         </form>
       </div>
     </section>
 
-    <section class="card border">
+    <section class="card border configuration-card" data-testid="global-config-diff-tolerance">
+      <div class="card-header bg-white fw-semibold">Diff Pixel Tolerance</div>
+      <div class="card-body">
+        <form
+          hx-post="/config/diff-pixel-tolerance"
+          hx-target="#config-modal-content"
+          hx-swap="innerHTML"
+          class="configuration-form"
+        >
+          <div class="configuration-field configuration-field-narrow">
+            <label class="form-label">Per-channel pixel tolerance</label>
+            <input
+              type="number"
+              name="diff_pixel_tolerance"
+              class="form-control"
+              min="0"
+              max="255"
+              value="{{ diff_pixel_tolerance }}"
+              required
+            />
+            <div class="form-text">Pixel differences at or below this value are ignored in diff and heatmap metrics.</div>
+          </div>
+          <div class="configuration-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Save Tolerance</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card border configuration-card" data-testid="global-config-run-concurrency">
       <div class="card-header bg-white fw-semibold">Run Concurrency</div>
       <div class="card-body">
         <form
           hx-post="/config/run-concurrency"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="row g-3"
+          class="configuration-form"
         >
-          <div class="col-md-6">
+          <div class="configuration-field configuration-field-narrow">
             <label class="form-label">Maximum concurrent executions</label>
             <input
               type="number"
@@ -184,23 +215,23 @@
             />
             <div class="form-text">Scene launches up to this many Playwright containers per run.</div>
           </div>
-          <div class="col-12 d-flex justify-content-end">
+          <div class="configuration-actions">
             <button type="submit" class="btn btn-primary btn-sm">Save Concurrency</button>
           </div>
         </form>
       </div>
     </section>
 
-    <section class="card border">
+    <section class="card border configuration-card" data-testid="global-config-host-url">
       <div class="card-header bg-white fw-semibold">Scene Host URL</div>
       <div class="card-body">
         <form
           hx-post="/config/host-url"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="row g-3"
+          class="configuration-form"
         >
-          <div class="col-md-8">
+          <div class="configuration-field configuration-field-wide">
             <label class="form-label">Callback host for containers</label>
             <input
               type="url"
@@ -211,49 +242,54 @@
             />
             <div class="form-text">Used by Playwright containers when posting execution results.</div>
           </div>
-          <div class="col-12 d-flex justify-content-end">
+          <div class="configuration-actions">
             <button type="submit" class="btn btn-primary btn-sm">Save Host URL</button>
           </div>
         </form>
       </div>
     </section>
 
-    <section class="card border">
+    <section class="card border configuration-card" data-testid="global-config-timezone">
       <div class="card-header bg-white fw-semibold">Timestamp Display</div>
       <div class="card-body">
         <form
           hx-post="/config/display-timezone"
           hx-target="#config-modal-content"
           hx-swap="innerHTML"
-          class="d-flex flex-column gap-3"
+          class="configuration-form"
         >
-          <div class="form-check">
-            <input
-              class="form-check-input"
-              type="radio"
-              name="display_timezone"
-              id="tz-utc"
-              value="utc"
-              {% if display_timezone == "utc" %}checked{% endif %}
-            />
-            <label class="form-check-label" for="tz-utc">
-              Coordinated Universal Time (UTC)
-            </label>
+          <div class="configuration-field">
+            <label class="form-label">Timestamp Timezone</label>
+            <div class="configuration-choice-grid">
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="radio"
+                  name="display_timezone"
+                  id="tz-utc"
+                  value="utc"
+                  {% if display_timezone == "utc" %}checked{% endif %}
+                />
+                <label class="form-check-label" for="tz-utc">
+                  Coordinated Universal Time (UTC)
+                </label>
+              </div>
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="radio"
+                  name="display_timezone"
+                  id="tz-local"
+                  value="local"
+                  {% if display_timezone == "local" %}checked{% endif %}
+                />
+                <label class="form-check-label" for="tz-local">
+                  Local browser timezone
+                </label>
+              </div>
+            </div>
           </div>
-          <div class="form-check">
-            <input
-              class="form-check-input"
-              type="radio"
-              name="display_timezone"
-              id="tz-local"
-              value="local"
-              {% if display_timezone == "local" %}checked{% endif %}
-            />
-            <label class="form-check-label" for="tz-local">
-              Local browser timezone
-            </label>
-          </div>
-          <div class="d-flex justify-content-end">
+          <div class="configuration-actions">
             <button type="submit" class="btn btn-primary btn-sm">Save Preference</button>
           </div>
         </form>

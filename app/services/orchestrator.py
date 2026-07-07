@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import logging
+import os
 import queue
 import shutil
 import threading
@@ -14,16 +15,17 @@ import socket
 from urllib.parse import urlparse
 try:
     import docker  # type: ignore
-    from docker.errors import APIError, NotFound
+    from docker.errors import APIError, ImageNotFound, NotFound
 except ModuleNotFoundError:  # pragma: no cover - fallback when SDK unavailable
     docker = None  # type: ignore
     APIError = Exception  # type: ignore
+    ImageNotFound = Exception  # type: ignore
     NotFound = Exception  # type: ignore
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image
 
 from app.schemas import (
     ArtifactKind,
@@ -36,6 +38,8 @@ from app.services.artifacts import ArtifactStore, get_artifact_store
 from app.services.storage import SceneRepository, get_repository
 
 LOGGER = logging.getLogger("scene.orchestrator")
+SCENE_RUNNER_IMAGE_ENV = "SCENE_RUNNER_IMAGE"
+DEFAULT_RUNNER_IMAGE = "scene-playwright-runner:latest"
 
 
 def _utcnow() -> str:
@@ -108,10 +112,10 @@ class DockerPlaywrightRunner:
 
     def __init__(
         self,
-        image: str = "scene-playwright-runner:latest",
+        image: Optional[str] = None,
         timeout: int = 180,
     ) -> None:
-        self._image = image
+        self._image = image or os.environ.get(SCENE_RUNNER_IMAGE_ENV, DEFAULT_RUNNER_IMAGE)
         self._timeout = timeout
 
     @property
@@ -382,40 +386,152 @@ class DockerCLIBackend(DockerBackend):
 class DiffEngine:
     """Generate pixel diff overlays between baseline and observed screenshots."""
 
+    def __init__(self, pixel_tolerance: int = 0) -> None:
+        self._pixel_tolerance = self._normalize_tolerance(pixel_tolerance)
+
+    @staticmethod
+    def _normalize_tolerance(value: object) -> int:
+        try:
+            return max(0, min(255, int(value)))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _dimensions(size: Tuple[int, int]) -> Dict[str, int]:
+        return {"width": int(size[0]), "height": int(size[1])}
+
+    @staticmethod
+    def _has_transparency(image: Image.Image) -> bool:
+        if image.mode in {"RGBA", "LA"}:
+            alpha = image.getchannel("A")
+            return alpha.getextrema()[0] < 255
+        if image.mode == "P" and "transparency" in image.info:
+            return True
+        return False
+
+    @staticmethod
+    def _sanitize_transparent_pixels(image: Image.Image) -> Tuple[Image.Image, bool]:
+        rgba = image.convert("RGBA")
+        changed = False
+        sanitized = []
+        for red, green, blue, alpha in rgba.getdata():
+            if alpha == 0 and (red or green or blue):
+                sanitized.append((0, 0, 0, 0))
+                changed = True
+            else:
+                sanitized.append((red, green, blue, alpha))
+        if changed:
+            rgba.putdata(sanitized)
+        return rgba, changed
+
+    def _normalize_image(
+        self,
+        image: Image.Image,
+        target_size: Tuple[int, int],
+    ) -> Tuple[Image.Image, str]:
+        original_size = image.size
+        has_transparency = self._has_transparency(image)
+        normalized, sanitized = self._sanitize_transparent_pixels(image)
+        actions: List[str] = []
+        if sanitized:
+            actions.append("sanitize_transparent_pixels")
+
+        if normalized.size != target_size:
+            fill = (0, 0, 0, 0)
+            if not has_transparency and normalized.width > 0 and normalized.height > 0:
+                fill = normalized.getpixel((normalized.width - 1, normalized.height - 1))
+            canvas = Image.new("RGBA", target_size, fill)
+            canvas.paste(normalized, (0, 0))
+            normalized = canvas
+            actions.append("pad_to_max_canvas")
+
+        if not actions and normalized.size == original_size:
+            actions.append("none")
+        return normalized, "+".join(actions)
+
+    def _normalize_pair(
+        self,
+        baseline_image: Image.Image,
+        observed_image: Image.Image,
+    ) -> Tuple[Image.Image, Image.Image, Dict[str, object]]:
+        baseline_original = baseline_image.size
+        observed_original = observed_image.size
+        normalized_size = (
+            max(baseline_original[0], observed_original[0]),
+            max(baseline_original[1], observed_original[1]),
+        )
+        baseline_normalized, baseline_action = self._normalize_image(baseline_image, normalized_size)
+        observed_normalized, observed_action = self._normalize_image(observed_image, normalized_size)
+        if baseline_action == "none" and observed_action == "none":
+            action = "none"
+        else:
+            action = "normalize_to_max_canvas"
+        stats = {
+            "baseline_original_dimensions": self._dimensions(baseline_original),
+            "observed_original_dimensions": self._dimensions(observed_original),
+            "normalized_dimensions": self._dimensions(normalized_size),
+            "normalization_action": action,
+            "baseline_normalization_action": baseline_action,
+            "observed_normalization_action": observed_action,
+        }
+        return baseline_normalized, observed_normalized, stats
+
+    def normalize_files(self, first_path: Path, second_path: Path) -> Dict[str, object]:
+        with Image.open(first_path) as first_img, Image.open(second_path) as second_img:
+            first_normalized, second_normalized, stats = self._normalize_pair(first_img, second_img)
+        first_normalized.save(first_path)
+        second_normalized.save(second_path)
+        return stats
+
     def generate(
         self,
         baseline_path: Path,
         observed_path: Path,
         diff_path: Path,
         heatmap_path: Path,
-    ) -> Dict[str, float]:
-        with Image.open(baseline_path).convert("RGBA") as base_img, Image.open(observed_path).convert("RGBA") as obs_img:
-            if base_img.size != obs_img.size:
-                obs_img = obs_img.resize(base_img.size)
-            diff_image = ImageChops.difference(base_img, obs_img)
-            diff_gray = diff_image.convert("L")
-            pixels = diff_gray.getdata()
-            diff_pixels = sum(1 for value in pixels if value)
-            total_pixels = diff_gray.width * diff_gray.height
+        *,
+        pixel_tolerance: Optional[int] = None,
+    ) -> Dict[str, object]:
+        tolerance = self._normalize_tolerance(
+            self._pixel_tolerance if pixel_tolerance is None else pixel_tolerance
+        )
+        with Image.open(baseline_path) as base_img, Image.open(observed_path) as obs_img:
+            base_norm, obs_norm, stats = self._normalize_pair(base_img, obs_img)
+            delta_values: List[int] = []
+            diff_pixels = 0
+            for base_pixel, obs_pixel in zip(base_norm.getdata(), obs_norm.getdata()):
+                delta = max(abs(int(base_pixel[index]) - int(obs_pixel[index])) for index in range(4))
+                if delta <= tolerance:
+                    delta_values.append(0)
+                    continue
+                adjusted = delta - tolerance
+                delta_values.append(adjusted)
+                diff_pixels += 1
+
+            total_pixels = base_norm.width * base_norm.height
             percentage = (diff_pixels / total_pixels * 100.0) if total_pixels else 0.0
 
-            diff_alpha = diff_gray.point(lambda v: min(255, v * 4))
-            diff_canvas = Image.new("RGBA", diff_gray.size, (0, 0, 0, 255))
-            diff_overlay = Image.new("RGBA", diff_gray.size, (255, 193, 7, 0))
+            alpha_values = [min(255, value * 4) for value in delta_values]
+            diff_alpha = Image.new("L", base_norm.size)
+            diff_alpha.putdata(alpha_values)
+            diff_canvas = Image.new("RGBA", base_norm.size, (0, 0, 0, 255))
+            diff_overlay = Image.new("RGBA", base_norm.size, (255, 193, 7, 0))
             diff_overlay.putalpha(diff_alpha)
             diff_visual = Image.alpha_composite(diff_canvas, diff_overlay)
             diff_visual.save(diff_path)
 
-            alpha_mask = diff_gray.point(lambda v: min(255, v * 4))
-            heat_overlay = Image.new("RGBA", diff_gray.size, (255, 64, 0, 0))
-            heat_overlay.putalpha(alpha_mask)
-            heatmap = Image.alpha_composite(obs_img, heat_overlay)
+            heat_overlay = Image.new("RGBA", base_norm.size, (255, 64, 0, 0))
+            heat_overlay.putalpha(diff_alpha)
+            heatmap = Image.alpha_composite(obs_norm, heat_overlay)
             heatmap.save(heatmap_path)
 
-        return {
+        stats.update({
             "pixel_count": diff_pixels,
+            "total_pixels": total_pixels,
             "percentage": round(percentage, 4),
-        }
+            "pixel_tolerance": tolerance,
+        })
+        return stats
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -435,7 +551,6 @@ class RunOrchestrator:
         self._repo = repo or get_repository()
         self._artifacts = artifacts or get_artifact_store()
         self._runner = DockerPlaywrightRunner()
-        self._diffs = DiffEngine()
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._inflight: set[str] = set()
         self._lock = threading.Lock()
@@ -454,6 +569,10 @@ class RunOrchestrator:
         self._execution_tokens: Dict[str, str] = {}
         self._completion_queues: Dict[str, "queue.Queue[Tuple[str, Dict[str, object]]]"] = {}
         config_defaults = self._repo.get_config()
+        self._diff_pixel_tolerance = DiffEngine._normalize_tolerance(
+            config_defaults.get("diff_pixel_tolerance", 0)
+        )
+        self._diffs = DiffEngine(pixel_tolerance=self._diff_pixel_tolerance)
         self._scene_host_url = config_defaults.get("scene_host_url", "http://host.docker.internal:8000")
         self._max_concurrent = int(config_defaults.get("max_concurrent_executions", 4))
         self._post_wait_ms = int(config_defaults.get("capture_post_wait_ms", 7000))
@@ -530,37 +649,9 @@ class RunOrchestrator:
         if not observed_path.exists() or not reference_path.exists():
             return
         try:
-            with Image.open(observed_path) as observed_img, Image.open(reference_path) as reference_img:
-                target_width = max(observed_img.width, reference_img.width)
-                target_height = max(observed_img.height, reference_img.height)
-        except Exception:
-            return
-
-        self._pad_image_to_size(observed_path, target_width, target_height)
-        self._pad_image_to_size(reference_path, target_width, target_height)
-
-    @staticmethod
-    def _pad_image_to_size(path: Path, target_width: int, target_height: int) -> None:
-        if target_width <= 0 or target_height <= 0:
-            return
-        try:
-            with Image.open(path) as img:
-                if img.width == target_width and img.height == target_height:
-                    return
-                right = max(target_width - img.width, 0)
-                bottom = max(target_height - img.height, 0)
-                if right == 0 and bottom == 0:
-                    return
-                if "A" in img.getbands():
-                    fill = (0, 0, 0, 0)
-                else:
-                    try:
-                        fill = img.getpixel((max(img.width - 1, 0), max(img.height - 1, 0)))
-                    except Exception:
-                        fill = 0
-                padded = ImageOps.expand(img, border=(0, 0, right, bottom), fill=fill)
-                padded.save(path)
-        except Exception:
+            self._diffs.normalize_files(observed_path, reference_path)
+        except Exception as exc:
+            LOGGER.debug("Reference dimension normalization failed for %s: %s", execution_dir, exc)
             return
 
     def _stop_log_stream(self, context: ExecutionContext) -> None:
@@ -797,8 +888,8 @@ class RunOrchestrator:
         result: RunnerResult,
     ) -> None:
         execution_id = execution["id"]
-        self._harmonize_reference_dimensions(execution_dir)
         artifacts = self._artifact_payload(result, execution_dir)
+        extra_artifacts: Dict[str, object] = {}
 
         if run["purpose"] == RunPurpose.baseline_recording.value and baseline:
             baseline_item = self._store_baseline_artifacts(
@@ -806,7 +897,7 @@ class RunOrchestrator:
                 execution=execution,
                 screenshot=result.screenshot,
             )
-            artifacts[ArtifactKind.baseline.value] = baseline_item["artifacts"][ArtifactKind.baseline.value]
+            extra_artifacts[ArtifactKind.baseline.value] = baseline_item["artifacts"][ArtifactKind.baseline.value]
 
         diff_level_value: Optional[float] = None
         if run["purpose"] == RunPurpose.comparison.value:
@@ -817,6 +908,7 @@ class RunOrchestrator:
                 observed=result.screenshot,
                 baseline_record=baseline,
             )
+            diff_error = diff_summary.get("error")
             diff_info = diff_summary.get("diff")
             if diff_info:
                 diff_percentage = diff_info.get("percentage")
@@ -826,10 +918,34 @@ class RunOrchestrator:
                 self._repo.update_execution(execution_id, {"diff": diff_info})
             diff_artifacts = diff_summary.get("artifacts") or {}
             if diff_artifacts:
-                artifacts.update(diff_artifacts)
+                extra_artifacts.update(diff_artifacts)
+            if diff_error:
+                artifacts.update(extra_artifacts)
+                self._repo.update_execution(
+                    execution_id,
+                    {
+                        "status": ExecutionStatus.failed.value,
+                        "completed_at": _utcnow(),
+                        "message": str(diff_error),
+                        "artifacts": artifacts,
+                    },
+                )
+                self._log_execution_transition(
+                    event="execution_finalize",
+                    run_id=run["id"],
+                    execution_id=execution_id,
+                    from_status=str(execution.get("status") or "unknown"),
+                    to_status=ExecutionStatus.failed.value,
+                    reason="comparison_baseline_unavailable",
+                )
+                self._append_log(run["id"], execution_id, f"Execution failed: {diff_error}")
+                return
         else:
             diff_level_value = 0.0
 
+        self._harmonize_reference_dimensions(execution_dir)
+        artifacts = self._artifact_payload(result, execution_dir)
+        artifacts.update(extra_artifacts)
         update_payload = {
             "status": ExecutionStatus.finished.value,
             "completed_at": _utcnow(),
@@ -838,6 +954,14 @@ class RunOrchestrator:
         if diff_level_value is not None:
             update_payload["diff_level"] = diff_level_value
         self._repo.update_execution(execution_id, update_payload)
+        self._log_execution_transition(
+            event="execution_finalize",
+            run_id=run["id"],
+            execution_id=execution_id,
+            from_status=str(execution.get("status") or "unknown"),
+            to_status=ExecutionStatus.finished.value,
+            reason="runner_success",
+        )
         self._append_log(run["id"], execution_id, "Execution finished successfully")
         LOGGER.info(
             "Execution %s for run %s finalized successfully (artifacts=%s)",
@@ -1030,26 +1154,36 @@ class RunOrchestrator:
         return context
 
     def _ensure_runner_image(self, run_id: Optional[str], execution_id: Optional[str]) -> None:
-        image = getattr(self._runner, "image", "scene-playwright-runner:latest")
+        image = getattr(self._runner, "image", DEFAULT_RUNNER_IMAGE)
         with self._image_lock:
             if self._runner_image_verified:
                 return
-            inspect_cmd = ["docker", "image", "inspect", image]
-            inspect_proc = subprocess.run(
-                inspect_cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-            if inspect_proc.returncode == 0:
-                self._runner_image_verified = True
-                return
+            docker_cli = shutil.which("docker")
+            if docker_cli:
+                inspect_proc = subprocess.run(
+                    [docker_cli, "image", "inspect", image],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if inspect_proc.returncode == 0:
+                    self._runner_image_verified = True
+                    return
+            elif docker is not None:
+                try:
+                    docker.from_env().images.get(image)
+                    self._runner_image_verified = True
+                    return
+                except ImageNotFound:
+                    pass
+                except APIError as exc:
+                    raise RuntimeError(f"Failed to inspect runner image '{image}': {exc}") from exc
 
             dockerfile_path = PROJECT_ROOT / "Dockerfile.playwright"
-            if not dockerfile_path.exists():
+            if not docker_cli or not dockerfile_path.exists():
                 raise RuntimeError(
-                    f"Docker image '{image}' not found and {dockerfile_path.name} is missing. "
-                    "Build the runner image manually or configure an alternate image."
+                    f"Docker image '{image}' is not available. "
+                    "Build or pull the pinned runner image before launching staging runs."
                 )
 
             message = f"Runner image '{image}' not found; building from {dockerfile_path.name}"
@@ -1057,7 +1191,7 @@ class RunOrchestrator:
             if run_id and execution_id:
                 self._append_log(run_id, execution_id, message)
             build_cmd = [
-                "docker",
+                docker_cli,
                 "build",
                 "-f",
                 str(dockerfile_path),
@@ -1240,6 +1374,168 @@ class RunOrchestrator:
             )
             return None
 
+    def _log_execution_transition(
+        self,
+        *,
+        event: str,
+        run_id: str,
+        execution_id: str,
+        from_status: Optional[str],
+        to_status: Optional[str],
+        reason: str,
+    ) -> None:
+        LOGGER.info(
+            "execution_transition event=%s run_id=%s execution_id=%s from_status=%s to_status=%s reason=%s",
+            event,
+            run_id,
+            execution_id,
+            from_status or "unknown",
+            to_status or "unknown",
+            reason,
+        )
+
+    @staticmethod
+    def _coerce_result_payload(raw_payload: object) -> Optional[Dict[str, object]]:
+        if not isinstance(raw_payload, dict):
+            return None
+        nested = raw_payload.get("result")
+        if isinstance(nested, dict):
+            return nested
+        return {str(key): value for key, value in raw_payload.items()}
+
+    def _read_result_json_payload(self, execution_dir: Path) -> Optional[Dict[str, object]]:
+        result_path = execution_dir / "result.json"
+        if not result_path.exists():
+            return None
+        try:
+            with result_path.open("r", encoding="utf-8") as handle:
+                return self._coerce_result_payload(json.load(handle))
+        except Exception as exc:
+            LOGGER.debug("Failed to read result.json at %s: %s", result_path, exc)
+            return None
+
+    def _read_runner_log_result_payload(self, log_path: Path) -> Optional[Dict[str, object]]:
+        if not log_path.exists():
+            return None
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except Exception as exc:
+            LOGGER.debug("Failed to read runner log at %s: %s", log_path, exc)
+            return None
+        for line in reversed(lines):
+            stripped = line.strip()
+            if not stripped.startswith("{") or not stripped.endswith("}"):
+                continue
+            try:
+                return self._coerce_result_payload(json.loads(stripped))
+            except json.JSONDecodeError:
+                continue
+        return None
+
+    def _enrich_payload_from_artifacts(
+        self,
+        execution_dir: Path,
+        payload: Dict[str, object],
+    ) -> Dict[str, object]:
+        enriched = dict(payload)
+        observed_path = execution_dir / "observed.png"
+        reference_path = execution_dir / "reference.png"
+        trace_path = execution_dir / "trace.zip"
+        video_path = self._find_video(execution_dir)
+        if observed_path.exists() and not isinstance(enriched.get("screenshot"), str):
+            enriched["screenshot"] = observed_path.name
+        if reference_path.exists() and not isinstance(enriched.get("reference"), str):
+            enriched["reference"] = reference_path.name
+        if trace_path.exists() and not isinstance(enriched.get("trace"), str):
+            enriched["trace"] = trace_path.name
+        if video_path and not isinstance(enriched.get("video"), str):
+            try:
+                enriched["video"] = str(video_path.relative_to(execution_dir))
+            except ValueError:
+                enriched["video"] = video_path.name
+        return enriched
+
+    def _infer_payload_from_artifacts(
+        self,
+        execution_dir: Path,
+        log_path: Path,
+        exit_code: Optional[int],
+    ) -> Optional[Dict[str, object]]:
+        observed_path = execution_dir / "observed.png"
+        if not observed_path.exists():
+            return None
+        log_text = ""
+        if log_path.exists():
+            try:
+                log_text = log_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                log_text = ""
+        success_in_log = "Execution completed successfully" in log_text
+        if exit_code == 0 and success_in_log:
+            return self._enrich_payload_from_artifacts(execution_dir, {"status": "ok"})
+        return None
+
+    def _reconcile_payload_for_exit(
+        self,
+        context: ExecutionContext,
+        *,
+        status: str,
+        exit_code: Optional[int],
+    ) -> Dict[str, object]:
+        execution_dir = self._artifacts.execution_dir(context.run_id, context.execution_id)
+        log_path = self._log_path(context.run_id, context.execution_id)
+
+        payload = self._read_result_json_payload(execution_dir)
+        if payload is not None:
+            self._log_execution_transition(
+                event="watchdog_reconcile_result_json",
+                run_id=context.run_id,
+                execution_id=context.execution_id,
+                from_status=ExecutionStatus.executing.value,
+                to_status=str(payload.get("status") or "unknown"),
+                reason=f"container_{status}",
+            )
+            return self._enrich_payload_from_artifacts(execution_dir, payload)
+
+        payload = self._read_runner_log_result_payload(log_path)
+        if payload is not None:
+            self._log_execution_transition(
+                event="watchdog_reconcile_runner_log",
+                run_id=context.run_id,
+                execution_id=context.execution_id,
+                from_status=ExecutionStatus.executing.value,
+                to_status=str(payload.get("status") or "unknown"),
+                reason=f"container_{status}",
+            )
+            return self._enrich_payload_from_artifacts(execution_dir, payload)
+
+        payload = self._infer_payload_from_artifacts(execution_dir, log_path, exit_code)
+        if payload is not None:
+            self._log_execution_transition(
+                event="watchdog_reconcile_artifacts",
+                run_id=context.run_id,
+                execution_id=context.execution_id,
+                from_status=ExecutionStatus.executing.value,
+                to_status="ok",
+                reason=f"container_{status}",
+            )
+            return payload
+
+        message = "Execution watchdog detected container exit without callback"
+        if exit_code is not None:
+            message = f"{message} (exit_code={exit_code})"
+        else:
+            message = f"{message} (status={status})"
+        self._log_execution_transition(
+            event="watchdog_reconcile_failed",
+            run_id=context.run_id,
+            execution_id=context.execution_id,
+            from_status=ExecutionStatus.executing.value,
+            to_status=ExecutionStatus.failed.value,
+            reason=message,
+        )
+        return {"status": "error", "error": message}
+
     def _handle_watchdog_timeout(self, execution_id: str, context: ExecutionContext) -> None:
         marked = self._mark_context_watchdog(execution_id)
         if not marked:
@@ -1251,6 +1547,14 @@ class RunOrchestrator:
         except Exception as exc:  # pragma: no cover - defensive
             LOGGER.debug("Watchdog kill failed for execution %s: %s", execution_id, exc)
         message = "Execution watchdog triggered: deadline exceeded"
+        self._log_execution_transition(
+            event="watchdog_timeout",
+            run_id=context.run_id,
+            execution_id=execution_id,
+            from_status=ExecutionStatus.executing.value,
+            to_status=ExecutionStatus.cancelled.value,
+            reason=message,
+        )
         self._append_log(context.run_id, execution_id, message)
         payload = {"status": "timeout", "error": message}
         self._enqueue_completion(context.run_id, execution_id, payload)
@@ -1265,18 +1569,19 @@ class RunOrchestrator:
         if not marked:
             return
         context = marked
-        context.log_stop.set()
         exit_code = self._safe_exit_code(context)
+        self._stop_log_stream(context)
         message = "Execution watchdog detected container exit without callback"
         if exit_code is not None:
             message = f"{message} (exit_code={exit_code})"
         else:
             message = f"{message} (status={status})"
         self._append_log(context.run_id, execution_id, message)
-        payload = context.result_payload or {
-            "status": "error",
-            "error": message,
-        }
+        payload = context.result_payload or self._reconcile_payload_for_exit(
+            context,
+            status=status,
+            exit_code=exit_code,
+        )
         self._enqueue_completion(context.run_id, execution_id, payload)
 
     def _watchdog_loop(self) -> None:
@@ -1287,13 +1592,14 @@ class RunOrchestrator:
                     continue
                 if context.watchdog_marked:
                     continue
+                status = self._poll_container_status(context)
+                if status in {"exited", "dead", "not_found"}:
+                    self._handle_watchdog_exit(execution_id, context, status)
+                    continue
                 now = time.time()
                 if context.deadline and now > context.deadline:
                     self._handle_watchdog_timeout(execution_id, context)
                     continue
-        status = self._poll_container_status(context)
-        if status in {"exited", "dead", "not_found"}:
-            self._handle_watchdog_exit(execution_id, context, status)
 
     def _collect_logs(self, handle: DockerContainerHandleProtocol) -> str:
         try:
@@ -1582,7 +1888,9 @@ class RunOrchestrator:
         video = None
         video_name = data.get("video")
         if isinstance(video_name, str):
-            candidate = execution_dir / "videos" / video_name
+            candidate = execution_dir / video_name
+            if not candidate.exists():
+                candidate = execution_dir / "videos" / video_name
             if candidate.exists():
                 video = candidate
 
@@ -1616,7 +1924,7 @@ class RunOrchestrator:
         if runner_result.log is None and log_path.exists():
             runner_result.log = log_path
 
-        if runner_result.success:
+        if runner_result.success and runner_result.screenshot:
             self._finalize_execution_success(
                 run=run,
                 execution=execution,
@@ -1625,6 +1933,11 @@ class RunOrchestrator:
                 result=runner_result,
             )
         else:
+            if runner_result.success and not runner_result.screenshot:
+                runner_result.message = "Runner reported success but observed screenshot artifact was not found"
+                result_data = dict(result_data)
+                result_data["status"] = "error"
+                result_data["error"] = runner_result.message
             status_value = ExecutionStatus.failed.value
             status_token = result_data.get("status")
             if status_token in {"cancelled", "timeout"}:
@@ -1638,6 +1951,14 @@ class RunOrchestrator:
                 "artifacts": artifacts,
             }
             self._repo.update_execution(execution_id, update_payload)
+            self._log_execution_transition(
+                event="execution_finalize",
+                run_id=run["id"],
+                execution_id=execution_id,
+                from_status=str(execution.get("status") or "unknown"),
+                to_status=status_value,
+                reason=str(status_token or "error"),
+            )
             LOGGER.error(
                 "Execution %s for run %s failed (status=%s): %s",
                 execution_id,
@@ -1716,8 +2037,9 @@ class RunOrchestrator:
         baseline_record: Optional[Dict[str, object]],
     ) -> Dict[str, object]:
         if not baseline_record:
-            LOGGER.warning("No baseline available for comparison run %s", run["id"])
-            return {"artifacts": {}, "diff": None}
+            message = f"No baseline available for comparison run {run['id']}"
+            LOGGER.warning(message)
+            return {"artifacts": {}, "diff": None, "error": message}
 
         matching_item = None
         for item in baseline_record.get("items", []):
@@ -1731,24 +2053,25 @@ class RunOrchestrator:
                 break
 
         if not matching_item:
-            LOGGER.warning(
-                "Baseline %s missing match for execution %s (task=%s browser=%s viewport=%s)",
-                baseline_record["id"],
-                execution["id"],
-                execution["task_id"],
-                execution["browser"],
-                execution["viewport"],
+            message = (
+                f"Baseline {baseline_record['id']} missing match for execution {execution['id']} "
+                f"(task={execution['task_id']} browser={execution['browser']} "
+                f"viewport={execution['viewport']})"
             )
-            return {"artifacts": {}, "diff": None}
+            LOGGER.warning(message)
+            return {"artifacts": {}, "diff": None, "error": message}
 
         baseline_artifact = matching_item["artifacts"].get(ArtifactKind.baseline.value)
         if not baseline_artifact:
-            return {"artifacts": {}, "diff": None}
+            message = f"Baseline {baseline_record['id']} match for execution {execution['id']} has no artifact"
+            LOGGER.warning(message)
+            return {"artifacts": {}, "diff": None, "error": message}
 
         baseline_path = self._artifacts.root / Path(baseline_artifact["path"])
         if not baseline_path.exists():
-            LOGGER.warning("Baseline artifact missing on disk: %s", baseline_path)
-            return {"artifacts": {}, "diff": None}
+            message = f"Baseline artifact missing on disk: {baseline_path}"
+            LOGGER.warning(message)
+            return {"artifacts": {}, "diff": None, "error": message}
 
         LOGGER.debug(
             "Baseline match found for execution %s (task=%s browser=%s viewport=%sx%s)",
@@ -1762,19 +2085,16 @@ class RunOrchestrator:
         baseline_copy = execution_dir / "baseline.png"
         if not baseline_copy.exists():
             shutil.copy2(baseline_path, baseline_copy)
-        try:
-            with Image.open(observed) as obs_img, Image.open(baseline_copy) as base_img:
-                target_width = max(obs_img.width, base_img.width)
-                target_height = max(obs_img.height, base_img.height)
-        except Exception:
-            target_width = target_height = None
-        if target_width and target_height:
-            self._pad_image_to_size(observed, target_width, target_height)
-            self._pad_image_to_size(baseline_copy, target_width, target_height)
 
         diff_path = execution_dir / "diff.png"
         heatmap_path = execution_dir / "heatmap.png"
-        stats = self._diffs.generate(baseline_copy, observed, diff_path, heatmap_path)
+        stats = self._diffs.generate(
+            baseline_copy,
+            observed,
+            diff_path,
+            heatmap_path,
+            pixel_tolerance=self._diff_pixel_tolerance,
+        )
 
         artifacts = {
             ArtifactKind.baseline.value: self._build_artifact(
@@ -1815,6 +2135,13 @@ class RunOrchestrator:
         with self._lock:
             self._post_wait_ms = max(0, int(milliseconds))
         LOGGER.info("Updated capture stabilization delay to %sms", milliseconds)
+
+    def update_diff_pixel_tolerance(self, tolerance: int) -> None:
+        normalized = DiffEngine._normalize_tolerance(tolerance)
+        with self._lock:
+            self._diff_pixel_tolerance = normalized
+            self._diffs = DiffEngine(pixel_tolerance=normalized)
+        LOGGER.info("Updated diff pixel tolerance to %s", normalized)
 
     def handle_execution_callback(self, execution_id: str, payload: Dict[str, object]) -> bool:
         token = payload.get("token") if isinstance(payload, dict) else None

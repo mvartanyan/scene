@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 
 from app.schemas import (
+    AgentManifest,
+    AgentManifestEndpoint,
+    AgentSetupEntityResult,
+    AgentSetupRequest,
+    AgentSetupResponse,
     Batch,
     BatchComparisonRunCreate,
     BatchCreate,
@@ -15,6 +23,8 @@ from app.schemas import (
     BaselineStatus,
     CheckCandidate,
     ExecutionCallbackRequest,
+    ExecutionArtifactSet,
+    ExecutionLog,
     ExecutionStatus,
     IntegrationRunResult,
     Page,
@@ -25,19 +35,27 @@ from app.schemas import (
     ProjectUpdate,
     Run,
     RunCreate,
+    RunArtifacts,
+    RunDetail,
     RunFailureStatus,
     RunPurpose,
     RunUpdate,
     RunStatus,
+    SceneConfig,
+    SceneConfigUpdate,
     Task,
     TaskCreate,
     TaskUpdate,
     TaskExecution,
 )
+from app.services.agent_auth import SCENE_API_TOKEN_ENV, require_agent_api_token
+from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import get_orchestrator
 from app.services.storage import RepositoryDep, SceneRepository
 
 router = APIRouter(prefix="/api", tags=["api"])
+
+AGENT_DOCS_PATH = Path("docs/agent-api.md")
 
 ARTIFACT_URL_PRIORITY = [
     "diff",
@@ -49,6 +67,8 @@ ARTIFACT_URL_PRIORITY = [
     "video",
     "log",
 ]
+
+AgentAuthDep = Depends(require_agent_api_token)
 
 
 def _ensure_project(repo: SceneRepository, project_id: str) -> None:
@@ -71,6 +91,133 @@ def _absolute_url(request: Request, url: Optional[str]) -> Optional[str]:
     if url.startswith(("http://", "https://")):
         return url
     return urljoin(str(request.base_url), url.lstrip("/"))
+
+
+def _public_artifact_info(request: Request, artifact: Dict[str, object]) -> Dict[str, object]:
+    payload = dict(artifact)
+    url = payload.get("url")
+    if not url and payload.get("path"):
+        url = f"/artifacts/{payload['path']}"
+    payload["url"] = _absolute_url(request, str(url)) if url else None
+    return payload
+
+
+def _apply_config_update(
+    repo: SceneRepository,
+    payload: SceneConfigUpdate,
+    *,
+    update_runtime: bool = True,
+) -> Dict[str, object]:
+    orchestrator = get_orchestrator() if update_runtime else None
+    data = {
+        key: value
+        for key, value in payload.model_dump(exclude_unset=True).items()
+        if value is not None
+    }
+    if "browsers" in data:
+        repo.set_available_browsers(data["browsers"])
+    if "viewports" in data:
+        repo.set_available_viewports(data["viewports"])
+    if "display_timezone" in data:
+        repo.set_display_timezone(data["display_timezone"])
+    if "run_timeout_seconds" in data:
+        repo.set_run_timeout_seconds(data["run_timeout_seconds"])
+    if "max_concurrent_executions" in data:
+        repo.set_max_concurrent_executions(data["max_concurrent_executions"])
+        if orchestrator:
+            orchestrator.update_concurrency(data["max_concurrent_executions"])
+    if "scene_host_url" in data:
+        repo.set_scene_host_url(data["scene_host_url"])
+        if orchestrator:
+            orchestrator.update_scene_host(data["scene_host_url"])
+    if "capture_post_wait_ms" in data:
+        repo.set_capture_post_wait_ms(data["capture_post_wait_ms"])
+        if orchestrator:
+            orchestrator.update_capture_delay(data["capture_post_wait_ms"])
+    if "diff_pixel_tolerance" in data:
+        repo.set_diff_pixel_tolerance(data["diff_pixel_tolerance"])
+        if orchestrator:
+            orchestrator.update_diff_pixel_tolerance(data["diff_pixel_tolerance"])
+    return repo.get_config()
+
+
+def _find_by_field(
+    records: List[Dict[str, object]], field: str, value: object
+) -> Optional[Dict[str, object]]:
+    for record in records:
+        if record.get(field) == value:
+            return record
+    return None
+
+
+def _entity_result(record: Dict[str, object], action: str) -> AgentSetupEntityResult:
+    return AgentSetupEntityResult(
+        id=str(record["id"]),
+        name=str(record.get("name") or record["id"]),
+        action=action,
+    )
+
+
+def _build_run_detail(repo: SceneRepository, run_id: str) -> RunDetail:
+    run = repo.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    baseline = repo.get_baseline(str(run["baseline_id"])) if run.get("baseline_id") else None
+    return RunDetail(
+        run=run,
+        project=repo.get_project(str(run["project_id"])),
+        batch=repo.get_batch(str(run["batch_id"])) if run.get("batch_id") else None,
+        baseline=baseline,
+        executions=repo.list_executions(run_id=run_id),
+        counts=repo.execution_status_counts(run_id),
+    )
+
+
+def _log_payload(
+    repo: SceneRepository,
+    request: Request,
+    *,
+    run_id: str,
+    execution_id: str,
+) -> ExecutionLog:
+    run = repo.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    execution = repo.get_execution(execution_id)
+    if not execution or execution.get("run_id") != run_id:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    artifacts = execution.get("artifacts", {}) or {}
+    log_artifact = artifacts.get("log")
+    if not isinstance(log_artifact, dict):
+        return ExecutionLog(
+            run_id=run_id,
+            execution_id=execution_id,
+            exists=False,
+            length=0,
+            text="Log not available.",
+        )
+
+    store = get_artifact_store()
+    relative_path = str(log_artifact.get("path") or "")
+    artifact_path = store.root / relative_path
+    exists = artifact_path.exists()
+    if exists:
+        text = artifact_path.read_text(encoding="utf-8", errors="replace")
+        length = artifact_path.stat().st_size
+    else:
+        text = "Log file missing on disk."
+        length = 0
+    url = log_artifact.get("url") or f"/artifacts/{relative_path}"
+    return ExecutionLog(
+        run_id=run_id,
+        execution_id=execution_id,
+        exists=exists,
+        length=length,
+        text=text,
+        artifact_path=relative_path,
+        artifact_url=_absolute_url(request, str(url)),
+    )
 
 
 def _completed_baselines(repo: SceneRepository, batch_id: str) -> List[Dict[str, object]]:
@@ -355,6 +502,7 @@ def _build_integration_run_result(
         status=run.get("status", RunStatus.queued.value),
         batch_id=str(run["batch_id"]),
         baseline_id=run.get("baseline_id"),
+        spm_ticket=run.get("spm_ticket"),
         executions_total=executions_total,
         executions_finished=executions_finished,
         executions_failed=executions_failed,
@@ -371,6 +519,244 @@ def _build_integration_run_result(
     )
 
 
+@router.get(
+    "/agent/manifest",
+    response_model=AgentManifest,
+    operation_id="get_agent_manifest",
+)
+async def get_agent_manifest() -> AgentManifest:
+    protected = bool(os.environ.get(SCENE_API_TOKEN_ENV))
+    endpoints = [
+        AgentManifestEndpoint(
+            method="GET",
+            path="/openapi.json",
+            description="Machine-readable OpenAPI schema for SCENE.",
+        ),
+        AgentManifestEndpoint(
+            method="GET",
+            path="/api/config",
+            description="Read global SCENE runtime/configuration settings.",
+        ),
+        AgentManifestEndpoint(
+            method="PATCH",
+            path="/api/config",
+            description="Update global SCENE runtime/configuration settings.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
+            method="POST",
+            path="/api/agent/setup",
+            description="Idempotently upsert a project, pages, tasks, and batches.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
+            method="POST",
+            path="/api/batches/{batch_id}/comparison-runs",
+            description="Launch an unattended comparison run from a completed baseline.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
+            method="POST",
+            path="/api/runs",
+            description="Launch a baseline-recording run for a configured batch.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
+            method="GET",
+            path="/api/runs/{run_id}/result",
+            description="Read SPM-friendly run metrics, thresholds, failures, and artifact links.",
+        ),
+        AgentManifestEndpoint(
+            method="GET",
+            path="/api/runs/{run_id}/artifacts",
+            description="Read structured artifact metadata and viewer/log URLs.",
+        ),
+        AgentManifestEndpoint(
+            method="POST",
+            path="/api/executions/{execution_id}/retry",
+            description="Retry an execution while its run is still modifiable.",
+            auth_required=True,
+        ),
+    ]
+    return AgentManifest(
+        name="SCENE Agent Control Plane",
+        version="0.1.0",
+        openapi_url="/openapi.json",
+        docs_url="/api/agent/docs",
+        auth={
+            "type": "bearer",
+            "env_var": SCENE_API_TOKEN_ENV,
+            "required_when_configured": True,
+            "currently_configured": protected,
+        },
+        capabilities=[
+            "config",
+            "project_crud",
+            "page_crud",
+            "task_crud",
+            "batch_crud",
+            "baseline_read_delete",
+            "run_launch",
+            "run_status",
+            "run_result",
+            "run_artifacts",
+            "run_cancel_delete",
+            "execution_cancel_retry",
+            "orchestrator_readiness",
+            "idempotent_setup",
+            "mcp",
+        ],
+        endpoints=endpoints,
+        mcp_server={
+            "command": "python -m scene_mcp.server",
+            "env": {
+                "SCENE_BASE_URL": "http://127.0.0.1:8000",
+                "SCENE_API_TOKEN": "<same token configured on the SCENE app>",
+            },
+            "tools": [
+                "scene_get_manifest",
+                "scene_apply_setup",
+                "scene_list_projects",
+                "scene_list_batches",
+                "scene_record_baseline",
+                "scene_run_batch",
+                "scene_get_run_status",
+                "scene_get_run_result",
+                "scene_get_artifacts",
+                "scene_cancel_run",
+                "scene_retry_execution",
+            ],
+        },
+    )
+
+
+@router.get(
+    "/agent/docs",
+    response_class=PlainTextResponse,
+    operation_id="get_agent_docs",
+)
+async def get_agent_docs() -> PlainTextResponse:
+    if not AGENT_DOCS_PATH.exists():
+        raise HTTPException(status_code=404, detail="Agent API docs not found")
+    return PlainTextResponse(
+        AGENT_DOCS_PATH.read_text(encoding="utf-8"),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@router.get("/config", response_model=SceneConfig, operation_id="get_scene_config")
+async def get_scene_config(repo: SceneRepository = RepositoryDep) -> SceneConfig:
+    return repo.get_config()
+
+
+@router.patch("/config", response_model=SceneConfig, operation_id="update_scene_config")
+async def update_scene_config(
+    payload: SceneConfigUpdate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> SceneConfig:
+    try:
+        return _apply_config_update(repo, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/agent/setup",
+    response_model=AgentSetupResponse,
+    status_code=200,
+    operation_id="apply_agent_setup",
+)
+async def apply_agent_setup(
+    payload: AgentSetupRequest,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> AgentSetupResponse:
+    config_result = None
+    if payload.config:
+        try:
+            config_result = _apply_config_update(repo, payload.config)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    project_payload = payload.project.model_dump()
+    existing_project = _find_by_field(repo.list_projects(), "slug", payload.project.slug)
+    if existing_project:
+        project = repo.update_project(str(existing_project["id"]), project_payload)
+        assert project is not None
+        project_action = "updated"
+    else:
+        project = repo.create_project(project_payload)
+        project_action = "created"
+    project_id = str(project["id"])
+
+    page_results: List[AgentSetupEntityResult] = []
+    for page_payload in payload.pages:
+        existing_page = _find_by_field(repo.list_pages(project_id), "name", page_payload.name)
+        page_data = page_payload.model_dump()
+        page_data["project_id"] = project_id
+        if existing_page:
+            page = repo.update_page(str(existing_page["id"]), page_data)
+            assert page is not None
+            page_results.append(_entity_result(page, "updated"))
+        else:
+            page = repo.create_page(page_data)
+            page_results.append(_entity_result(page, "created"))
+
+    page_lookup = {str(page["name"]): page for page in repo.list_pages(project_id)}
+    task_results: List[AgentSetupEntityResult] = []
+    for task_payload in payload.tasks:
+        page = page_lookup.get(task_payload.page_name)
+        if not page:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Task '{task_payload.name}' references unknown page '{task_payload.page_name}'",
+            )
+        existing_task = _find_by_field(repo.list_tasks(project_id), "name", task_payload.name)
+        task_data = task_payload.model_dump(exclude={"page_name"})
+        task_data["project_id"] = project_id
+        task_data["page_id"] = page["id"]
+        if existing_task:
+            task = repo.update_task(str(existing_task["id"]), task_data)
+            assert task is not None
+            task_results.append(_entity_result(task, "updated"))
+        else:
+            task = repo.create_task(task_data)
+            task_results.append(_entity_result(task, "created"))
+
+    task_lookup = {str(task["name"]): task for task in repo.list_tasks(project_id)}
+    batch_results: List[AgentSetupEntityResult] = []
+    for batch_payload in payload.batches:
+        missing = [name for name in batch_payload.task_names if name not in task_lookup]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Batch '{batch_payload.name}' references unknown tasks: "
+                    + ", ".join(missing)
+                ),
+            )
+        existing_batch = _find_by_field(repo.list_batches(project_id), "name", batch_payload.name)
+        batch_data = batch_payload.model_dump(exclude={"task_names"})
+        batch_data["project_id"] = project_id
+        batch_data["task_ids"] = [str(task_lookup[name]["id"]) for name in batch_payload.task_names]
+        if existing_batch:
+            batch = repo.update_batch(str(existing_batch["id"]), batch_data)
+            assert batch is not None
+            batch_results.append(_entity_result(batch, "updated"))
+        else:
+            batch = repo.create_batch(batch_data)
+            batch_results.append(_entity_result(batch, "created"))
+
+    return AgentSetupResponse(
+        project=_entity_result(project, project_action),
+        config=config_result,
+        pages=page_results,
+        tasks=task_results,
+        batches=batch_results,
+    )
+
+
 @router.get("/projects", response_model=List[Project])
 async def list_projects(repo: SceneRepository = RepositoryDep) -> List[Project]:
     return repo.list_projects()
@@ -378,7 +764,9 @@ async def list_projects(repo: SceneRepository = RepositoryDep) -> List[Project]:
 
 @router.post("/projects", response_model=Project, status_code=201)
 async def create_project(
-    payload: ProjectCreate, repo: SceneRepository = RepositoryDep
+    payload: ProjectCreate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Project:
     return repo.create_project(payload.model_dump())
 
@@ -393,7 +781,10 @@ async def get_project(project_id: str, repo: SceneRepository = RepositoryDep) ->
 
 @router.patch("/projects/{project_id}", response_model=Project)
 async def update_project(
-    project_id: str, payload: ProjectUpdate, repo: SceneRepository = RepositoryDep
+    project_id: str,
+    payload: ProjectUpdate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Project:
     record = repo.update_project(project_id, payload.model_dump(exclude_unset=True))
     if not record:
@@ -402,7 +793,11 @@ async def update_project(
 
 
 @router.delete("/projects/{project_id}", status_code=204)
-async def delete_project(project_id: str, repo: SceneRepository = RepositoryDep) -> None:
+async def delete_project(
+    project_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> None:
     repo.delete_project(project_id)
 
 
@@ -414,7 +809,11 @@ async def list_pages(project_id: str, repo: SceneRepository = RepositoryDep) -> 
 
 
 @router.post("/pages", response_model=Page, status_code=201)
-async def create_page(payload: PageCreate, repo: SceneRepository = RepositoryDep) -> Page:
+async def create_page(
+    payload: PageCreate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> Page:
     _ensure_project(repo, payload.project_id)
     return repo.create_page(payload.model_dump())
 
@@ -429,7 +828,10 @@ async def get_page(page_id: str, repo: SceneRepository = RepositoryDep) -> Page:
 
 @router.patch("/pages/{page_id}", response_model=Page)
 async def update_page(
-    page_id: str, payload: PageUpdate, repo: SceneRepository = RepositoryDep
+    page_id: str,
+    payload: PageUpdate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Page:
     record = repo.update_page(page_id, payload.model_dump(exclude_unset=True))
     if not record:
@@ -438,7 +840,11 @@ async def update_page(
 
 
 @router.delete("/pages/{page_id}", status_code=204)
-async def delete_page(page_id: str, repo: SceneRepository = RepositoryDep) -> None:
+async def delete_page(
+    page_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> None:
     repo.delete_page(page_id)
 
 
@@ -450,7 +856,11 @@ async def list_tasks(project_id: str, repo: SceneRepository = RepositoryDep) -> 
 
 
 @router.post("/tasks", response_model=Task, status_code=201)
-async def create_task(payload: TaskCreate, repo: SceneRepository = RepositoryDep) -> Task:
+async def create_task(
+    payload: TaskCreate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> Task:
     _ensure_project(repo, payload.project_id)
     if not repo.get_page(payload.page_id):
         raise HTTPException(status_code=404, detail="Page not found")
@@ -467,7 +877,10 @@ async def get_task(task_id: str, repo: SceneRepository = RepositoryDep) -> Task:
 
 @router.patch("/tasks/{task_id}", response_model=Task)
 async def update_task(
-    task_id: str, payload: TaskUpdate, repo: SceneRepository = RepositoryDep
+    task_id: str,
+    payload: TaskUpdate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Task:
     record = repo.update_task(task_id, payload.model_dump(exclude_unset=True))
     if not record:
@@ -476,7 +889,11 @@ async def update_task(
 
 
 @router.delete("/tasks/{task_id}", status_code=204)
-async def delete_task(task_id: str, repo: SceneRepository = RepositoryDep) -> None:
+async def delete_task(
+    task_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> None:
     repo.delete_task(task_id)
 
 
@@ -489,7 +906,9 @@ async def list_batches(project_id: str, repo: SceneRepository = RepositoryDep) -
 
 @router.post("/batches", response_model=Batch, status_code=201)
 async def create_batch(
-    payload: BatchCreate, repo: SceneRepository = RepositoryDep
+    payload: BatchCreate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Batch:
     _ensure_project(repo, payload.project_id)
     return repo.create_batch(payload.model_dump())
@@ -520,7 +939,10 @@ async def get_batch(batch_id: str, repo: SceneRepository = RepositoryDep) -> Bat
 
 @router.patch("/batches/{batch_id}", response_model=Batch)
 async def update_batch(
-    batch_id: str, payload: BatchUpdate, repo: SceneRepository = RepositoryDep
+    batch_id: str,
+    payload: BatchUpdate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Batch:
     record = repo.update_batch(batch_id, payload.model_dump(exclude_unset=True))
     if not record:
@@ -529,7 +951,11 @@ async def update_batch(
 
 
 @router.delete("/batches/{batch_id}", status_code=204)
-async def delete_batch(batch_id: str, repo: SceneRepository = RepositoryDep) -> None:
+async def delete_batch(
+    batch_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> None:
     repo.delete_batch(batch_id)
 
 
@@ -571,6 +997,7 @@ async def launch_batch_comparison_run(
     payload: BatchComparisonRunCreate,
     request: Request,
     repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> IntegrationRunResult:
     batch = repo.get_batch(batch_id)
     if not batch:
@@ -609,7 +1036,7 @@ async def launch_batch_comparison_run(
             "purpose": RunPurpose.comparison.value,
             "requested_by": payload.requested_by,
             "note": payload.note,
-            "jira_issue": payload.jira_issue,
+            "spm_ticket": payload.spm_ticket,
             "timeout_seconds": payload.timeout_seconds,
         }
     )
@@ -629,7 +1056,11 @@ async def list_runs(
 
 
 @router.post("/runs", response_model=Run, status_code=201)
-async def create_run(payload: RunCreate, repo: SceneRepository = RepositoryDep) -> Run:
+async def create_run(
+    payload: RunCreate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> Run:
     _ensure_project(repo, payload.project_id)
     if not repo.get_batch(payload.batch_id):
         raise HTTPException(status_code=404, detail="Batch not found")
@@ -647,6 +1078,15 @@ async def get_run(run_id: str, repo: SceneRepository = RepositoryDep) -> Run:
     return record
 
 
+@router.get(
+    "/runs/{run_id}/detail",
+    response_model=RunDetail,
+    operation_id="get_run_detail",
+)
+async def get_run_detail(run_id: str, repo: SceneRepository = RepositoryDep) -> RunDetail:
+    return _build_run_detail(repo, run_id)
+
+
 @router.get("/runs/{run_id}/result", response_model=IntegrationRunResult)
 async def get_run_result(
     run_id: str, request: Request, repo: SceneRepository = RepositoryDep
@@ -657,9 +1097,56 @@ async def get_run_result(
     return _build_integration_run_result(repo, request, record)
 
 
+@router.get(
+    "/runs/{run_id}/artifacts",
+    response_model=RunArtifacts,
+    operation_id="list_run_artifacts",
+)
+async def list_run_artifacts(
+    run_id: str,
+    request: Request,
+    repo: SceneRepository = RepositoryDep,
+) -> RunArtifacts:
+    if not repo.get_run(run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    executions: List[ExecutionArtifactSet] = []
+    for execution in repo.list_executions(run_id=run_id):
+        artifacts = execution.get("artifacts") or {}
+        public_artifacts = {
+            key: _public_artifact_info(request, value)
+            for key, value in artifacts.items()
+            if isinstance(value, dict)
+        }
+        executions.append(
+            ExecutionArtifactSet(
+                execution_id=str(execution["id"]),
+                task_id=str(execution.get("task_id") or ""),
+                task_name=str(execution.get("task_name") or ""),
+                browser=str(execution.get("browser") or ""),
+                viewport=execution.get("viewport") or {},
+                status=execution.get("status", ExecutionStatus.queued.value),
+                artifacts=public_artifacts,
+                viewer_url=_absolute_url(
+                    request,
+                    f"/runs/{run_id}/executions/{execution['id']}/viewer",
+                )
+                if artifacts
+                else None,
+                log_url=_absolute_url(
+                    request,
+                    f"/api/runs/{run_id}/executions/{execution['id']}/log",
+                ),
+            )
+        )
+    return RunArtifacts(run_id=run_id, executions=executions)
+
+
 @router.patch("/runs/{run_id}", response_model=Run)
 async def update_run(
-    run_id: str, payload: RunUpdate, repo: SceneRepository = RepositoryDep
+    run_id: str,
+    payload: RunUpdate,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> Run:
     record = repo.update_run(run_id, payload.model_dump(exclude_unset=True))
     if not record:
@@ -668,12 +1155,24 @@ async def update_run(
 
 
 @router.delete("/runs/{run_id}", status_code=204)
-async def delete_run(run_id: str, repo: SceneRepository = RepositoryDep) -> None:
+async def delete_run(
+    run_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> None:
+    if repo.get_run(run_id):
+        orchestrator = get_orchestrator()
+        if hasattr(orchestrator, "cancel_run"):
+            orchestrator.cancel_run(run_id)
     repo.delete_run(run_id)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=Run)
-async def cancel_run(run_id: str, repo: SceneRepository = RepositoryDep) -> Run:
+async def cancel_run(
+    run_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> Run:
     record = repo.get_run(run_id)
     if not record:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -687,7 +1186,11 @@ async def cancel_run(run_id: str, repo: SceneRepository = RepositoryDep) -> Run:
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=TaskExecution)
-async def cancel_execution(execution_id: str, repo: SceneRepository = RepositoryDep) -> TaskExecution:
+async def cancel_execution(
+    execution_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> TaskExecution:
     execution = repo.get_execution(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
@@ -716,9 +1219,52 @@ async def get_execution(execution_id: str, repo: SceneRepository = RepositoryDep
     return execution
 
 
+@router.get(
+    "/runs/{run_id}/executions/{execution_id}/log",
+    response_model=ExecutionLog,
+    operation_id="get_execution_log",
+)
+async def get_execution_log(
+    run_id: str,
+    execution_id: str,
+    request: Request,
+    repo: SceneRepository = RepositoryDep,
+) -> ExecutionLog:
+    return _log_payload(repo, request, run_id=run_id, execution_id=execution_id)
+
+
+@router.post(
+    "/executions/{execution_id}/retry",
+    response_model=TaskExecution,
+    operation_id="retry_execution",
+)
+async def retry_execution(
+    execution_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> TaskExecution:
+    execution = repo.get_execution(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    run = repo.get_run(execution["run_id"])
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.get("status") == RunStatus.finished.value:
+        raise HTTPException(status_code=400, detail="Finished runs cannot be retried.")
+    try:
+        return get_orchestrator().retry_execution(execution_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/orchestrator/ping")
 async def orchestrator_ping() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/orchestrator/readiness")
+async def orchestrator_readiness() -> Dict[str, object]:
+    return get_orchestrator().deployment_readiness().as_dict()
 
 
 def _format_baseline_option_payload(baseline: Dict[str, object]) -> BaselineOption:
@@ -752,6 +1298,48 @@ async def complete_execution_callback(
     if not orchestrator.handle_execution_callback(execution_id, payload.model_dump()):
         raise HTTPException(status_code=403, detail="Invalid completion token or execution not pending")
     return {"status": "ok"}
+
+
+@router.get("/baselines", response_model=List[Baseline], operation_id="list_baselines")
+async def list_baselines(
+    project_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> List[Baseline]:
+    if project_id:
+        _ensure_project(repo, project_id)
+    if batch_id and not repo.get_batch(batch_id):
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return repo.list_baselines(project_id=project_id, batch_id=batch_id)
+
+
+@router.get(
+    "/baselines/{baseline_id}",
+    response_model=Baseline,
+    operation_id="get_baseline",
+)
+async def get_baseline(
+    baseline_id: str, repo: SceneRepository = RepositoryDep
+) -> Baseline:
+    baseline = repo.get_baseline(baseline_id)
+    if not baseline:
+        raise HTTPException(status_code=404, detail="Baseline not found")
+    return baseline
+
+
+@router.delete(
+    "/baselines/{baseline_id}",
+    status_code=204,
+    operation_id="delete_baseline",
+)
+async def delete_baseline(
+    baseline_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> None:
+    if not repo.get_baseline(baseline_id):
+        raise HTTPException(status_code=404, detail="Baseline not found")
+    repo.delete_baseline(baseline_id)
 
 
 @router.get("/batches/{batch_id}/baselines", response_model=List[BaselineOption])

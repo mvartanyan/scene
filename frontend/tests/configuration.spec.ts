@@ -61,7 +61,7 @@ async function seedProjectConfiguration(
         name: 'Default batch',
         description: 'Configuration regression batch',
         task_ids: [task.id],
-        jira_issue: 'SCENE-5',
+        spm_ticket: 'SCENE-5',
         run_diff_threshold: 2.5,
         execution_diff_threshold: 1.5,
       },
@@ -132,7 +132,7 @@ async function assertProjectConfigurationForms(page: Page, projectId: string): P
   await expectNamedField(batchForm, 'name');
   await expectNamedField(batchForm, 'description');
   await expect(batchForm.getByLabel('Homepage screenshot')).toBeVisible();
-  await expectNamedField(batchForm, 'jira_issue');
+  await expectNamedField(batchForm, 'spm_ticket');
   await expectNamedField(batchForm, 'run_diff_threshold');
   await expectNamedField(batchForm, 'execution_diff_threshold');
   await assertNoHorizontalOverflow(page);

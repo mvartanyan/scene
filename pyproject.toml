@@ -14,7 +14,8 @@ dependencies = [
     "boto3>=1.34.0",
     "python-multipart>=0.0.9",
     "pillow>=10.3.0",
-    "docker>=7.0.0"
+    "docker>=7.0.0",
+    "mcp>=1.12.0"
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,11 @@ dev = [
 [build-system]
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*", "scene_mcp*"]
+exclude = ["artifacts*", "tmp_artifacts*", "frontend*", "deploy*", "docs*", "tests*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = [

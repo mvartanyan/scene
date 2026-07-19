@@ -3,7 +3,25 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+
+
+def spm_ticket_field() -> Field:
+    return Field(
+        default=None,
+        description="SPM ticket key or reference associated with this object.",
+    )
+
+
+class SpmTicketAliasModel(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_jira_issue(cls, data):
+        if isinstance(data, dict) and "spm_ticket" not in data and "jira_issue" in data:
+            normalized = dict(data)
+            normalized["spm_ticket"] = normalized["jira_issue"]
+            return normalized
+        return data
 
 class ActionDefinition(BaseModel):
     type: str = Field(..., description="Action identifier, e.g. click, wait_for_selector.")
@@ -121,11 +139,11 @@ class Task(TaskBase):
     model_config = {"from_attributes": True}
 
 
-class BatchBase(BaseModel):
+class BatchBase(SpmTicketAliasModel):
     name: str
     description: Optional[str] = None
     task_ids: List[str] = []
-    jira_issue: Optional[str] = None
+    spm_ticket: Optional[str] = spm_ticket_field()
     run_diff_threshold: Optional[float] = Field(default=None, ge=0)
     execution_diff_threshold: Optional[float] = Field(default=None, ge=0)
 
@@ -134,11 +152,11 @@ class BatchCreate(BatchBase):
     project_id: str
 
 
-class BatchUpdate(BaseModel):
+class BatchUpdate(SpmTicketAliasModel):
     name: Optional[str] = None
     description: Optional[str] = None
     task_ids: Optional[List[str]] = None
-    jira_issue: Optional[str] = None
+    spm_ticket: Optional[str] = spm_ticket_field()
     run_diff_threshold: Optional[float] = Field(default=None, ge=0)
     execution_diff_threshold: Optional[float] = Field(default=None, ge=0)
 
@@ -150,6 +168,85 @@ class Batch(BatchBase):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class SceneConfig(BaseModel):
+    browsers: List[str]
+    viewports: List[str]
+    display_timezone: str
+    run_timeout_seconds: int = Field(ge=1)
+    max_concurrent_executions: int = Field(ge=1, le=32)
+    scene_host_url: str
+    capture_post_wait_ms: int = Field(ge=0)
+    diff_pixel_tolerance: int = Field(ge=0, le=255)
+
+
+class SceneConfigUpdate(BaseModel):
+    browsers: Optional[List[str]] = None
+    viewports: Optional[List[str]] = None
+    display_timezone: Optional[str] = None
+    run_timeout_seconds: Optional[int] = Field(default=None, ge=1)
+    max_concurrent_executions: Optional[int] = Field(default=None, ge=1, le=32)
+    scene_host_url: Optional[str] = None
+    capture_post_wait_ms: Optional[int] = Field(default=None, ge=0)
+    diff_pixel_tolerance: Optional[int] = Field(default=None, ge=0, le=255)
+
+
+class AgentManifestEndpoint(BaseModel):
+    method: str
+    path: str
+    description: str
+    auth_required: bool = False
+
+
+class AgentManifest(BaseModel):
+    name: str
+    version: str
+    openapi_url: str
+    docs_url: str
+    auth: Dict[str, object]
+    capabilities: List[str]
+    endpoints: List[AgentManifestEndpoint]
+    mcp_server: Dict[str, object]
+
+
+class AgentSetupPage(PageBase):
+    pass
+
+
+class AgentSetupTask(TaskBase):
+    page_name: str = Field(..., description="Name of the setup page this task belongs to.")
+
+
+class AgentSetupBatch(SpmTicketAliasModel):
+    name: str
+    description: Optional[str] = None
+    task_names: List[str] = Field(default_factory=list)
+    spm_ticket: Optional[str] = spm_ticket_field()
+    run_diff_threshold: Optional[float] = Field(default=None, ge=0)
+    execution_diff_threshold: Optional[float] = Field(default=None, ge=0)
+
+
+class AgentSetupRequest(BaseModel):
+    project: ProjectCreate
+    config: Optional[SceneConfigUpdate] = None
+    pages: List[AgentSetupPage] = Field(default_factory=list)
+    tasks: List[AgentSetupTask] = Field(default_factory=list)
+    batches: List[AgentSetupBatch] = Field(default_factory=list)
+
+
+class AgentSetupEntityResult(BaseModel):
+    id: str
+    name: str
+    action: str
+
+
+class AgentSetupResponse(BaseModel):
+    project: AgentSetupEntityResult
+    config: Optional[SceneConfig] = None
+    pages: List[AgentSetupEntityResult] = Field(default_factory=list)
+    tasks: List[AgentSetupEntityResult] = Field(default_factory=list)
+    batches: List[AgentSetupEntityResult] = Field(default_factory=list)
 
 
 class RunPurpose(str, Enum):
@@ -288,11 +385,11 @@ class CheckCandidate(BaseModel):
     unavailable_reasons: List[str] = Field(default_factory=list)
 
 
-class BatchComparisonRunCreate(BaseModel):
+class BatchComparisonRunCreate(SpmTicketAliasModel):
     baseline_id: Optional[str] = None
     requested_by: Optional[str] = None
     note: Optional[str] = None
-    jira_issue: Optional[str] = None
+    spm_ticket: Optional[str] = spm_ticket_field()
     timeout_seconds: Optional[int] = Field(default=None, ge=1)
 
 
@@ -312,6 +409,7 @@ class IntegrationRunResult(BaseModel):
     status: RunStatus
     batch_id: str
     baseline_id: Optional[str] = None
+    spm_ticket: Optional[str] = None
     executions_total: int
     executions_finished: int
     executions_failed: int
@@ -327,7 +425,7 @@ class IntegrationRunResult(BaseModel):
     failure_statuses: List[RunFailureStatus] = Field(default_factory=list)
 
 
-class RunBase(BaseModel):
+class RunBase(SpmTicketAliasModel):
     project_id: str
     batch_id: str
     baseline_id: Optional[str] = None
@@ -335,7 +433,7 @@ class RunBase(BaseModel):
     status: RunStatus = RunStatus.queued
     requested_by: Optional[str] = None
     note: Optional[str] = None
-    jira_issue: Optional[str] = None
+    spm_ticket: Optional[str] = spm_ticket_field()
     summary: RunSummary = Field(default_factory=RunSummary)
     timeout_seconds: Optional[int] = Field(default=None, ge=1)
 
@@ -344,10 +442,10 @@ class RunCreate(RunBase):
     pass
 
 
-class RunUpdate(BaseModel):
+class RunUpdate(SpmTicketAliasModel):
     status: Optional[RunStatus] = None
     note: Optional[str] = None
-    jira_issue: Optional[str] = None
+    spm_ticket: Optional[str] = spm_ticket_field()
     summary: Optional[RunSummary] = None
     timeout_seconds: Optional[int] = Field(default=None, ge=1)
 
@@ -358,3 +456,39 @@ class Run(RunBase):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class RunDetail(BaseModel):
+    run: Run
+    project: Optional[Project] = None
+    batch: Optional[Batch] = None
+    baseline: Optional[Baseline] = None
+    executions: List[TaskExecution] = Field(default_factory=list)
+    counts: Dict[str, int] = Field(default_factory=dict)
+
+
+class ExecutionArtifactSet(BaseModel):
+    execution_id: str
+    task_id: str
+    task_name: str
+    browser: str
+    viewport: Dict[str, int]
+    status: ExecutionStatus
+    artifacts: Dict[str, ArtifactInfo] = Field(default_factory=dict)
+    viewer_url: Optional[str] = None
+    log_url: Optional[str] = None
+
+
+class RunArtifacts(BaseModel):
+    run_id: str
+    executions: List[ExecutionArtifactSet] = Field(default_factory=list)
+
+
+class ExecutionLog(BaseModel):
+    run_id: str
+    execution_id: str
+    exists: bool
+    length: int
+    text: str
+    artifact_path: Optional[str] = None
+    artifact_url: Optional[str] = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 import socket
 import threading
 from functools import partial
@@ -16,6 +17,9 @@ from app.schemas import BaselineStatus, ExecutionStatus, RunPurpose, RunStatus
 from app.services.artifacts import ArtifactStore
 from app.services.orchestrator import RunOrchestrator
 from app.services.storage import LocalDynamoStorage, SceneRepository
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _start_http_server(root: Path) -> Tuple[ThreadingHTTPServer, threading.Thread, int]:
@@ -103,7 +107,7 @@ def test_playwright_baseline_and_comparison(tmp_path: Path) -> None:
 
     storage = LocalDynamoStorage(tmp_path / "db.json")
     repo = SceneRepository(storage)
-    artifact_root = tmp_path / "artifacts"
+    artifact_root = PROJECT_ROOT / ".scene" / "quality-gate" / "integration-artifacts" / str(uuid.uuid4())
     artifact_store = ArtifactStore(root=artifact_root)
     orchestrator = RunOrchestrator(repo=repo, artifacts=artifact_store, auto_start=False)
     callback_server, callback_thread, callback_port = _start_callback_server(orchestrator)

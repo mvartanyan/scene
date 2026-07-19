@@ -8,6 +8,7 @@ The UI is organised into three primary areas:
 - **Projects** — define Pages (URL + credentials), Tasks (browser/viewport combos + task JS), and Batches (collections of tasks).
 - **Runs** — launch baseline or comparison runs, monitor execution progress, and drill into artifacts via an in-app viewer.
 - **Configuration** — manage available browsers, viewport presets, timestamp display, and the default run timeout.
+- **Agent API/MCP** — expose the same configuration and run-control workflows through JSON endpoints and a thin MCP server for unattended agent use.
 
 ## Environment
 - Python 3.12 (virtualenv provided at `venv/`).
@@ -37,6 +38,8 @@ The UI is organised into three primary areas:
 - `.scene/artifacts/` — default local screenshots, traces, videos, logs.
 - `dev.dynamodb.json` — tracked demo/seed snapshot, not the mutable default runtime database.
 - `tests/` — unit/integration coverage for CRUD, orchestrator behaviour, and dashboard rendering.
+- `docs/agent-api.md` — agent-readable REST/MCP contract, served at `/api/agent/docs`.
+- `scene_mcp/` — MCP server wrapper that forwards tools to SCENE REST APIs.
 
 Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding issues, and next steps.
 

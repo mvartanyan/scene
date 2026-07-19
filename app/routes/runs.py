@@ -107,7 +107,7 @@ def _run_overlay_signature(
             "diff_threshold": run.get("diff_threshold"),
             "timeout_seconds": run.get("timeout_seconds"),
             "note": run.get("note"),
-            "jira_issue": run.get("jira_issue"),
+            "spm_ticket": run.get("spm_ticket"),
             "purpose": run.get("purpose"),
             "baseline_id": run.get("baseline_id"),
         },
@@ -272,7 +272,7 @@ def _build_runs_dashboard_context(
         "baseline_id": str(defaults_raw.get("baseline_id") or ""),
         "baseline_input": str(defaults_raw.get("baseline_input") or defaults_raw.get("baseline_id") or ""),
         "requested_by": str(defaults_raw.get("requested_by") or ""),
-        "jira_issue": str(defaults_raw.get("jira_issue") or ""),
+        "spm_ticket": str(defaults_raw.get("spm_ticket") or defaults_raw.get("jira_issue") or ""),
         "note": str(defaults_raw.get("note") or ""),
         "timeout_seconds": str(
             defaults_raw.get("timeout_seconds") or config.get("run_timeout_seconds", 600)
@@ -492,7 +492,7 @@ async def launch_run(
     purpose: RunPurpose = Form(RunPurpose.comparison.value),
     baseline_id: Optional[str] = Form(None),
     note: Optional[str] = Form(None),
-    jira_issue: Optional[str] = Form(None),
+    spm_ticket: Optional[str] = Form(None),
     requested_by: Optional[str] = Form(None),
     timeout_seconds: Optional[int] = Form(None),
     repo: SceneRepository = RepositoryDep,
@@ -520,7 +520,7 @@ async def launch_run(
         "purpose": purpose.value if isinstance(purpose, RunPurpose) else purpose,
         "requested_by": requested_by or "dashboard",
         "note": note,
-        "jira_issue": jira_issue,
+        "spm_ticket": spm_ticket,
         "timeout_seconds": resolved_timeout,
     }
     if baseline_id:
@@ -546,7 +546,7 @@ async def launch_run(
         "baseline_id": payload.get("baseline_id", ""),
         "baseline_input": baseline_input_raw,
         "requested_by": requested_by or "",
-        "jira_issue": jira_issue or "",
+        "spm_ticket": spm_ticket or "",
         "note": note or "",
         "timeout_seconds": str(resolved_timeout),
     }

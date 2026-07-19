@@ -30,12 +30,23 @@ Required staging variables:
 - `SCENE_STATE_PATH`: JSON state file, for example `/var/lib/scene/staging/state/scene.dynamodb.json`.
 - `SCENE_ARTIFACT_ROOT`: persistent artifact directory, for example `/var/lib/scene/staging/artifacts`.
 - `SCENE_ARTIFACT_BASE_URL`: artifact URL prefix, normally `/artifacts`.
+- `SCENE_ARTIFACT_STORAGE`: storage class for this profile. Use `filesystem` for local Linux Docker staging.
 - `SCENE_HOST_URL`: stable URL runner containers use for callbacks and reviewers use for artifacts.
+- `SCENE_BASE_URL`: stable URL used by the in-repo MCP server when it calls SCENE.
+- `SCENE_API_TOKEN`: bearer token required for agent/API/MCP mutation and control calls.
+- `SCENE_RUNNER_BACKEND`: runner backend. Use `docker` for this profile.
 - `SCENE_RUNNER_IMAGE`: pinned runner image, for example `scene-playwright-runner:1.47.0-jammy`.
+- `SCENE_RUNNER_IMAGE_AUTOBUILD`: set to `false` for staging so missing images fail readiness instead of building inside the app.
+- `SCENE_RUNNER_SHM_SIZE`: Docker shared memory size for headless browsers. Start with `1g`.
+- `SCENE_RUNNER_EXTRA_HOST_GATEWAY`: set to `true` when `host.docker.internal` is used from Linux runner containers.
 - `SCENE_MAX_CONCURRENT_EXECUTIONS`: staging runner concurrency. Start with `2`.
 - `SCENE_RUN_TIMEOUT_SECONDS`: run timeout. Start with `900`.
 - `SCENE_CAPTURE_DELAY_MS`: post-load capture delay. Start with `7000`.
 - `SCENE_DIFF_PIXEL_TOLERANCE`: per-channel pixel tolerance for diff/heatmap metrics. Start with `0`.
+
+k3s uses different settings: `SCENE_RUNNER_BACKEND=k3s`,
+`SCENE_K3S_SERVICE_URL=http://scene.<namespace>.svc.cluster.local:8000`, and
+`SCENE_ARTIFACT_STORAGE=pvc`. See `docs/k3s-runner.md`.
 
 ## Stable Protected URL
 
@@ -108,12 +119,30 @@ python scripts/staging_smoke.py \
 The smoke verifies:
 
 - app health via `/api/orchestrator/ping`
+- runner config via `/api/orchestrator/readiness`
 - pinned runner image is present
 - callback reachability from a runner container
 - host artifact write and read through `/artifacts/...`
 - one baseline run and one comparison run
 - Chromium and Firefox launch headlessly on Linux
 - observed, baseline, diff, heatmap, trace, and log artifacts are readable
+
+## Agent API And MCP
+
+Staging should expose the agent control plane so SPM or Codex can configure and
+run SCENE without using HTMX routes:
+
+```bash
+source .env.staging
+curl "$SCENE_HOST_URL/api/agent/manifest"
+curl -H "Authorization: Bearer $SCENE_API_TOKEN" "$SCENE_HOST_URL/api/config"
+SCENE_BASE_URL="$SCENE_HOST_URL" SCENE_API_TOKEN="$SCENE_API_TOKEN" python -m scene_mcp.server
+```
+
+The app serves the agent docs at `/api/agent/docs` and OpenAPI at
+`/openapi.json`. Keep page, batch, threshold, baseline, and artifact
+configuration in SCENE; SPM should reference SCENE batches and consume
+`/api/runs/{run_id}/result`.
 
 The script prints JSON with the staging URL, project/batch IDs, run IDs,
 baseline ID, execution count, diff percentages, and artifact readback URL.
@@ -147,6 +176,9 @@ Record acceptance evidence as:
 - Do not claim acceptance from Mac/ARM-only Playwright runs.
 - Do not store staging state, artifacts, traces, videos, or screenshots in the
   tracked repo.
+- Do not switch this Docker staging profile to k3s by relying on
+  `host.docker.internal`; k3s callbacks must use cluster DNS and the runner
+  readiness job in `deploy/k3s/runner-readiness-job.yaml`.
 
 ## Cleanup And Retention
 

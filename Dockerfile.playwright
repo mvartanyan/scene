@@ -1,4 +1,7 @@
 FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
 
+COPY scripts/runner_readiness.py /usr/local/bin/scene-runner-readiness
+
 RUN python -m pip install --no-cache-dir playwright==1.47.0 && \
-    python -m playwright install --with-deps
+    python -m playwright install --with-deps && \
+    chmod +x /usr/local/bin/scene-runner-readiness

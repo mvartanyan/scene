@@ -114,6 +114,34 @@ def _sanitize_actions(value: Optional[Any]) -> List[Dict[str, Any]]:
     return []
 
 
+def _spm_ticket_value(payload: Dict[str, Any]) -> Optional[str]:
+    value = payload.get("spm_ticket")
+    if value is None:
+        value = payload.get("jira_issue")
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return value
+
+
+def _with_spm_ticket(record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if record is None:
+        return None
+    normalized = dict(record)
+    normalized["spm_ticket"] = _spm_ticket_value(normalized)
+    return normalized
+
+
+def _apply_spm_ticket_update(record: Dict[str, Any], payload: Dict[str, Any]) -> None:
+    if "spm_ticket" not in payload and "jira_issue" not in payload:
+        return
+    value = _spm_ticket_value(payload)
+    record["spm_ticket"] = value
+    # Retain the legacy storage key during the compatibility window so older
+    # state files and direct consumers keep seeing the same value.
+    record["jira_issue"] = value
+
+
 class LocalDynamoStorage:
     """Very small DynamoDB-like persistence layer backed by a JSON file.
 
@@ -148,7 +176,9 @@ class LocalDynamoStorage:
             for batch in state.get("batches", {}).values():
                 batch.setdefault("run_diff_threshold", None)
                 batch.setdefault("execution_diff_threshold", None)
+                batch.setdefault("spm_ticket", batch.get("jira_issue"))
             for run in state.get("runs", {}).values():
+                run.setdefault("spm_ticket", run.get("jira_issue"))
                 summary = run.setdefault("summary", {})
                 summary.setdefault("executions_total", 0)
                 summary.setdefault("executions_finished", 0)
@@ -550,23 +580,32 @@ class SceneRepository:
     # -- Batches ------------------------------------------------------------------
     def list_batches(self, project_id: str) -> List[Dict[str, Any]]:
         return sorted(
-            self._storage.filter("batches", key="project_id", value=project_id),
+            [
+                batch
+                for batch in (
+                    _with_spm_ticket(item)
+                    for item in self._storage.filter("batches", key="project_id", value=project_id)
+                )
+                if batch is not None
+            ],
             key=lambda it: it["created_at"],
         )
 
     def get_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        return self._storage.get("batches", batch_id)
+        return _with_spm_ticket(self._storage.get("batches", batch_id))
 
     def create_batch(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
         batch_id = str(uuid.uuid4())
+        spm_ticket = _spm_ticket_value(payload)
         record = {
             "id": batch_id,
             "project_id": payload["project_id"],
             "name": payload["name"],
             "description": payload.get("description"),
             "task_ids": payload.get("task_ids", []),
-            "jira_issue": payload.get("jira_issue"),
+            "spm_ticket": spm_ticket,
+            "jira_issue": spm_ticket,
             "run_diff_threshold": payload.get("run_diff_threshold"),
             "execution_diff_threshold": payload.get("execution_diff_threshold"),
             "created_at": now,
@@ -583,8 +622,9 @@ class SceneRepository:
             if key in payload:
                 record[key] = payload[key]
         for key, value in payload.items():
-            if key not in threshold_keys:
+            if key not in threshold_keys and key not in {"spm_ticket", "jira_issue"}:
                 record[key] = value
+        _apply_spm_ticket_update(record, payload)
         record["updated_at"] = _utcnow()
         return self._storage.upsert("batches", batch_id, record)
 
@@ -688,19 +728,24 @@ class SceneRepository:
             items = [it for it in items if it.get("project_id") == project_id]
         if batch_id:
             items = [it for it in items if it.get("batch_id") == batch_id]
-        return sorted(items, key=lambda it: it["created_at"], reverse=True)
+        normalized = [
+            run
+            for run in (_with_spm_ticket(item) for item in items)
+            if run is not None
+        ]
+        return sorted(normalized, key=lambda it: it["created_at"], reverse=True)
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
-        return self._storage.get("runs", run_id)
+        return _with_spm_ticket(self._storage.get("runs", run_id))
 
     def create_run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
         run_id = str(uuid.uuid4())
-        jira_issue = payload.get("jira_issue")
-        if not jira_issue and payload.get("batch_id"):
+        spm_ticket = _spm_ticket_value(payload)
+        if not spm_ticket and payload.get("batch_id"):
             batch = self.get_batch(payload["batch_id"])
             if batch:
-                jira_issue = batch.get("jira_issue")
+                spm_ticket = batch.get("spm_ticket")
         summary = payload.get("summary") or {
             "executions_total": 0,
             "executions_finished": 0,
@@ -724,7 +769,8 @@ class SceneRepository:
             "status": payload.get("status", "queued"),
             "requested_by": payload.get("requested_by"),
             "note": payload.get("note"),
-            "jira_issue": jira_issue,
+            "spm_ticket": spm_ticket,
+            "jira_issue": spm_ticket,
             "created_at": now,
             "updated_at": now,
             "summary": summary,
@@ -736,7 +782,14 @@ class SceneRepository:
         record = self.get_run(run_id)
         if not record:
             return None
-        record.update({k: v for k, v in payload.items() if v is not None})
+        record.update(
+            {
+                k: v
+                for k, v in payload.items()
+                if v is not None and k not in {"spm_ticket", "jira_issue"}
+            }
+        )
+        _apply_spm_ticket_update(record, payload)
         record["updated_at"] = _utcnow()
         return self._storage.upsert("runs", run_id, record)
 

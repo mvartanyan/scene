@@ -35,11 +35,16 @@ from app.schemas import (
     RunStatus,
 )
 from app.services.artifacts import ArtifactStore, get_artifact_store
+from app.services.runner_backend import (
+    DEFAULT_RUNNER_IMAGE,
+    SCENE_RUNNER_IMAGE_ENV,
+    RunnerReadinessReport,
+    load_runner_runtime_config,
+    validate_runner_runtime_config,
+)
 from app.services.storage import SceneRepository, get_repository
 
 LOGGER = logging.getLogger("scene.orchestrator")
-SCENE_RUNNER_IMAGE_ENV = "SCENE_RUNNER_IMAGE"
-DEFAULT_RUNNER_IMAGE = "scene-playwright-runner:latest"
 
 
 def _utcnow() -> str:
@@ -550,7 +555,6 @@ class RunOrchestrator:
     ) -> None:
         self._repo = repo or get_repository()
         self._artifacts = artifacts or get_artifact_store()
-        self._runner = DockerPlaywrightRunner()
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._inflight: set[str] = set()
         self._lock = threading.Lock()
@@ -558,23 +562,33 @@ class RunOrchestrator:
         self._runner_image_verified = False
         self._cancelled_runs: set[str] = set()
         self._cancelled_executions: set[str] = set()
-        if docker_backend is not None:
-            self._docker_backend = docker_backend
-        elif docker is not None:
-            self._docker_backend = DockerSDKBackend()
+        config_defaults = self._repo.get_config()
+        self._runner_runtime = load_runner_runtime_config(
+            config_defaults,
+            artifact_root=self._artifacts.root,
+        )
+        self._runner = DockerPlaywrightRunner(image=self._runner_runtime.image)
+        self._docker_backend: Optional[DockerBackend]
+        if self._runner_runtime.backend == "docker":
+            if docker_backend is not None:
+                self._docker_backend = docker_backend
+                self._runner_image_verified = True
+            elif docker is not None:
+                self._docker_backend = DockerSDKBackend()
+            else:
+                LOGGER.info("Docker SDK not available; falling back to CLI backend")
+                self._docker_backend = DockerCLIBackend()
         else:
-            LOGGER.info("Docker SDK not available; falling back to CLI backend")
-            self._docker_backend = DockerCLIBackend()
+            self._docker_backend = docker_backend
         self._execution_contexts: Dict[str, ExecutionContext] = {}
         self._execution_tokens: Dict[str, str] = {}
         self._completion_queues: Dict[str, "queue.Queue[Tuple[str, Dict[str, object]]]"] = {}
-        config_defaults = self._repo.get_config()
         self._diff_pixel_tolerance = DiffEngine._normalize_tolerance(
             config_defaults.get("diff_pixel_tolerance", 0)
         )
         self._diffs = DiffEngine(pixel_tolerance=self._diff_pixel_tolerance)
-        self._scene_host_url = config_defaults.get("scene_host_url", "http://host.docker.internal:8000")
-        self._max_concurrent = int(config_defaults.get("max_concurrent_executions", 4))
+        self._scene_host_url = self._runner_runtime.callback_base_url
+        self._max_concurrent = int(self._runner_runtime.max_concurrency)
         self._post_wait_ms = int(config_defaults.get("capture_post_wait_ms", 7000))
         interval_value = config_defaults.get("watchdog_interval_seconds", 5)
         try:
@@ -1043,6 +1057,25 @@ class RunOrchestrator:
             self._append_log(run_id, execution_id, f"Execution cancelled before start ({reason})")
             return None
 
+        if not self._runner_runtime.supports_inline_launch:
+            message = (
+                f"Runner backend '{self._runner_runtime.backend}' is configured, so the "
+                "FastAPI process will not launch Docker containers directly. Start the "
+                "SCENE runner worker/k3s job launcher and run the runner readiness check "
+                "from that runtime before accepting unattended runs."
+            )
+            self._repo.update_execution(
+                execution_id,
+                {
+                    "status": ExecutionStatus.failed.value,
+                    "completed_at": _utcnow(),
+                    "message": message,
+                },
+            )
+            self._append_log(run_id, execution_id, message)
+            LOGGER.error("Execution %s cannot launch: %s", execution_id, message)
+            return None
+
         execution_dir = self._artifacts.execution_dir(run_id, execution_id)
         config = {
             "url": page["url"],
@@ -1082,7 +1115,9 @@ class RunOrchestrator:
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"[{_utcnow()}] COMMAND: docker run {getattr(self._runner, 'image', 'scene-playwright-runner:latest')} {' '.join(command)}\n")
 
-        extra_hosts = {"host.docker.internal": "host-gateway"}
+        extra_hosts = {}
+        if self._runner_runtime.add_host_gateway:
+            extra_hosts["host.docker.internal"] = "host-gateway"
         target_hosts = set()
         parsed_primary = urlparse(str(config.get("url", "")))
         if parsed_primary.hostname:
@@ -1103,15 +1138,17 @@ class RunOrchestrator:
         try:
             self._ensure_runner_image(run_id, execution_id)
             self._append_log(run_id, execution_id, "Container launch initiated")
+            if self._docker_backend is None:
+                raise RuntimeError("Docker runner backend is not available.")
             container_handle = self._docker_backend.run_container(
                 getattr(self._runner, 'image', 'scene-playwright-runner:latest'),
                 command,
                 environment=env,
                 volumes={str(execution_dir.resolve()): {"bind": "/workspace", "mode": "rw"}},
                 working_dir="/workspace",
-                shm_size="1g",
+                shm_size=self._runner_runtime.shm_size,
                 name=container_name,
-                auto_remove=True,
+                auto_remove=False,
                 extra_hosts=extra_hosts,
             )
         except Exception as exc:
@@ -1158,6 +1195,9 @@ class RunOrchestrator:
         with self._image_lock:
             if self._runner_image_verified:
                 return
+            if self._runner_runtime.backend != "docker":
+                self._runner_image_verified = True
+                return
             docker_cli = shutil.which("docker")
             if docker_cli:
                 inspect_proc = subprocess.run(
@@ -1178,6 +1218,13 @@ class RunOrchestrator:
                     pass
                 except APIError as exc:
                     raise RuntimeError(f"Failed to inspect runner image '{image}': {exc}") from exc
+
+            if not self._runner_runtime.allow_image_build:
+                raise RuntimeError(
+                    f"Docker image '{image}' is not available. "
+                    "Build or pull the pinned runner image before launching runs; "
+                    "on-demand image builds are disabled for this runtime."
+                )
 
             dockerfile_path = PROJECT_ROOT / "Dockerfile.playwright"
             if not docker_cli or not dockerfile_path.exists():
@@ -1650,6 +1697,13 @@ class RunOrchestrator:
         use_container: bool = True,
         timeout: int = 15,
     ) -> tuple[bool, str]:
+        readiness = self.deployment_readiness()
+        if not readiness.ok:
+            error_messages = [
+                issue.message for issue in readiness.issues if issue.level == "error"
+            ]
+            return False, "; ".join(error_messages)
+
         host_url = (self._scene_host_url or "").rstrip("/")
         if not host_url:
             return False, "Scene host URL is not configured."
@@ -1660,6 +1714,14 @@ class RunOrchestrator:
             return False, f"Scene host unreachable from application process: {exc}"
         if not use_container:
             return True, "Scene host reachable from application process."
+        if self._runner_runtime.backend != "docker":
+            return (
+                True,
+                "Scene host reachable from application process; run scripts/runner_readiness.py "
+                "from the configured runner pod/worker to prove runner-side reachability.",
+            )
+        if self._docker_backend is None:
+            return False, "Docker runner backend is not available for callback probing."
 
         try:
             command = [
@@ -1681,7 +1743,11 @@ class RunOrchestrator:
                 shm_size=None,
                 name=None,
                 auto_remove=False,
-                extra_hosts={"host.docker.internal": "host-gateway"},
+                extra_hosts=(
+                    {"host.docker.internal": "host-gateway"}
+                    if self._runner_runtime.add_host_gateway
+                    else {}
+                ),
             )
         except Exception as exc:
             return False, f"Failed to launch callback probe container: {exc}"
@@ -1706,12 +1772,33 @@ class RunOrchestrator:
             except Exception:
                 pass
 
-    def reconcile(self) -> Dict[str, int]:
-        return {
+    def deployment_readiness(self) -> RunnerReadinessReport:
+        return validate_runner_runtime_config(self._runner_runtime)
+
+    def reconcile(self) -> Dict[str, object]:
+        result: Dict[str, object] = {
             "executions_reconciled": 0,
             "executions_cancelled": 0,
             "timed_out_runs": [],
         }
+        timed_out_runs: set[str] = set()
+        for execution_id, context in self._snapshot_execution_contexts():
+            if context.result_payload is not None or context.watchdog_marked:
+                continue
+
+            status = self._poll_container_status(context)
+            if status in {"exited", "dead", "not_found"}:
+                self._handle_watchdog_exit(execution_id, context, status)
+                result["executions_reconciled"] = int(result["executions_reconciled"]) + 1
+                continue
+
+            if context.deadline and time.time() > context.deadline:
+                self._handle_watchdog_timeout(execution_id, context)
+                result["executions_cancelled"] = int(result["executions_cancelled"]) + 1
+                timed_out_runs.add(context.run_id)
+
+        result["timed_out_runs"] = sorted(timed_out_runs)
+        return result
 
     # ------------------------------------------------------------------ processing
     def _create_execution_matrix(
@@ -2127,9 +2214,12 @@ class RunOrchestrator:
         LOGGER.info("Updated orchestrator concurrency limit to %s", max_workers)
 
     def update_scene_host(self, host_url: str) -> None:
+        callback_url = host_url
+        if self._runner_runtime.backend == "k3s" and self._runner_runtime.k3s_service_url:
+            callback_url = self._runner_runtime.k3s_service_url
         with self._lock:
-            self._scene_host_url = host_url
-        LOGGER.info("Updated scene host callback URL to %s", host_url)
+            self._scene_host_url = callback_url
+        LOGGER.info("Updated scene host callback URL to %s", callback_url)
 
     def update_capture_delay(self, milliseconds: int) -> None:
         with self._lock:

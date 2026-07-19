@@ -116,7 +116,7 @@ def test_page_task_batch_crud_flow(client: Tuple[TestClient, SceneRepository]) -
         "name": "Smoke",
         "description": "Key surfaces",
         "task_ids": [task_id],
-        "jira_issue": "VIS-101",
+        "spm_ticket": "SCENE-101",
     }
     batch = api.post("/api/batches", json=batch_payload).json()
     batch_id = batch["id"]
@@ -125,16 +125,17 @@ def test_page_task_batch_crud_flow(client: Tuple[TestClient, SceneRepository]) -
     batches = resp.json()
     assert len(batches) == 1
     assert batches[0]["task_ids"] == [task_id]
-    assert batches[0]["jira_issue"] == "VIS-101"
+    assert batches[0]["spm_ticket"] == "SCENE-101"
+    assert "jira_issue" not in batches[0]
 
     resp = api.patch(
         f"/api/batches/{batch_id}",
-        json={"description": "Updated desc", "jira_issue": "VIS-102"},
+        json={"description": "Updated desc", "jira_issue": "SCENE-102"},
     )
     assert resp.status_code == 200
     batch_updated = resp.json()
     assert batch_updated["description"] == "Updated desc"
-    assert batch_updated["jira_issue"] == "VIS-102"
+    assert batch_updated["spm_ticket"] == "SCENE-102"
 
     resp = api.delete(f"/api/tasks/{task_id}")
     assert resp.status_code == 204
@@ -176,7 +177,7 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
             "project_id": project_id,
             "name": "Primary",
             "task_ids": [task["id"]],
-            "jira_issue": "VIS-202",
+            "spm_ticket": "SCENE-202",
         },
     ).json()
 
@@ -190,11 +191,12 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     run = api.post("/api/runs", json=run_payload).json()
     run_id = run["id"]
     assert run["status"] == "queued"
-    assert run["jira_issue"] == "VIS-202"
+    assert run["spm_ticket"] == "SCENE-202"
+    assert "jira_issue" not in run
 
-    resp = api.patch(f"/api/runs/{run_id}", json={"jira_issue": "VIS-303"})
+    resp = api.patch(f"/api/runs/{run_id}", json={"spm_ticket": "SCENE-303"})
     assert resp.status_code == 200
-    assert resp.json()["jira_issue"] == "VIS-303"
+    assert resp.json()["spm_ticket"] == "SCENE-303"
 
     resp = api.get("/api/runs", params={"project_id": project_id})
     assert resp.status_code == 200
@@ -208,7 +210,7 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     assert resp.status_code == 200
     run_data = resp.json()
     assert run_data["purpose"] == "comparison"
-    assert run_data["jira_issue"] == "VIS-303"
+    assert run_data["spm_ticket"] == "SCENE-303"
 
     second_run = api.post(
         "/api/runs",
@@ -217,10 +219,10 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
             "batch_id": batch["id"],
             "purpose": "baseline_recording",
             "status": "finished",
-            "jira_issue": "VIS-999",
+            "jira_issue": "SCENE-999",
         },
     ).json()
-    assert second_run["jira_issue"] == "VIS-999"
+    assert second_run["spm_ticket"] == "SCENE-999"
 
     resp = api.delete(f"/api/runs/{run_id}")
     assert resp.status_code == 204
@@ -228,4 +230,4 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     resp = api.get("/api/runs", params={"project_id": project_id})
     runs_for_project = resp.json()
     assert len(runs_for_project) == 1
-    assert runs_for_project[0]["jira_issue"] == "VIS-999"
+    assert runs_for_project[0]["spm_ticket"] == "SCENE-999"

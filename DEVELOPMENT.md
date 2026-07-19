@@ -42,7 +42,7 @@
 - Built htmx-driven configuration UI (`app/routes/projects.py`, templates under `app/templates/projects/`) supporting project selection, create/delete, and inline creation/removal of pages, tasks, and batches.
 - Created mocked runs dashboard (`app/routes/runs.py`, `app/templates/runs/`) that lists stored runs, supports generating placeholder runs, and renders execution tiles with stubbed artifacts to allow UI iteration ahead of worker/runner integration.
 - Added pytest coverage for CRUD endpoints (`tests/test_api_crud.py`) using dependency overrides to isolate each test's LocalDynamoStorage snapshot. Installed project dependencies into `venv/`, appended `python-multipart` to support FastAPI form handlers, configured pytest's `pythonpath`, and the suite now passes (`pytest`).
-- Introduced a prominent JIRA issue field for batches and runs (defaulting runs from their batch) across storage, APIs, templates, and mock data. Runs dashboard now includes filters, status/JIRA summaries, and richer cards for evaluating UI potential, with tests covering the new inheritance/update behaviour.
+- Introduced a prominent SPM ticket field for batches and runs (defaulting runs from their batch) across storage, APIs, templates, and mock data. Runs dashboard now includes filters, status/SPM summaries, and richer cards for evaluating UI potential, with tests covering the inheritance/update behaviour.
 - Replaced custom styling with Bootstrap 5 components (`app/templates/base.html`, templates under `app/templates/projects/`, `app/templates/runs/`, and new `app/templates/config/modal.html`) so project selection uses tabs, modals support edit flows, and layout stays consistent without bespoke CSS. Configuration modal now edits browser/viewport availability with persistence and usage guards.
 - Extended persistence/json schema to include baselines, per-execution records, artifact metadata, and summaries; added an `ArtifactStore` helper for deterministic run/baseline directory layouts.
 - Implemented a queue-backed `RunOrchestrator` that expands batches into Dockerised Playwright executions, captures screenshots/traces/video, generates diff/heatmap PNGs with Pillow, and finalises baseline records.
@@ -161,6 +161,7 @@
 - Run selection is persisted via `data-scene-selected-run`, so htmx refreshes keep the user’s chosen execution in focus, preparatory/task actions can now be configured declaratively alongside custom JS with structured logging, cookie-banner/animation suppression lives in configuration instead of bespoke snippets, and the default post-capture wait is configurable (currently 7 s) to absorb late UI transitions.
 
 ## Session Updates
+- Added the SCENE agent control plane for SCENE-11: `/api/agent/manifest`, `/api/agent/docs`, JSON config endpoints, idempotent setup, run detail/artifact/log/retry endpoints, baseline read/delete endpoints, optional `SCENE_API_TOKEN` bearer enforcement for mutation/control calls, and a thin `scene_mcp` server that forwards MCP tools to REST APIs.
 - ESC from the execution viewer now reopens the originating run modal, while ESC from the run modal returns the dashboard to `/runs`.
 - The run launcher dropdown now filters out failed baselines and refreshes completed options via the API, so the latest recordings appear without a full-page reload.
 - Auto-scroll now adapts to dynamically growing pages and flags narrow viewports as mobile/touch contexts, preventing the truncated mobile screenshots we were seeing earlier.
@@ -188,6 +189,11 @@
 
 ### Process hygiene
 - **Requirement:** At the end of every assistant handoff, run `say "project scene: command complete"`. This is now documented here, in `README.md`, and has to be followed strictly next session.
+
+### Deterministic quality gate
+- `docs/quality-gate.md` defines the standard local and CI commands for unit, Docker integration, frontend Playwright, and staging Compose checks.
+- `scripts/quality_gate.py` runs those groups while defaulting SCENE state and artifacts to ignored `.scene/quality-gate/` paths.
+- Remaining headless Linux proof depends on the SCENE-7 staging/k3s runner path; remaining dashboard-modal Playwright coverage belongs with SCENE-4.
 
 
 ## Local Usage Notes

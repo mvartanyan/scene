@@ -183,3 +183,78 @@ def test_validate_callback_host_uses_probe(monkeypatch: pytest.MonkeyPatch, tmp_
     assert success
     assert "reachable" in message
     assert stub_backend.run_calls, "Probe container was not launched"
+
+
+@pytest.mark.unit
+def test_k3s_backend_does_not_launch_docker_from_fastapi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("SCENE_RUNNER_BACKEND", "k3s")
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE", "registry.example.com/scene-runner:1.47.0-20260708")
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE_AUTOBUILD", "false")
+    monkeypatch.setenv("SCENE_K3S_SERVICE_URL", "http://scene.scene.svc.cluster.local:8000")
+    monkeypatch.setenv("SCENE_ARTIFACT_STORAGE", "pvc")
+    monkeypatch.setenv("SCENE_ARTIFACT_PVC_CLAIM", "scene-artifacts")
+
+    storage = LocalDynamoStorage(tmp_path / "db.json")
+    repo = SceneRepository(storage)
+    artifacts = ArtifactStore(root=tmp_path / "artifacts")
+    stub_backend = StubBackend()
+    orchestrator = RunOrchestrator(
+        repo=repo,
+        artifacts=artifacts,
+        auto_start=False,
+        docker_backend=stub_backend,
+    )
+
+    project = repo.create_project({"name": "Cluster", "slug": "cluster"})
+    page = repo.create_page(
+        {
+            "project_id": project["id"],
+            "name": "Cluster Page",
+            "url": "https://example.com",
+        }
+    )
+    task = repo.create_task(
+        {
+            "project_id": project["id"],
+            "page_id": page["id"],
+            "name": "Cluster Smoke",
+            "browsers": ["chromium"],
+            "viewports": [{"width": 800, "height": 600}],
+        }
+    )
+    batch = repo.create_batch(
+        {
+            "project_id": project["id"],
+            "name": "Cluster Batch",
+            "task_ids": [task["id"]],
+        }
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": RunPurpose.baseline_recording.value,
+            "requested_by": "unit-test",
+        }
+    )
+    execution = orchestrator._create_execution_matrix(run, [(task, page)])[0]
+
+    context = orchestrator._launch_execution(
+        run=run,
+        execution=execution,
+        task=task,
+        page=page,
+        baseline=None,
+        deadline=None,
+        execution_timeout=None,
+    )
+
+    updated = repo.get_execution(execution["id"])
+    assert context is None
+    assert stub_backend.run_calls == []
+    assert updated is not None
+    assert updated["status"] == "failed"
+    assert "will not launch Docker containers directly" in updated["message"]

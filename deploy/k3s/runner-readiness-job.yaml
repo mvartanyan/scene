@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scene-runner-readiness
+  namespace: scene
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: scene-runner
+      containers:
+        - name: runner-readiness
+          image: registry.example.com/scene-playwright-runner:1.47.0-jammy-20260708
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-lc"]
+          args:
+            - >
+              scene-runner-readiness
+              --callback-url "$SCENE_K3S_SERVICE_URL"
+              --artifact-dir "$SCENE_ARTIFACT_ROOT"
+              --expected-storage pvc
+              --json
+          env:
+            - name: SCENE_K3S_SERVICE_URL
+              value: http://scene.scene.svc.cluster.local:8000
+            - name: SCENE_ARTIFACT_ROOT
+              value: /artifacts
+            - name: SCENE_ARTIFACT_STORAGE
+              value: pvc
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: artifacts
+              mountPath: /artifacts
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: scene-artifacts

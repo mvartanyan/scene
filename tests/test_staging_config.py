@@ -5,6 +5,7 @@ from pathlib import Path
 from app.services import artifacts as artifact_module
 from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import DockerPlaywrightRunner
+from app.services.runner_backend import load_runner_runtime_config, validate_runner_runtime_config
 from app.services.storage import LocalDynamoStorage, SceneRepository
 
 
@@ -45,3 +46,26 @@ def test_runner_image_uses_staging_env(monkeypatch) -> None:
     runner = DockerPlaywrightRunner()
 
     assert runner.image == "scene-playwright-runner:1.47.0-jammy"
+
+
+def test_staging_runner_backend_disables_runtime_image_build(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SCENE_RUNNER_BACKEND", "docker")
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE", "scene-playwright-runner:1.47.0-jammy")
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE_AUTOBUILD", "false")
+    monkeypatch.setenv("SCENE_RUNNER_SHM_SIZE", "1g")
+    monkeypatch.setenv("SCENE_ARTIFACT_STORAGE", "filesystem")
+
+    runtime = load_runner_runtime_config(
+        {
+            "scene_host_url": "http://host.docker.internal:8010",
+            "max_concurrent_executions": 2,
+        },
+        artifact_root=tmp_path / "artifacts",
+    )
+    report = validate_runner_runtime_config(runtime)
+
+    assert runtime.backend == "docker"
+    assert runtime.image == "scene-playwright-runner:1.47.0-jammy"
+    assert not runtime.allow_image_build
+    assert runtime.shm_size == "1g"
+    assert report.ok

@@ -34,6 +34,7 @@ uvicorn app.main:app --reload
 - **Projects**: Select a project then manage Pages, Tasks, and Batches via Bootstrap tabs. Inline edit/delete is available via collapsible forms.
 - **Runs**: Launch runs (baseline/comparison), tweak the timeout (seconds) before submitting, and inspect executions via the modal. The run log and modal are powered by HTMX and the vendored `app/static/htmx.min.js`. The baseline picker now refreshes via `/api/batches/{id}/baselines`, filtering out failed recordings so operators only see completed baselines.
 - **Config**: Use the gear icon in the navbar to toggle browser availability, manage viewport presets, switch timestamp display, and set the default run timeout. Browsers/viewports that are in use stay locked; add new entries with the inline form.
+- **Agent API/MCP**: Agents should discover capabilities via `/api/agent/manifest`, read docs from `/api/agent/docs`, and use `python -m scene_mcp.server` for MCP access. Set `SCENE_API_TOKEN` to require bearer auth for mutation/control endpoints.
 
 ## Run Tests
 ```bash

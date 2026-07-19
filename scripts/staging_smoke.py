@@ -118,6 +118,16 @@ def ensure_docker_image(image: str) -> None:
         )
 
 
+def verify_orchestrator_readiness(base_url: str) -> dict[str, Any]:
+    readiness = request_json(base_url, "GET", "/api/orchestrator/readiness")
+    if not readiness.get("ok"):
+        raise SmokeError(
+            "Orchestrator readiness failed: "
+            + json.dumps(readiness.get("issues", []), sort_keys=True)
+        )
+    return readiness
+
+
 def verify_callback_from_runner(base_url: str, image: str) -> None:
     docker = shutil.which("docker")
     assert docker is not None
@@ -283,7 +293,7 @@ def run_baseline_comparison(base_url: str, timeout: int, *, keep_project: bool) 
                     "name": "Linux Docker staging smoke",
                     "description": "Exercises callback, artifacts, Chromium, Firefox, and diffing.",
                     "task_ids": [task["id"]],
-                    "jira_issue": "SCENE-10",
+                    "spm_ticket": "SCENE-10",
                     "run_diff_threshold": 0,
                     "execution_diff_threshold": 0,
                 },
@@ -366,6 +376,7 @@ def main() -> int:
         raise SmokeError(f"Artifact root does not exist: {artifact_root}")
 
     request_json(base_url, "GET", "/api/orchestrator/ping")
+    readiness = verify_orchestrator_readiness(base_url)
     ensure_docker_image(args.runner_image)
     verify_callback_from_runner(base_url, args.runner_image)
     smoke_artifact_url = verify_artifact_write_read(base_url, artifact_root)
@@ -379,6 +390,7 @@ def main() -> int:
         "status": "ok",
         "base_url": base_url,
         "runner_image": args.runner_image,
+        "runner_backend": readiness.get("config", {}).get("backend"),
         "artifact_readback_url": smoke_artifact_url,
         **run_result,
     }, indent=2, sort_keys=True))

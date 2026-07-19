@@ -53,7 +53,7 @@ def _seed_project(repo: SceneRepository) -> dict:
             "name": "Batch",
             "description": "Old description",
             "task_ids": [task["id"]],
-            "jira_issue": "SCENE-5",
+            "spm_ticket": "SCENE-5",
             "run_diff_threshold": 2.0,
             "execution_diff_threshold": 1.0,
         }
@@ -115,7 +115,7 @@ def test_project_form_edits_can_clear_optional_fields(
             "name": batch["name"],
             "description": "",
             "task_ids": [task["id"]],
-            "jira_issue": "",
+            "spm_ticket": "",
             "run_diff_threshold": "",
             "execution_diff_threshold": "",
             "active_tab": "batches",
@@ -124,7 +124,7 @@ def test_project_form_edits_can_clear_optional_fields(
     assert batch_resp.status_code == 200
     updated_batch = repo.get_batch(batch["id"])
     assert updated_batch["description"] is None
-    assert updated_batch["jira_issue"] is None
+    assert updated_batch["spm_ticket"] is None
     assert updated_batch["run_diff_threshold"] is None
     assert updated_batch["execution_diff_threshold"] is None
     assert repo.get_project(project["id"])

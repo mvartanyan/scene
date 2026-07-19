@@ -17,21 +17,6 @@
       </div>
     {% endfor %}
   </div>
-  <script>
-    (function () {
-      if (!window.bootstrap || !window.bootstrap.Toast) {
-        return;
-      }
-      {% for message in timeout_messages %}
-        (function () {
-          const toastEl = document.getElementById('timeout-toast-{{ loop.index }}');
-          if (toastEl) {
-            window.bootstrap.Toast.getOrCreateInstance(toastEl).show();
-          }
-        })();
-      {% endfor %}
-    })();
-  </script>
 {% endif %}
 <style>
   #run-log .run-log-entry {
@@ -55,12 +40,6 @@
   id="run-log"
   data-selected-run-id="{{ selected_run_id or '' }}"
   data-scene-hash="{{ snapshot_hash or '' }}"
-  hx-get="/runs/log"
-  hx-trigger="every 5s"
-  hx-sync="this:queue"
-  hx-target="#run-log"
-  hx-swap="outerHTML"
-  hx-include="#run-log [data-run-filter]"
 >
   <input type="hidden" name="selected_run_id" value="{{ selected_run_id or '' }}" data-run-filter="selected_run_id" />
   <input type="hidden" name="filter_project_id" value="{{ filter_project_id or '' }}" data-run-filter="filter_project_id" />
@@ -80,9 +59,6 @@
                 type="button"
                 class="btn btn-link text-start flex-grow-1 px-0 run-select-btn"
                 data-run-id="{{ item.id }}"
-                hx-get="/runs/{{ item.id }}/overlay"
-                hx-target="#run-detail-shell"
-                hx-swap="innerHTML"
               >
                 <div class="fw-semibold">{{ item.project_name }}</div>
                 <div class="small text-muted">{{ item.purpose.replace("_", " ") | title }} · {{ item.created_at | format_ts }}</div>
@@ -100,8 +76,8 @@
                     <span class="badge rounded-pill text-bg-warning text-dark">Cancelled {{ item.counts.cancelled }}</span>
                   {% endif %}
                 </div>
-                {% if item.jira_issue %}
-                  <div class="mt-2"><span class="badge text-bg-info">JIRA: {{ item.jira_issue }}</span></div>
+                {% if item.spm_ticket %}
+                  <div class="mt-2"><span class="badge text-bg-info">SPM: {{ item.spm_ticket }}</span></div>
                 {% endif %}
               </button>
               <div class="run-log-actions d-flex flex-column align-items-end gap-2 flex-shrink-0">

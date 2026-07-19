@@ -494,8 +494,8 @@
                                 {% endif %}
                               </div>
                             {% endif %}
-                            {% if batch.jira_issue %}
-                              <span class="badge text-bg-info mt-2">JIRA: {{ batch.jira_issue }}</span>
+                            {% if batch.spm_ticket %}
+                              <span class="badge text-bg-info mt-2">SPM: {{ batch.spm_ticket }}</span>
                             {% endif %}
                           </div>
                           <div class="btn-group configuration-row-actions">
@@ -594,13 +594,13 @@
                       </div>
                     </div>
                     <div class="configuration-field">
-                      <label class="form-label">JIRA Issue</label>
+                      <label class="form-label">SPM Ticket</label>
                       <input
                         type="text"
-                        name="jira_issue"
+                        name="spm_ticket"
                         class="form-control"
-                        placeholder="e.g. VIS-123"
-                        value="{{ editing_batch.jira_issue if editing_batch else '' }}"
+                        placeholder="e.g. SCENE-123"
+                        value="{{ editing_batch.spm_ticket if editing_batch else '' }}"
                       />
                     </div>
                     <div class="configuration-field configuration-field-half">

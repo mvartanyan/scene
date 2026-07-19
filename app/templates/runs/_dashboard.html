@@ -26,6 +26,7 @@
         {% set default_spm_ticket = launch_defaults.spm_ticket | default('', true) %}
         {% set default_note = launch_defaults.note | default('', true) %}
         {% set default_timeout = launch_defaults.timeout_seconds | default(default_timeout_seconds, true) %}
+        {% set default_task_selection = launch_defaults.task_selection | default('all', true) %}
         {% set baseline_selected_value = default_baseline_id %}
         {% if not baseline_selected_value and default_baseline_input %}
           {% set baseline_selected_value = custom_baseline_value %}
@@ -152,6 +153,46 @@
               placeholder="Optional run notes"
             >{{ default_note }}</textarea>
           </div>
+          <div class="col-12" data-role="launch-task-scope">
+            <label class="form-label d-block">Task scope</label>
+            <div class="btn-group" role="group" aria-label="Task scope">
+              <input
+                type="radio"
+                class="btn-check"
+                name="task_selection"
+                id="task-scope-all"
+                value="all"
+                data-role="launch-task-mode"
+                {% if default_task_selection == 'all' %}checked{% endif %}
+              />
+              <label class="btn btn-outline-primary" for="task-scope-all">All tasks</label>
+              <input
+                type="radio"
+                class="btn-check"
+                name="task_selection"
+                id="task-scope-smoke"
+                value="smoke"
+                data-role="launch-task-mode"
+                {% if default_task_selection == 'smoke' %}checked{% endif %}
+              />
+              <label class="btn btn-outline-primary" for="task-scope-smoke">Smoke</label>
+              <input
+                type="radio"
+                class="btn-check"
+                name="task_selection"
+                id="task-scope-selected"
+                value="selected"
+                data-role="launch-task-mode"
+                {% if default_task_selection == 'selected' %}checked{% endif %}
+              />
+              <label class="btn btn-outline-primary" for="task-scope-selected">Selected</label>
+            </div>
+            <div
+              class="configuration-choice-stack configuration-choice-scroll mt-3 d-none"
+              data-role="launch-task-options"
+              data-testid="launch-task-options"
+            ></div>
+          </div>
           <div class="col-md-4">
             <label class="form-label">Timeout (seconds)</label>
             <input
@@ -163,8 +204,22 @@
               required
             />
           </div>
+          <div class="col-md-8 d-flex flex-column justify-content-end">
+            <div class="alert alert-light border mb-0 py-2" role="status" data-testid="launch-estimate">
+              <strong data-role="launch-estimate-count">0</strong> executions
+              <span class="text-muted" data-role="launch-estimate-tasks"></span>
+            </div>
+            <div
+              class="alert alert-warning mt-2 mb-0 py-2 d-none"
+              role="alert"
+              data-role="launch-large-warning"
+              data-large-threshold="{{ large_run_threshold }}"
+            >
+              Large run: verify the selected scope before launching.
+            </div>
+          </div>
           <div class="col-12 d-flex justify-content-end">
-            <button type="submit" class="btn btn-primary">Launch</button>
+            <button type="submit" class="btn btn-primary" data-role="launch-submit">Launch</button>
           </div>
         </form>
         <script type="application/json" id="run-launch-metadata">
@@ -179,7 +234,7 @@
   <div class="card border shadow-sm">
     <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
       <span>Filter Runs</span>
-      <span class="badge text-bg-secondary rounded-pill">{{ runs|length }}</span>
+      <span class="badge text-bg-secondary rounded-pill">{{ run_total }}</span>
     </div>
     <div class="card-body">
       <form

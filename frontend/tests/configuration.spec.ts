@@ -199,4 +199,86 @@ test.describe('Configuration forms', () => {
       await request.delete(`${apiBase}/projects/${seeded.projectId}`);
     }
   });
+
+  test('large project tabs and run scopes stay bounded and interactive', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(120_000);
+    const timestamp = Date.now();
+    const itemCount = 205;
+    const pageNames = Array.from({ length: itemCount }, (_, index) => `Large page ${index}`);
+    const taskNames = Array.from({ length: itemCount }, (_, index) => `Large task ${index}`);
+    const setupResponse = await request.post(`${apiBase}/agent/setup`, {
+      data: {
+        project: {
+          name: `Large UI Project ${timestamp}`,
+          slug: `large-ui-${timestamp}`,
+          description: 'Synthetic SCENE-17 browser fixture',
+        },
+        pages: pageNames.map((name, index) => ({
+          name,
+          url: `https://example.com/large/${index}`,
+        })),
+        tasks: taskNames.map((name, index) => ({
+          name,
+          page_name: pageNames[index],
+          browsers: ['chromium', 'firefox'],
+          viewports: [
+            { width: 1280, height: 720 },
+            { width: 390, height: 844 },
+          ],
+        })),
+        batches: [
+          {
+            name: 'Large browser batch',
+            task_names: taskNames,
+            spm_ticket: 'SCENE-17',
+          },
+        ],
+      },
+    });
+    expect(setupResponse.ok()).toBeTruthy();
+    const setup = await setupResponse.json();
+    const projectId = setup.project.id;
+
+    try {
+      await page.goto(`/projects?project_id=${projectId}`);
+      await expect(page.getByTestId('page-list-item')).toHaveCount(25);
+      await expect(page.getByTestId('pages-pagination')).toContainText('1-25 of 205');
+      await expect(page.getByTestId('task-list-item')).toHaveCount(0);
+
+      await page.getByRole('tab', { name: /Tasks/ }).click();
+      await expect(page.getByTestId('task-list-item')).toHaveCount(25);
+      await expect(page.getByTestId('tasks-pagination')).toContainText('1-25 of 205');
+      await expect(page.getByTestId('page-list-item')).toHaveCount(0);
+
+      await page.getByRole('tab', { name: /Batches/ }).click();
+      await expect(page.getByTestId('batch-list-item')).toHaveCount(1);
+      await expect(page.getByTestId('batch-configuration-form').locator('[name="task_ids"]')).toHaveCount(itemCount);
+
+      await page.goto('/runs');
+      const launchForm = page.locator('#run-launch-form');
+      await launchForm.locator('[data-role="launch-project"]').selectOption(projectId);
+      await expect(page.getByTestId('launch-estimate')).toContainText('820 executions');
+      await expect(launchForm.locator('[data-role="launch-large-warning"]')).toBeVisible();
+
+      await launchForm.locator('label[for="task-scope-smoke"]').click();
+      await expect(page.getByTestId('launch-estimate')).toContainText('4 executions');
+      await expect(page.getByTestId('launch-estimate')).toContainText('(1 task)');
+      await expect(launchForm.locator('[data-role="launch-large-warning"]')).toBeHidden();
+
+      await launchForm.locator('label[for="task-scope-selected"]').click();
+      await expect(page.getByTestId('launch-task-options')).toBeVisible();
+      await expect(launchForm.locator('[data-role="launch-submit"]')).toBeDisabled();
+      const taskCheckboxes = launchForm.locator('[data-role="launch-task-checkbox"]');
+      await taskCheckboxes.nth(0).check();
+      await taskCheckboxes.nth(1).check();
+      await expect(page.getByTestId('launch-estimate')).toContainText('8 executions');
+      await expect(page.getByTestId('launch-estimate')).toContainText('(2 tasks)');
+      await expect(launchForm.locator('[data-role="launch-submit"]')).toBeEnabled();
+    } finally {
+      await request.delete(`${apiBase}/projects/${projectId}`);
+    }
+  });
 });

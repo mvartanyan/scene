@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from scene_mcp.client import SceneAgentClient
 
@@ -60,6 +60,7 @@ def register_tools(mcp: Any, client_factory: Callable[[], SceneAgentClient] = de
         note: Optional[str] = None,
         spm_ticket: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        task_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Launch a baseline-recording run for a SCENE batch."""
         return client_factory().record_baseline(
@@ -69,6 +70,7 @@ def register_tools(mcp: Any, client_factory: Callable[[], SceneAgentClient] = de
             note=note,
             spm_ticket=spm_ticket,
             timeout_seconds=timeout_seconds,
+            task_ids=task_ids,
         )
 
     @mcp.tool()
@@ -79,6 +81,7 @@ def register_tools(mcp: Any, client_factory: Callable[[], SceneAgentClient] = de
         note: Optional[str] = None,
         spm_ticket: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        task_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Launch an unattended comparison run for a SCENE batch."""
         return client_factory().run_batch(
@@ -88,6 +91,7 @@ def register_tools(mcp: Any, client_factory: Callable[[], SceneAgentClient] = de
             note=note,
             spm_ticket=spm_ticket,
             timeout_seconds=timeout_seconds,
+            task_ids=task_ids,
         )
 
     @mcp.tool()

@@ -51,6 +51,7 @@ from app.schemas import (
 from app.services.agent_auth import SCENE_API_TOKEN_ENV, require_agent_api_token
 from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import get_orchestrator
+from app.services.run_scope import validate_task_subset
 from app.services.storage import RepositoryDep, SceneRepository
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -108,7 +109,6 @@ def _apply_config_update(
     *,
     update_runtime: bool = True,
 ) -> Dict[str, object]:
-    orchestrator = get_orchestrator() if update_runtime else None
     data = {
         key: value
         for key, value in payload.model_dump(exclude_unset=True).items()
@@ -124,21 +124,27 @@ def _apply_config_update(
         repo.set_run_timeout_seconds(data["run_timeout_seconds"])
     if "max_concurrent_executions" in data:
         repo.set_max_concurrent_executions(data["max_concurrent_executions"])
-        if orchestrator:
-            orchestrator.update_concurrency(data["max_concurrent_executions"])
     if "scene_host_url" in data:
         repo.set_scene_host_url(data["scene_host_url"])
-        if orchestrator:
-            orchestrator.update_scene_host(data["scene_host_url"])
     if "capture_post_wait_ms" in data:
         repo.set_capture_post_wait_ms(data["capture_post_wait_ms"])
-        if orchestrator:
-            orchestrator.update_capture_delay(data["capture_post_wait_ms"])
     if "diff_pixel_tolerance" in data:
         repo.set_diff_pixel_tolerance(data["diff_pixel_tolerance"])
-        if orchestrator:
-            orchestrator.update_diff_pixel_tolerance(data["diff_pixel_tolerance"])
+    if update_runtime:
+        _apply_runtime_config(data)
     return repo.get_config()
+
+
+def _apply_runtime_config(data: Dict[str, object]) -> None:
+    orchestrator = get_orchestrator()
+    if "max_concurrent_executions" in data:
+        orchestrator.update_concurrency(int(data["max_concurrent_executions"]))
+    if "scene_host_url" in data:
+        orchestrator.update_scene_host(str(data["scene_host_url"]))
+    if "capture_post_wait_ms" in data:
+        orchestrator.update_capture_delay(int(data["capture_post_wait_ms"]))
+    if "diff_pixel_tolerance" in data:
+        orchestrator.update_diff_pixel_tolerance(int(data["diff_pixel_tolerance"]))
 
 
 def _find_by_field(
@@ -245,10 +251,13 @@ def _viewport_dimensions(value: object) -> Optional[Tuple[int, int]]:
 
 
 def _batch_requirement_keys(
-    repo: SceneRepository, batch: Dict[str, object]
+    repo: SceneRepository,
+    batch: Dict[str, object],
+    task_ids: Optional[List[str]] = None,
 ) -> List[Tuple[str, str, int, int]]:
     keys: List[Tuple[str, str, int, int]] = []
-    for task_id in batch.get("task_ids") or []:
+    required_task_ids = task_ids if task_ids is not None else batch.get("task_ids") or []
+    for task_id in required_task_ids:
         task = repo.get_task(str(task_id))
         if not task:
             continue
@@ -286,10 +295,11 @@ def _baseline_coverage_gaps(
     repo: SceneRepository,
     batch: Dict[str, object],
     baseline: Dict[str, object],
+    task_ids: Optional[List[str]] = None,
 ) -> List[str]:
     covered = _baseline_coverage_keys(baseline)
     gaps: List[str] = []
-    for task_id, browser, width, height in _batch_requirement_keys(repo, batch):
+    for task_id, browser, width, height in _batch_requirement_keys(repo, batch, task_ids):
         if (task_id, browser, width, height) in covered:
             continue
         task = repo.get_task(task_id)
@@ -672,89 +682,119 @@ async def apply_agent_setup(
     repo: SceneRepository = RepositoryDep,
     _auth: None = AgentAuthDep,
 ) -> AgentSetupResponse:
-    config_result = None
+    with repo.transaction():
+        config_result = None
+        if payload.config:
+            try:
+                config_result = _apply_config_update(
+                    repo,
+                    payload.config,
+                    update_runtime=False,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        project_payload = payload.project.model_dump()
+        existing_project = _find_by_field(repo.list_projects(), "slug", payload.project.slug)
+        if existing_project:
+            project = repo.update_project(str(existing_project["id"]), project_payload)
+            assert project is not None
+            project_action = "updated"
+        else:
+            project = repo.create_project(project_payload)
+            project_action = "created"
+        project_id = str(project["id"])
+
+        page_results: List[AgentSetupEntityResult] = []
+        pages_by_name = {
+            str(page["name"]): page for page in repo.list_pages(project_id)
+        }
+        for page_payload in payload.pages:
+            existing_page = pages_by_name.get(page_payload.name)
+            page_data = page_payload.model_dump()
+            page_data["project_id"] = project_id
+            if existing_page:
+                page = repo.update_page(str(existing_page["id"]), page_data)
+                assert page is not None
+                page_results.append(_entity_result(page, "updated"))
+            else:
+                page = repo.create_page(page_data)
+                page_results.append(_entity_result(page, "created"))
+            pages_by_name[page_payload.name] = page
+
+        task_results: List[AgentSetupEntityResult] = []
+        tasks_by_name = {
+            str(task["name"]): task for task in repo.list_tasks(project_id)
+        }
+        for task_payload in payload.tasks:
+            page = pages_by_name.get(task_payload.page_name)
+            if not page:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Task '{task_payload.name}' references unknown page "
+                        f"'{task_payload.page_name}'"
+                    ),
+                )
+            existing_task = tasks_by_name.get(task_payload.name)
+            task_data = task_payload.model_dump(exclude={"page_name"})
+            task_data["project_id"] = project_id
+            task_data["page_id"] = page["id"]
+            if existing_task:
+                task = repo.update_task(str(existing_task["id"]), task_data)
+                assert task is not None
+                task_results.append(_entity_result(task, "updated"))
+            else:
+                task = repo.create_task(task_data)
+                task_results.append(_entity_result(task, "created"))
+            tasks_by_name[task_payload.name] = task
+
+        batch_results: List[AgentSetupEntityResult] = []
+        batches_by_name = {
+            str(batch["name"]): batch for batch in repo.list_batches(project_id)
+        }
+        for batch_payload in payload.batches:
+            missing = [
+                name for name in batch_payload.task_names if name not in tasks_by_name
+            ]
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Batch '{batch_payload.name}' references unknown tasks: "
+                        + ", ".join(missing)
+                    ),
+                )
+            existing_batch = batches_by_name.get(batch_payload.name)
+            batch_data = batch_payload.model_dump(exclude={"task_names"})
+            batch_data["project_id"] = project_id
+            batch_data["task_ids"] = [
+                str(tasks_by_name[name]["id"]) for name in batch_payload.task_names
+            ]
+            if existing_batch:
+                batch = repo.update_batch(str(existing_batch["id"]), batch_data)
+                assert batch is not None
+                batch_results.append(_entity_result(batch, "updated"))
+            else:
+                batch = repo.create_batch(batch_data)
+                batch_results.append(_entity_result(batch, "created"))
+            batches_by_name[batch_payload.name] = batch
+
+        response = AgentSetupResponse(
+            project=_entity_result(project, project_action),
+            config=config_result,
+            pages=page_results,
+            tasks=task_results,
+            batches=batch_results,
+        )
     if payload.config:
-        try:
-            config_result = _apply_config_update(repo, payload.config)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    project_payload = payload.project.model_dump()
-    existing_project = _find_by_field(repo.list_projects(), "slug", payload.project.slug)
-    if existing_project:
-        project = repo.update_project(str(existing_project["id"]), project_payload)
-        assert project is not None
-        project_action = "updated"
-    else:
-        project = repo.create_project(project_payload)
-        project_action = "created"
-    project_id = str(project["id"])
-
-    page_results: List[AgentSetupEntityResult] = []
-    for page_payload in payload.pages:
-        existing_page = _find_by_field(repo.list_pages(project_id), "name", page_payload.name)
-        page_data = page_payload.model_dump()
-        page_data["project_id"] = project_id
-        if existing_page:
-            page = repo.update_page(str(existing_page["id"]), page_data)
-            assert page is not None
-            page_results.append(_entity_result(page, "updated"))
-        else:
-            page = repo.create_page(page_data)
-            page_results.append(_entity_result(page, "created"))
-
-    page_lookup = {str(page["name"]): page for page in repo.list_pages(project_id)}
-    task_results: List[AgentSetupEntityResult] = []
-    for task_payload in payload.tasks:
-        page = page_lookup.get(task_payload.page_name)
-        if not page:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Task '{task_payload.name}' references unknown page '{task_payload.page_name}'",
-            )
-        existing_task = _find_by_field(repo.list_tasks(project_id), "name", task_payload.name)
-        task_data = task_payload.model_dump(exclude={"page_name"})
-        task_data["project_id"] = project_id
-        task_data["page_id"] = page["id"]
-        if existing_task:
-            task = repo.update_task(str(existing_task["id"]), task_data)
-            assert task is not None
-            task_results.append(_entity_result(task, "updated"))
-        else:
-            task = repo.create_task(task_data)
-            task_results.append(_entity_result(task, "created"))
-
-    task_lookup = {str(task["name"]): task for task in repo.list_tasks(project_id)}
-    batch_results: List[AgentSetupEntityResult] = []
-    for batch_payload in payload.batches:
-        missing = [name for name in batch_payload.task_names if name not in task_lookup]
-        if missing:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Batch '{batch_payload.name}' references unknown tasks: "
-                    + ", ".join(missing)
-                ),
-            )
-        existing_batch = _find_by_field(repo.list_batches(project_id), "name", batch_payload.name)
-        batch_data = batch_payload.model_dump(exclude={"task_names"})
-        batch_data["project_id"] = project_id
-        batch_data["task_ids"] = [str(task_lookup[name]["id"]) for name in batch_payload.task_names]
-        if existing_batch:
-            batch = repo.update_batch(str(existing_batch["id"]), batch_data)
-            assert batch is not None
-            batch_results.append(_entity_result(batch, "updated"))
-        else:
-            batch = repo.create_batch(batch_data)
-            batch_results.append(_entity_result(batch, "created"))
-
-    return AgentSetupResponse(
-        project=_entity_result(project, project_action),
-        config=config_result,
-        pages=page_results,
-        tasks=task_results,
-        batches=batch_results,
-    )
+        runtime_data = {
+            key: value
+            for key, value in payload.config.model_dump(exclude_unset=True).items()
+            if value is not None
+        }
+        _apply_runtime_config(runtime_data)
+    return response
 
 
 @router.get("/projects", response_model=List[Project])
@@ -1003,6 +1043,10 @@ async def launch_batch_comparison_run(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
     _ensure_project(repo, str(batch["project_id"]))
+    try:
+        selected_task_ids = validate_task_subset(repo, batch, payload.task_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     baseline = None
     if payload.baseline_id:
@@ -1018,7 +1062,12 @@ async def launch_batch_comparison_run(
                 status_code=400,
                 detail="Batch has no completed baseline for comparison",
             )
-    coverage_gaps = _baseline_coverage_gaps(repo, batch, baseline)
+    coverage_gaps = _baseline_coverage_gaps(
+        repo,
+        batch,
+        baseline,
+        selected_task_ids,
+    )
     if coverage_gaps:
         raise HTTPException(
             status_code=400,
@@ -1038,6 +1087,7 @@ async def launch_batch_comparison_run(
             "note": payload.note,
             "spm_ticket": payload.spm_ticket,
             "timeout_seconds": payload.timeout_seconds,
+            "task_ids": selected_task_ids,
         }
     )
     orchestrator = get_orchestrator()
@@ -1062,9 +1112,18 @@ async def create_run(
     _auth: None = AgentAuthDep,
 ) -> Run:
     _ensure_project(repo, payload.project_id)
-    if not repo.get_batch(payload.batch_id):
+    batch = repo.get_batch(payload.batch_id)
+    if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    record = repo.create_run(payload.model_dump())
+    if batch.get("project_id") != payload.project_id:
+        raise HTTPException(status_code=400, detail="Batch does not belong to project")
+    try:
+        selected_task_ids = validate_task_subset(repo, batch, payload.task_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    run_payload = payload.model_dump()
+    run_payload["task_ids"] = selected_task_ids
+    record = repo.create_run(run_payload)
     orchestrator = get_orchestrator()
     orchestrator.enqueue(record["id"])
     return record

@@ -90,7 +90,9 @@ curl -X POST http://127.0.0.1:8000/api/agent/setup \
   }'
 ```
 
-The response returns IDs and `created`/`updated` actions.
+The response returns IDs and `created`/`updated` actions. Local JSON-backed
+setups are committed as one transaction and roll back if any reference is
+invalid, so a large graph does not leave a partially imported project.
 
 ## Run Batches
 
@@ -117,7 +119,8 @@ curl -X POST http://127.0.0.1:8000/api/runs \
     "batch_id": "<batch-id>",
     "purpose": "baseline_recording",
     "requested_by": "agent",
-    "spm_ticket": "SCENE-123"
+    "spm_ticket": "SCENE-123",
+    "task_ids": ["<optional-task-id>"]
   }'
 ```
 
@@ -127,8 +130,19 @@ Launch a comparison run:
 curl -X POST http://127.0.0.1:8000/api/batches/<batch-id>/comparison-runs \
   -H "Authorization: Bearer $SCENE_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"requested_by": "spm", "spm_ticket": "SCENE-123", "note": "ticket success criteria"}'
+  -d '{
+    "requested_by": "spm",
+    "spm_ticket": "SCENE-123",
+    "note": "ticket success criteria",
+    "task_ids": ["<optional-task-id>"]
+  }'
 ```
+
+`task_ids` is optional on both launch routes and on the corresponding
+`scene_record_baseline` and `scene_run_batch` MCP tools. When supplied, every
+ID must belong to the selected batch and at least one task is required. SCENE
+stores the scope on the run and expands only those tasks, in batch order. Omit
+the field to run the complete batch.
 
 Read status and results:
 

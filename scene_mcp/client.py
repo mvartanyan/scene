@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -86,6 +86,7 @@ class SceneAgentClient:
         spm_ticket: Optional[str] = None,
         jira_issue: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        task_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         ticket = spm_ticket if spm_ticket is not None else jira_issue
         return self.request(
@@ -97,6 +98,7 @@ class SceneAgentClient:
                 "note": note,
                 "spm_ticket": ticket,
                 "timeout_seconds": timeout_seconds,
+                "task_ids": task_ids,
             },
         )
 
@@ -110,6 +112,7 @@ class SceneAgentClient:
         spm_ticket: Optional[str] = None,
         jira_issue: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        task_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         ticket = spm_ticket if spm_ticket is not None else jira_issue
         return self.request(
@@ -123,6 +126,7 @@ class SceneAgentClient:
                 "note": note,
                 "spm_ticket": ticket,
                 "timeout_seconds": timeout_seconds,
+                "task_ids": task_ids,
             },
         )
 

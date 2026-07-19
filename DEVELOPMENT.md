@@ -161,6 +161,10 @@
 - Run selection is persisted via `data-scene-selected-run`, so htmx refreshes keep the user’s chosen execution in focus, preparatory/task actions can now be configured declaratively alongside custom JS with structured logging, cookie-banner/animation suppression lives in configuration instead of bespoke snippets, and the default post-capture wait is configurable (currently 7 s) to absorb late UI transitions.
 
 ## Session Updates
+- SCENE-17 adds bounded large-project behaviour: project tabs load independently, page/task lists use 25-item pages, run history uses 25-item pages, and execution overlays use 50-item pages while retaining direct execution navigation.
+- The run launcher now estimates the execution matrix, warns above 100 targets, and supports full-batch, one-task smoke, and validated selected-task scopes. REST and MCP launch methods accept the same optional `task_ids` contract.
+- Agent setup now applies local JSON writes in one rollback-capable transaction and indexes existing entities by name, avoiding repeated full-state serialization and scans during 200+ item imports.
+- Synthetic server fixtures cover 205 pages/tasks, 70 runs, and 125 executions with bounded payload and response-time assertions. Headless Playwright provisions 205 pages/tasks through `/api/agent/setup` and verifies lazy tabs and all three launch scopes.
 - Added the SCENE agent control plane for SCENE-11: `/api/agent/manifest`, `/api/agent/docs`, JSON config endpoints, idempotent setup, run detail/artifact/log/retry endpoints, baseline read/delete endpoints, optional `SCENE_API_TOKEN` bearer enforcement for mutation/control calls, and a thin `scene_mcp` server that forwards MCP tools to REST APIs.
 - ESC from the execution viewer now reopens the originating run modal, while ESC from the run modal returns the dashboard to `/runs`.
 - The run launcher dropdown now filters out failed baselines and refreshes completed options via the API, so the latest recordings appear without a full-page reload.

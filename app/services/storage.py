@@ -4,9 +4,11 @@ import json
 import os
 import threading
 import uuid
+from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 from fastapi import Depends
 
@@ -152,8 +154,10 @@ class LocalDynamoStorage:
 
     def __init__(self, path: Path) -> None:
         self._path = path
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._state = self._load()
+        self._transaction_depth = 0
+        self._transaction_dirty = False
 
     def _load(self) -> Dict[str, Any]:
         if not self._path.exists():
@@ -190,9 +194,37 @@ class LocalDynamoStorage:
             return state
 
     def _persist(self) -> None:
+        if self._transaction_depth:
+            self._transaction_dirty = True
+            return
+        self._write_state()
+
+    def _write_state(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("w", encoding="utf-8") as handle:
             json.dump(self._state, handle, indent=2, sort_keys=True)
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Persist a group of local writes once and roll it back on failure."""
+        with self._lock:
+            outermost = self._transaction_depth == 0
+            snapshot = deepcopy(self._state) if outermost else None
+            self._transaction_depth += 1
+            try:
+                yield
+            except Exception:
+                self._transaction_depth -= 1
+                if outermost:
+                    assert snapshot is not None
+                    self._state = snapshot
+                    self._transaction_dirty = False
+                raise
+            else:
+                self._transaction_depth -= 1
+                if outermost and self._transaction_dirty:
+                    self._transaction_dirty = False
+                    self._write_state()
 
     def _collection(self, name: str) -> Dict[str, Any]:
         return self._state.setdefault(name, {})
@@ -273,6 +305,11 @@ class SceneRepository:
 
     def __init__(self, storage: LocalDynamoStorage) -> None:
         self._storage = storage
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        with self._storage.transaction():
+            yield
 
     # -- Config -------------------------------------------------------------------
     def get_config(self) -> Dict[str, Any]:
@@ -775,6 +812,7 @@ class SceneRepository:
             "updated_at": now,
             "summary": summary,
             "timeout_seconds": timeout_seconds,
+            "task_ids": list(payload["task_ids"]) if payload.get("task_ids") is not None else None,
         }
         return self._storage.upsert("runs", run_id, record)
 

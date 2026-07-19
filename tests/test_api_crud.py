@@ -231,3 +231,63 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     runs_for_project = resp.json()
     assert len(runs_for_project) == 1
     assert runs_for_project[0]["spm_ticket"] == "SCENE-999"
+
+
+def test_run_task_subset_is_validated_and_persisted(
+    client: Tuple[TestClient, SceneRepository],
+) -> None:
+    api, _repo = client
+    project = api.post("/api/projects", json={"name": "Subset", "slug": "subset"}).json()
+    page = api.post(
+        "/api/pages",
+        json={
+            "project_id": project["id"],
+            "name": "Home",
+            "url": "https://example.com/",
+        },
+    ).json()
+    tasks = [
+        api.post(
+            "/api/tasks",
+            json={
+                "project_id": project["id"],
+                "page_id": page["id"],
+                "name": f"Task {index}",
+                "browsers": ["chromium"],
+                "viewports": [{"width": 800, "height": 600}],
+            },
+        ).json()
+        for index in range(3)
+    ]
+    batch = api.post(
+        "/api/batches",
+        json={
+            "project_id": project["id"],
+            "name": "Matrix",
+            "task_ids": [task["id"] for task in tasks],
+        },
+    ).json()
+
+    response = api.post(
+        "/api/runs",
+        json={
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "baseline_recording",
+            "task_ids": [tasks[2]["id"], tasks[0]["id"]],
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["task_ids"] == [tasks[0]["id"], tasks[2]["id"]]
+
+    invalid = api.post(
+        "/api/runs",
+        json={
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "baseline_recording",
+            "task_ids": ["not-in-batch"],
+        },
+    )
+    assert invalid.status_code == 400
+    assert "not part of this batch" in invalid.json()["detail"]

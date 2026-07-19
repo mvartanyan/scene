@@ -20,6 +20,7 @@ class _FakeOrchestrator:
         self.enqueued: list[str] = []
         self.cancelled: list[str] = []
         self.retried: list[str] = []
+        self.concurrency_updates: list[int] = []
 
     def enqueue(self, run_id: str) -> None:
         self.enqueued.append(run_id)
@@ -56,7 +57,7 @@ class _FakeOrchestrator:
         )
 
     def update_concurrency(self, max_workers: int) -> None:
-        return None
+        self.concurrency_updates.append(max_workers)
 
     def update_scene_host(self, host_url: str) -> None:
         return None
@@ -150,7 +151,7 @@ def test_agent_setup_is_idempotent_and_updates_config(
     monkeypatch,
     client: Tuple[TestClient, SceneRepository, _FakeOrchestrator],
 ) -> None:
-    api, repo, _orch = client
+    api, repo, orchestrator = client
     monkeypatch.setenv("SCENE_API_TOKEN", "secret")
     setup = {
         "config": {
@@ -208,6 +209,40 @@ def test_agent_setup_is_idempotent_and_updates_config(
     assert len(repo.list_batches(project_id)) == 1
     assert repo.list_batches(project_id)[0]["description"] == "updated"
     assert repo.list_batches(project_id)[0]["spm_ticket"] == "SCENE-12"
+    assert orchestrator.concurrency_updates == [2, 2]
+
+
+def test_agent_setup_rolls_back_invalid_project_graph(
+    monkeypatch,
+    client: Tuple[TestClient, SceneRepository, _FakeOrchestrator],
+) -> None:
+    api, repo, orchestrator = client
+    monkeypatch.setenv("SCENE_API_TOKEN", "secret")
+
+    response = api.post(
+        "/api/agent/setup",
+        headers=_auth_headers(),
+        json={
+            "config": {"max_concurrent_executions": 7},
+            "project": {"name": "Invalid graph", "slug": "invalid-graph"},
+            "pages": [{"name": "Home", "url": "https://example.com/"}],
+            "tasks": [
+                {
+                    "name": "Missing page",
+                    "page_name": "Unknown",
+                    "browsers": ["chromium"],
+                    "viewports": [{"width": 1280, "height": 720}],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert repo.list_projects() == []
+    assert repo._storage.list("pages") == []
+    assert repo._storage.list("tasks") == []
+    assert repo.get_config()["max_concurrent_executions"] == 4
+    assert orchestrator.concurrency_updates == []
 
 
 def test_run_detail_artifacts_log_and_retry_json(

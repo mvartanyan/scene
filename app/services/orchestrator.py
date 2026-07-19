@@ -719,7 +719,10 @@ class RunOrchestrator:
             return
 
         task_records: List[Tuple[Dict[str, object], Dict[str, object]]] = []
-        for task_id in batch.get("task_ids", []):
+        scoped_task_ids = run.get("task_ids")
+        if scoped_task_ids is None:
+            scoped_task_ids = batch.get("task_ids", [])
+        for task_id in scoped_task_ids:
             task = self._repo.get_task(task_id)
             if not task:
                 LOGGER.warning("Task %s missing; skipping in run %s", task_id, run_id)

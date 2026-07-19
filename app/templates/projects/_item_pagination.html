@@ -1,0 +1,40 @@
+{% if item_pagination.total_pages > 1 %}
+  <nav
+    class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3"
+    aria-label="{{ active_tab | title }} pagination"
+    data-testid="{{ active_tab }}-pagination"
+  >
+    <span class="small text-muted">
+      {{ item_pagination.start }}-{{ item_pagination.end }} of {{ item_pagination.total }}
+    </span>
+    <div class="btn-group btn-group-sm" role="group" aria-label="{{ active_tab | title }} pages">
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        hx-get="/projects/{{ project.id }}/detail"
+        hx-target="#project-detail"
+        hx-swap="innerHTML"
+        hx-push-url="/projects?project_id={{ project.id }}&tab={{ active_tab }}&item_page={{ item_pagination.previous_page or 1 }}"
+        hx-vals='{"tab":"{{ active_tab }}","item_page":{{ item_pagination.previous_page or 1 }}}'
+        {% if not item_pagination.has_previous %}disabled{% endif %}
+      >
+        Previous
+      </button>
+      <button type="button" class="btn btn-outline-secondary" disabled>
+        {{ item_pagination.page }} / {{ item_pagination.total_pages }}
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        hx-get="/projects/{{ project.id }}/detail"
+        hx-target="#project-detail"
+        hx-swap="innerHTML"
+        hx-push-url="/projects?project_id={{ project.id }}&tab={{ active_tab }}&item_page={{ item_pagination.next_page or item_pagination.total_pages }}"
+        hx-vals='{"tab":"{{ active_tab }}","item_page":{{ item_pagination.next_page or item_pagination.total_pages }}}'
+        {% if not item_pagination.has_next %}disabled{% endif %}
+      >
+        Next
+      </button>
+    </div>
+  </nav>
+{% endif %}

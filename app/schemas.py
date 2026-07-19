@@ -391,6 +391,10 @@ class BatchComparisonRunCreate(SpmTicketAliasModel):
     note: Optional[str] = None
     spm_ticket: Optional[str] = spm_ticket_field()
     timeout_seconds: Optional[int] = Field(default=None, ge=1)
+    task_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional subset of task ids from the batch. Omit to run the full batch.",
+    )
 
 
 class RunFailureStatus(BaseModel):
@@ -436,6 +440,10 @@ class RunBase(SpmTicketAliasModel):
     spm_ticket: Optional[str] = spm_ticket_field()
     summary: RunSummary = Field(default_factory=RunSummary)
     timeout_seconds: Optional[int] = Field(default=None, ge=1)
+    task_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional subset of task ids from the batch. Omit to run the full batch.",
+    )
 
 
 class RunCreate(RunBase):

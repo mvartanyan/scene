@@ -1,7 +1,12 @@
 {% set counts = counts or {} %}
 {% set status_badge = run.status_badge or 'secondary' %}
 
-<div id="run-detail-shell-inner" data-run-id="{{ run.id }}" data-run-hash="{{ overlay_hash }}">
+<div
+  id="run-detail-shell-inner"
+  data-run-id="{{ run.id }}"
+  data-run-hash="{{ overlay_hash }}"
+  data-execution-page="{{ execution_pagination.page }}"
+>
 <div class="modal-header align-items-start">
   <div class="me-auto">
     <h5 class="modal-title mb-1">
@@ -94,7 +99,7 @@
       <tbody>
         {% for exec in executions %}
           {% set artifacts = exec.artifacts or {} %}
-          <tr>
+          <tr data-testid="execution-list-item">
             <td>
               <div class="fw-semibold">{{ exec.task_name }}</div>
               <div class="small text-muted">{{ exec.browser }} · {{ exec.viewport.width }}×{{ exec.viewport.height }}</div>
@@ -151,6 +156,7 @@
                     hx-post="/runs/{{ run.id }}/executions/{{ exec.id }}/retry"
                     hx-target="#run-detail-shell-inner"
                     hx-swap="outerHTML"
+                    hx-vals='{"execution_page":{{ execution_pagination.page }}}'
                     {% if exec.status not in ['failed', 'cancelled'] %}disabled aria-disabled="true"{% endif %}
                   >
                     Retry
@@ -163,6 +169,7 @@
                       hx-post="/runs/{{ run.id }}/executions/{{ exec.id }}/cancel"
                       hx-target="#run-detail-shell-inner"
                       hx-swap="outerHTML"
+                      hx-vals='{"execution_page":{{ execution_pagination.page }}}'
                     >
                       Kill
                     </button>
@@ -177,6 +184,36 @@
       </tbody>
     </table>
   </div>
+  {% if execution_pagination.total_pages > 1 %}
+    <nav class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3" aria-label="Execution pages" data-testid="execution-pagination">
+      <span class="small text-muted">
+        {{ execution_pagination.start }}-{{ execution_pagination.end }} of {{ execution_pagination.total }}
+      </span>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Execution pages">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          data-role="execution-page"
+          data-page="{{ execution_pagination.previous_page or 1 }}"
+          {% if not execution_pagination.has_previous %}disabled{% endif %}
+        >
+          Previous
+        </button>
+        <button type="button" class="btn btn-outline-secondary" disabled>
+          {{ execution_pagination.page }} / {{ execution_pagination.total_pages }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          data-role="execution-page"
+          data-page="{{ execution_pagination.next_page or execution_pagination.total_pages }}"
+          {% if not execution_pagination.has_next %}disabled{% endif %}
+        >
+          Next
+        </button>
+      </div>
+    </nav>
+  {% endif %}
 </div>
 
 <div class="modal-footer">

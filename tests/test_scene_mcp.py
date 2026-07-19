@@ -72,16 +72,20 @@ def test_mcp_tools_register_and_forward_to_rest_client() -> None:
         "b1",
         note="baseline",
         spm_ticket="SCENE-12",
+        task_ids=["t1"],
     )
     assert baseline["note"] == "baseline"
     assert baseline["spm_ticket"] == "SCENE-12"
+    assert baseline["task_ids"] == ["t1"]
     comparison = fake_mcp.tools["scene_run_batch"](
         "b1",
         note="from mcp",
         spm_ticket="SCENE-12",
+        task_ids=["t1", "t2"],
     )
     assert comparison["note"] == "from mcp"
     assert comparison["spm_ticket"] == "SCENE-12"
+    assert comparison["task_ids"] == ["t1", "t2"]
     assert fake_mcp.tools["scene_get_run_status"]("r1")["status"] == "executing"
     assert fake_mcp.tools["scene_get_run_result"]("r1")["status"] == "finished"
     assert fake_mcp.tools["scene_get_artifacts"]("r1")["executions"] == []
@@ -135,8 +139,13 @@ def test_scene_client_adds_bearer_token_and_surfaces_errors(monkeypatch) -> None
 
     assert client.get_manifest() == {"ok": True}
     assert calls[0]["headers"]["Authorization"] == "Bearer secret"
-    assert client.run_batch("batch-1", spm_ticket="SCENE-12") == {"ok": True}
+    assert client.run_batch(
+        "batch-1",
+        spm_ticket="SCENE-12",
+        task_ids=["task-1"],
+    ) == {"ok": True}
     assert calls[1]["json"]["spm_ticket"] == "SCENE-12"
+    assert calls[1]["json"]["task_ids"] == ["task-1"]
     assert "jira_issue" not in calls[1]["json"]
 
     with pytest.raises(SceneClientError, match="GET /api/projects failed with 500"):

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from app.constants import DEFAULT_BROWSERS, DEFAULT_VIEWPORTS
+from app.pagination import DEFAULT_PAGE_SIZE, paginate
 from app.schemas import RunStatus
 from app.services.storage import RepositoryDep, SceneRepository
 from app.templating import templates
@@ -80,6 +81,7 @@ def _build_project_context(
     project_id: str,
     active_tab: str = "pages",
     *,
+    item_page: int = 1,
     editing_page: Optional[dict] = None,
     editing_task: Optional[dict] = None,
     editing_batch: Optional[dict] = None,
@@ -88,10 +90,10 @@ def _build_project_context(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    pages = repo.list_pages(project_id)
-    tasks = repo.list_tasks(project_id)
-    batches = repo.list_batches(project_id)
-    for batch in batches:
+    all_pages = repo.list_pages(project_id)
+    all_tasks = repo.list_tasks(project_id)
+    all_batches = repo.list_batches(project_id)
+    for batch in all_batches:
         for key in ("run_diff_threshold", "execution_diff_threshold"):
             raw_value = batch.get(key)
             if raw_value in (None, "", "None"):
@@ -113,6 +115,31 @@ def _build_project_context(
                 except (TypeError, ValueError):
                     editing_batch[key] = None
 
+    if active_tab == "tasks":
+        tasks, item_pagination = paginate(
+            all_tasks,
+            page=item_page,
+            page_size=DEFAULT_PAGE_SIZE,
+        )
+        pages = all_pages
+        batches = []
+    elif active_tab == "batches":
+        batches, item_pagination = paginate(
+            all_batches,
+            page=item_page,
+            page_size=DEFAULT_PAGE_SIZE,
+        )
+        pages = []
+        tasks = all_tasks
+    else:
+        pages, item_pagination = paginate(
+            all_pages,
+            page=item_page,
+            page_size=DEFAULT_PAGE_SIZE,
+        )
+        tasks = []
+        batches = []
+
     config = repo.get_config()
     available_browsers = config.get("browsers") or DEFAULT_BROWSERS
     available_viewports = config.get("viewports") or DEFAULT_VIEWPORTS
@@ -122,7 +149,11 @@ def _build_project_context(
         "pages": pages,
         "tasks": tasks,
         "batches": batches,
-        "page_lookup": {page["id"]: page for page in pages},
+        "page_lookup": {page["id"]: page for page in all_pages},
+        "page_count": len(all_pages),
+        "task_count": len(all_tasks),
+        "batch_count": len(all_batches),
+        "item_pagination": item_pagination,
         "status_choices": list(RunStatus),
         "available_browsers": available_browsers,
         "available_viewports": available_viewports,
@@ -139,6 +170,7 @@ def _render_project_detail(
     project_id: str,
     active_tab: str = "pages",
     *,
+    item_page: int = 1,
     editing_page: Optional[dict] = None,
     editing_task: Optional[dict] = None,
     editing_batch: Optional[dict] = None,
@@ -149,6 +181,7 @@ def _render_project_detail(
         repo,
         project_id,
         active_tab=active_tab,
+        item_page=item_page,
         editing_page=editing_page,
         editing_task=editing_task,
         editing_batch=editing_batch,
@@ -162,13 +195,21 @@ def _render_project_detail(
 async def projects_home(
     request: Request,
     project_id: Optional[str] = None,
+    tab: Optional[str] = None,
+    item_page: int = 1,
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     projects = repo.list_projects()
     selected_id = project_id or (projects[0]["id"] if projects else None)
     detail_context = None
     if selected_id:
-        detail_context = _build_project_context(repo, selected_id)
+        active_tab = tab if tab in {"pages", "tasks", "batches"} else "pages"
+        detail_context = _build_project_context(
+            repo,
+            selected_id,
+            active_tab=active_tab,
+            item_page=item_page,
+        )
 
     context = {
         "request": request,
@@ -211,6 +252,7 @@ async def project_detail(
     project_id: str,
     request: Request,
     tab: Optional[str] = None,
+    item_page: int = 1,
     edit_page_id: Optional[str] = None,
     edit_task_id: Optional[str] = None,
     edit_batch_id: Optional[str] = None,
@@ -231,6 +273,7 @@ async def project_detail(
         repo,
         project_id,
         active_tab=active_tab,
+        item_page=item_page,
         editing_page=editing_page,
         editing_task=editing_task,
         editing_batch=editing_batch,
@@ -245,6 +288,7 @@ async def edit_project(
     slug: str = Form(...),
     description: Optional[str] = Form(None),
     active_tab: str = Form("pages"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     updated = repo.update_project(
@@ -257,7 +301,13 @@ async def edit_project(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Project not found")
-    return _render_project_detail(request, repo, project_id, active_tab=active_tab)
+    return _render_project_detail(
+        request,
+        repo,
+        project_id,
+        active_tab=active_tab,
+        item_page=item_page,
+    )
 
 
 @router.post("/projects/{project_id}/pages", response_class=HTMLResponse)
@@ -272,6 +322,7 @@ async def create_page(
     basic_auth_username: Optional[str] = Form(None),
     basic_auth_password: Optional[str] = Form(None),
     active_tab: str = Form("pages"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     try:
@@ -282,6 +333,7 @@ async def create_page(
             repo,
             project_id,
             active_tab=active_tab,
+            item_page=item_page,
             error_message=str(exc),
         )
 
@@ -302,6 +354,7 @@ async def create_page(
         repo,
         project_id,
         active_tab=active_tab,
+        item_page=item_page,
         flash_message=("success", "Page saved"),
     )
 
@@ -318,6 +371,7 @@ async def edit_page(
     basic_auth_username: Optional[str] = Form(None),
     basic_auth_password: Optional[str] = Form(None),
     active_tab: str = Form("pages"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     existing = repo.get_page(page_id)
@@ -331,6 +385,7 @@ async def edit_page(
             repo,
             existing["project_id"],
             active_tab=active_tab,
+            item_page=item_page,
             editing_page=existing,
             error_message=str(exc),
         )
@@ -354,6 +409,7 @@ async def edit_page(
         repo,
         page["project_id"],
         active_tab=active_tab,
+        item_page=item_page,
         flash_message=("success", "Page updated"),
     )
 
@@ -362,13 +418,20 @@ async def edit_page(
 async def remove_page(
     page_id: str,
     request: Request,
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     page = repo.get_page(page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     repo.delete_page(page_id)
-    return _render_project_detail(request, repo, page["project_id"], active_tab="pages")
+    return _render_project_detail(
+        request,
+        repo,
+        page["project_id"],
+        active_tab="pages",
+        item_page=item_page,
+    )
 
 
 @router.post("/projects/{project_id}/tasks", response_class=HTMLResponse)
@@ -382,6 +445,7 @@ async def create_task(
     task_js: Optional[str] = Form(None),
     task_actions: Optional[str] = Form(None),
     active_tab: str = Form("tasks"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     config = repo.get_config()
@@ -404,6 +468,7 @@ async def create_task(
             repo,
             project_id,
             active_tab=active_tab,
+            item_page=item_page,
             error_message=str(exc),
         )
 
@@ -423,6 +488,7 @@ async def create_task(
         repo,
         project_id,
         active_tab=active_tab,
+        item_page=item_page,
         flash_message=("success", "Task saved"),
     )
 
@@ -438,6 +504,7 @@ async def edit_task(
     task_js: Optional[str] = Form(None),
     task_actions: Optional[str] = Form(None),
     active_tab: str = Form("tasks"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     task = repo.get_task(task_id)
@@ -463,6 +530,7 @@ async def edit_task(
             repo,
             task["project_id"],
             active_tab=active_tab,
+            item_page=item_page,
             editing_task=task,
             error_message=str(exc),
         )
@@ -483,6 +551,7 @@ async def edit_task(
         repo,
         task["project_id"],
         active_tab=active_tab,
+        item_page=item_page,
         flash_message=("success", "Task updated"),
     )
 
@@ -491,13 +560,20 @@ async def edit_task(
 async def remove_task(
     task_id: str,
     request: Request,
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     task = repo.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     repo.delete_task(task_id)
-    return _render_project_detail(request, repo, task["project_id"], active_tab="tasks")
+    return _render_project_detail(
+        request,
+        repo,
+        task["project_id"],
+        active_tab="tasks",
+        item_page=item_page,
+    )
 
 
 @router.post("/projects/{project_id}/batches", response_class=HTMLResponse)
@@ -511,6 +587,7 @@ async def create_batch(
     run_diff_threshold: Optional[str] = Form(None),
     execution_diff_threshold: Optional[str] = Form(None),
     active_tab: str = Form("batches"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     selected_tasks = task_ids or []
@@ -531,6 +608,7 @@ async def create_batch(
         repo,
         project_id,
         active_tab=active_tab,
+        item_page=item_page,
         flash_message=("success", "Batch saved"),
     )
 
@@ -546,6 +624,7 @@ async def edit_batch(
     run_diff_threshold: Optional[str] = Form(None),
     execution_diff_threshold: Optional[str] = Form(None),
     active_tab: str = Form("batches"),
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     batch = repo.get_batch(batch_id)
@@ -568,6 +647,7 @@ async def edit_batch(
         repo,
         batch["project_id"],
         active_tab=active_tab,
+        item_page=item_page,
         flash_message=("success", "Batch updated"),
     )
 
@@ -576,10 +656,17 @@ async def edit_batch(
 async def remove_batch(
     batch_id: str,
     request: Request,
+    item_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     batch = repo.get_batch(batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
     repo.delete_batch(batch_id)
-    return _render_project_detail(request, repo, batch["project_id"], active_tab="batches")
+    return _render_project_detail(
+        request,
+        repo,
+        batch["project_id"],
+        active_tab="batches",
+        item_page=item_page,
+    )

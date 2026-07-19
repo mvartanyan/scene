@@ -41,37 +41,43 @@
       <li class="nav-item" role="presentation">
         <button
           class="nav-link {% if active_tab == 'pages' %}active{% endif %}"
-          data-bs-toggle="tab"
-          data-bs-target="#pages-pane-{{ project.id }}"
           type="button"
           role="tab"
+          hx-get="/projects/{{ project.id }}/detail?tab=pages"
+          hx-target="#project-detail"
+          hx-swap="innerHTML"
+          hx-push-url="/projects?project_id={{ project.id }}&tab=pages"
           aria-selected="{{ 'true' if active_tab == 'pages' else 'false' }}"
         >
-          Pages <span class="badge text-bg-secondary ms-1">{{ pages|length }}</span>
+          Pages <span class="badge text-bg-secondary ms-1">{{ page_count }}</span>
         </button>
       </li>
       <li class="nav-item" role="presentation">
         <button
           class="nav-link {% if active_tab == 'tasks' %}active{% endif %}"
-          data-bs-toggle="tab"
-          data-bs-target="#tasks-pane-{{ project.id }}"
           type="button"
           role="tab"
+          hx-get="/projects/{{ project.id }}/detail?tab=tasks"
+          hx-target="#project-detail"
+          hx-swap="innerHTML"
+          hx-push-url="/projects?project_id={{ project.id }}&tab=tasks"
           aria-selected="{{ 'true' if active_tab == 'tasks' else 'false' }}"
         >
-          Tasks <span class="badge text-bg-secondary ms-1">{{ tasks|length }}</span>
+          Tasks <span class="badge text-bg-secondary ms-1">{{ task_count }}</span>
         </button>
       </li>
       <li class="nav-item" role="presentation">
         <button
           class="nav-link {% if active_tab == 'batches' %}active{% endif %}"
-          data-bs-toggle="tab"
-          data-bs-target="#batches-pane-{{ project.id }}"
           type="button"
           role="tab"
+          hx-get="/projects/{{ project.id }}/detail?tab=batches"
+          hx-target="#project-detail"
+          hx-swap="innerHTML"
+          hx-push-url="/projects?project_id={{ project.id }}&tab=batches"
           aria-selected="{{ 'true' if active_tab == 'batches' else 'false' }}"
         >
-          Batches <span class="badge text-bg-secondary ms-1">{{ batches|length }}</span>
+          Batches <span class="badge text-bg-secondary ms-1">{{ batch_count }}</span>
         </button>
       </li>
     </ul>
@@ -79,6 +85,7 @@
 
   <div class="card-body">
     <div class="tab-content">
+      {% if active_tab == 'pages' %}
       <div
         class="tab-pane fade {% if active_tab == 'pages' %}show active{% endif %}"
         id="pages-pane-{{ project.id }}"
@@ -92,7 +99,7 @@
                 {% if pages %}
                   <div class="list-group list-group-flush">
                     {% for page in pages %}
-                      <div class="list-group-item configuration-list-item">
+                      <div class="list-group-item configuration-list-item" data-testid="page-list-item">
                         <div class="configuration-list-copy">
                           <div class="me-3">
                             <div class="fw-semibold">{{ page.name }}</div>
@@ -111,7 +118,7 @@
                               hx-get="/projects/{{ project.id }}/detail"
                               hx-target="#project-detail"
                               hx-swap="innerHTML"
-                              hx-vals='{"tab":"pages","edit_page_id":"{{ page.id }}"}'
+                              hx-vals='{"tab":"pages","item_page":{{ item_pagination.page }},"edit_page_id":"{{ page.id }}"}'
                             >
                               Edit
                             </button>
@@ -123,6 +130,7 @@
                               onsubmit="return confirm('Remove this page?')"
                             >
                               <input type="hidden" name="active_tab" value="pages" />
+                              <input type="hidden" name="item_page" value="{{ item_pagination.page }}" />
                               <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
                             </form>
                           </div>
@@ -133,6 +141,7 @@
                 {% else %}
                   <div class="empty-state">No pages yet.</div>
                 {% endif %}
+                {% include "projects/_item_pagination.html" %}
               </div>
             </div>
           </div>
@@ -158,6 +167,7 @@
                   data-testid="page-configuration-form"
                 >
                   <input type="hidden" name="active_tab" value="pages" />
+                  <input type="hidden" name="item_page" value="{{ item_pagination.page }}" />
                   <div class="configuration-field">
                     <label class="form-label">Name</label>
                     <input
@@ -239,7 +249,7 @@
                         hx-get="/projects/{{ project.id }}/detail"
                         hx-target="#project-detail"
                         hx-swap="innerHTML"
-                        hx-vals='{"tab":"pages"}'
+                        hx-vals='{"tab":"pages","item_page":{{ item_pagination.page }}}'
                       >
                         Cancel
                       </button>
@@ -255,6 +265,7 @@
         </div>
       </div>
 
+      {% elif active_tab == 'tasks' %}
       <div
         class="tab-pane fade {% if active_tab == 'tasks' %}show active{% endif %}"
         id="tasks-pane-{{ project.id }}"
@@ -272,7 +283,7 @@
                       {% for vp in task.viewports %}
                         {% set _ = vp_ns.values.append(vp.width|string ~ 'x' ~ vp.height|string) %}
                       {% endfor %}
-                      <div class="list-group-item configuration-list-item">
+                      <div class="list-group-item configuration-list-item" data-testid="task-list-item">
                         <div class="configuration-list-copy">
                           <div>
                             <div class="fw-semibold">{{ task.name }}</div>
@@ -298,7 +309,7 @@
                               hx-get="/projects/{{ project.id }}/detail"
                               hx-target="#project-detail"
                               hx-swap="innerHTML"
-                              hx-vals='{"tab":"tasks","edit_task_id":"{{ task.id }}"}'
+                              hx-vals='{"tab":"tasks","item_page":{{ item_pagination.page }},"edit_task_id":"{{ task.id }}"}'
                             >
                               Edit
                             </button>
@@ -310,6 +321,7 @@
                               onsubmit="return confirm('Remove this task?')"
                             >
                               <input type="hidden" name="active_tab" value="tasks" />
+                              <input type="hidden" name="item_page" value="{{ item_pagination.page }}" />
                               <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
                             </form>
                           </div>
@@ -320,6 +332,7 @@
                 {% else %}
                   <div class="empty-state">No tasks yet.</div>
                 {% endif %}
+                {% include "projects/_item_pagination.html" %}
               </div>
             </div>
           </div>
@@ -353,6 +366,7 @@
                     data-testid="task-configuration-form"
                   >
                     <input type="hidden" name="active_tab" value="tasks" />
+                    <input type="hidden" name="item_page" value="{{ item_pagination.page }}" />
                     <div class="configuration-field">
                       <label class="form-label">Name</label>
                       <input
@@ -447,7 +461,7 @@
                           hx-get="/projects/{{ project.id }}/detail"
                           hx-target="#project-detail"
                           hx-swap="innerHTML"
-                          hx-vals='{"tab":"tasks"}'
+                          hx-vals='{"tab":"tasks","item_page":{{ item_pagination.page }}}'
                         >
                           Cancel
                         </button>
@@ -464,6 +478,7 @@
         </div>
       </div>
 
+      {% elif active_tab == 'batches' %}
       <div
         class="tab-pane fade {% if active_tab == 'batches' %}show active{% endif %}"
         id="batches-pane-{{ project.id }}"
@@ -477,7 +492,7 @@
                 {% if batches %}
                   <div class="list-group list-group-flush">
                     {% for batch in batches %}
-                      <div class="list-group-item configuration-list-item">
+                      <div class="list-group-item configuration-list-item" data-testid="batch-list-item">
                         <div class="configuration-list-copy">
                           <div>
                             <div class="fw-semibold">{{ batch.name }}</div>
@@ -505,7 +520,7 @@
                               hx-get="/projects/{{ project.id }}/detail"
                               hx-target="#project-detail"
                               hx-swap="innerHTML"
-                              hx-vals='{"tab":"batches","edit_batch_id":"{{ batch.id }}"}'
+                              hx-vals='{"tab":"batches","item_page":{{ item_pagination.page }},"edit_batch_id":"{{ batch.id }}"}'
                             >
                               Edit
                             </button>
@@ -517,6 +532,7 @@
                               onsubmit="return confirm('Remove this batch?')"
                             >
                               <input type="hidden" name="active_tab" value="batches" />
+                              <input type="hidden" name="item_page" value="{{ item_pagination.page }}" />
                               <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
                             </form>
                           </div>
@@ -527,6 +543,7 @@
                 {% else %}
                   <div class="empty-state">No batches yet.</div>
                 {% endif %}
+                {% include "projects/_item_pagination.html" %}
               </div>
             </div>
           </div>
@@ -555,6 +572,7 @@
                     data-testid="batch-configuration-form"
                   >
                     <input type="hidden" name="active_tab" value="batches" />
+                    <input type="hidden" name="item_page" value="{{ item_pagination.page }}" />
                     <div class="configuration-field">
                       <label class="form-label">Name</label>
                       <input
@@ -575,7 +593,7 @@
                     </div>
                     <div class="configuration-field">
                       <label class="form-label">Linked Tasks</label>
-                      <div class="configuration-choice-stack">
+                      <div class="configuration-choice-stack configuration-choice-scroll">
                         {% for task in tasks %}
                           <div class="form-check">
                             <input
@@ -635,7 +653,7 @@
                           hx-get="/projects/{{ project.id }}/detail"
                           hx-target="#project-detail"
                           hx-swap="innerHTML"
-                          hx-vals='{"tab":"batches"}'
+                          hx-vals='{"tab":"batches","item_page":{{ item_pagination.page }}}'
                         >
                           Cancel
                         </button>
@@ -651,6 +669,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
     </div>
   </div>
 </div>

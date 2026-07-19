@@ -31,8 +31,8 @@ uvicorn app.main:app --reload
 - Tests should create state and artifact roots under pytest temporary directories or explicit env-configured paths, never by writing to `dev.dynamodb.json`.
 
 ## Key Screens & Workflows
-- **Projects**: Select a project then manage Pages, Tasks, and Batches via Bootstrap tabs. Inline edit/delete is available via collapsible forms.
-- **Runs**: Launch runs (baseline/comparison), tweak the timeout (seconds) before submitting, and inspect executions via the modal. The run log and modal are powered by HTMX and the vendored `app/static/htmx.min.js`. The baseline picker now refreshes via `/api/batches/{id}/baselines`, filtering out failed recordings so operators only see completed baselines.
+- **Projects**: Select a project then manage Pages, Tasks, and Batches via Bootstrap tabs. Tabs load independently, page/task lists use 25-item pages, and large batch task selectors scroll within a fixed-height region. Inline edit/delete is available via collapsible forms.
+- **Runs**: Launch baseline/comparison runs for all tasks, a one-task smoke scope, or an explicit task selection. The launcher estimates executions and warns above 100 targets before submission. Run history uses 25-item pages and execution overlays use 50-item pages so polling remains bounded. The baseline picker refreshes via `/api/batches/{id}/baselines`, filtering out failed recordings so operators only see completed baselines.
 - **Config**: Use the gear icon in the navbar to toggle browser availability, manage viewport presets, switch timestamp display, and set the default run timeout. Browsers/viewports that are in use stay locked; add new entries with the inline form.
 - **Agent API/MCP**: Agents should discover capabilities via `/api/agent/manifest`, read docs from `/api/agent/docs`, and use `python -m scene_mcp.server` for MCP access. Set `SCENE_API_TOKEN` to require bearer auth for mutation/control endpoints.
 
@@ -45,6 +45,7 @@ pytest
 ## Orchestration Notes
 - Docker is required; the Playwright container image is `scene-playwright-runner:latest` (built from `Dockerfile.playwright`).
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
+- Run records can carry `task_ids`; when present, the orchestrator expands only that validated subset while preserving the batch's task order. Omitting `task_ids` retains full-batch behaviour.
 - Artifacts are stored under `.scene/artifacts/runs/<run>/<execution>/` by default and exposed via `/artifacts/...`.
 - Each execution waits up to 60 s for `page.goto(..., networkidle)` and then idles an additional 7 s by default (`post_wait_ms`, configurable under *Capture Stabilization*) before capturing; add preparatory actions such as `disable_animations` or `wait` to tune per-page behaviour. The same actions/JS are replayed for reference URLs prior to their capture, and reference screenshots are padded server-side to match the observed dimensions so sliders stay aligned. The runner logic now lives in `app/services/runner_script.py` (imported at runtime by the orchestrator) and auto-scrolls lazily rendered pages by driving the actual scrolling container, backing off only when `scrollHeight` stops growing.
 

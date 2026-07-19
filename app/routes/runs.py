@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import asyncio
 import hashlib
@@ -11,13 +11,19 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 
+from app.pagination import DEFAULT_PAGE_SIZE, paginate
 from app.schemas import BaselineStatus, ExecutionStatus, RunPurpose, RunStatus, TaskExecution
 from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import get_orchestrator
+from app.services.run_scope import batch_task_details, validate_task_subset
 from app.services.storage import RepositoryDep, SceneRepository
 from app.templating import templates
 
 router = APIRouter(tags=["runs"])
+
+RUN_PAGE_SIZE = DEFAULT_PAGE_SIZE
+EXECUTION_PAGE_SIZE = 50
+LARGE_RUN_THRESHOLD = 100
 
 ARTIFACT_ORDER = [
     "observed",
@@ -200,13 +206,16 @@ def _collect_runs(
     *,
     filter_project_id: Optional[str] = None,
     filter_status: Optional[str] = None,
-) -> List[Dict[str, object]]:
+    page: int = 1,
+    page_size: int = RUN_PAGE_SIZE,
+) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
     raw_runs = repo.list_runs(project_id=filter_project_id) if filter_project_id else repo.list_runs()
     runs = [dict(run) for run in raw_runs]
     if filter_status:
         runs = [run for run in runs if run.get("status") == filter_status]
 
-    for run in runs:
+    page_runs, pagination = paginate(runs, page=page, page_size=page_size)
+    for run in page_runs:
         counts = repo.execution_status_counts(run["id"])
         _annotate_run(repo, run, project_lookup, counts=counts)
         batch = repo.get_batch(run.get("batch_id")) if run.get("batch_id") else None
@@ -218,7 +227,20 @@ def _collect_runs(
         run["diff_badge"] = DIFF_BADGES.get(grade, "secondary")
         run["diff_label"] = DIFF_LABELS.get(grade, "Diff")
         run["diff_threshold"] = threshold
-    return runs
+    return page_runs, pagination
+
+
+def _batch_launch_option(
+    repo: SceneRepository,
+    batch: Dict[str, object],
+) -> Dict[str, object]:
+    tasks = batch_task_details(repo, batch)
+    return {
+        "id": batch["id"],
+        "name": batch["name"],
+        "tasks": tasks,
+        "execution_count": sum(int(task["execution_count"]) for task in tasks),
+    }
 
 
 def _build_runs_dashboard_context(
@@ -228,6 +250,8 @@ def _build_runs_dashboard_context(
     filter_status: Optional[str] = None,
     selected_run_id: Optional[str] = None,
     launch_defaults: Optional[Dict[str, object]] = None,
+    run_page: int = 1,
+    run_page_size: int = RUN_PAGE_SIZE,
 ) -> Dict[str, object]:
     config = repo.get_config()
     projects = repo.list_projects()
@@ -253,19 +277,16 @@ def _build_runs_dashboard_context(
             ]
 
     project_options = [{"id": proj["id"], "name": proj["name"]} for proj in projects]
-    batch_options_map: Dict[str, List[Dict[str, str]]] = {
+    batch_options_map: Dict[str, List[Dict[str, object]]] = {
         proj["id"]: [
-            {
-                "id": batch["id"],
-                "name": batch["name"],
-            }
+            _batch_launch_option(repo, batch)
             for batch in project_batches.get(proj["id"], [])
         ]
         for proj in projects
     }
 
     defaults_raw: Dict[str, object] = dict(launch_defaults or {})
-    defaults: Dict[str, str] = {
+    defaults: Dict[str, object] = {
         "project_id": str(defaults_raw.get("project_id") or ""),
         "batch_id": str(defaults_raw.get("batch_id") or ""),
         "purpose": str(defaults_raw.get("purpose") or RunPurpose.comparison.value),
@@ -277,6 +298,8 @@ def _build_runs_dashboard_context(
         "timeout_seconds": str(
             defaults_raw.get("timeout_seconds") or config.get("run_timeout_seconds", 600)
         ),
+        "task_selection": str(defaults_raw.get("task_selection") or "all"),
+        "task_ids": [str(item) for item in defaults_raw.get("task_ids") or []],
     }
 
     first_project_id = project_options[0]["id"] if project_options else ""
@@ -301,14 +324,18 @@ def _build_runs_dashboard_context(
             "baseline_id": defaults.get("baseline_id", ""),
             "baseline_input": defaults.get("baseline_input", ""),
             "purpose": defaults.get("purpose", RunPurpose.comparison.value),
+            "task_selection": defaults.get("task_selection", "all"),
+            "task_ids": defaults.get("task_ids", []),
         },
     }
 
-    runs = _collect_runs(
+    runs, run_pagination = _collect_runs(
         repo,
         project_lookup,
         filter_project_id=filter_project_id,
         filter_status=filter_status,
+        page=run_page,
+        page_size=run_page_size,
     )
 
     if selected_run_id:
@@ -328,13 +355,49 @@ def _build_runs_dashboard_context(
         "selected_run_id": selected_run_id,
         "default_timeout_seconds": config.get("run_timeout_seconds", 600),
         "snapshot_hash": snapshot_hash,
+        "run_pagination": run_pagination,
+        "run_total": run_pagination["total"],
         "batch_baselines": batch_baselines,
         "launch_defaults": defaults,
         "launch_metadata_json": json.dumps(launch_metadata, sort_keys=True),
+        "large_run_threshold": LARGE_RUN_THRESHOLD,
     }
 
 
-def _build_run_context(repo: SceneRepository, run_id: str) -> Dict[str, object]:
+def _annotate_execution(
+    execution: Dict[str, object],
+    execution_threshold_value: Optional[float],
+) -> None:
+    execution["status_badge"] = EXEC_STATUS_BADGES.get(execution.get("status"), "secondary")
+    execution["can_cancel"] = execution.get("status") in {
+        ExecutionStatus.queued.value,
+        ExecutionStatus.executing.value,
+    }
+    diff_level = execution.get("diff_level")
+    if diff_level is None:
+        diff_level = (execution.get("diff") or {}).get("percentage")
+    diff_value = _coerce_float(diff_level)
+    execution["diff_level"] = round(diff_value, 4)
+    diff_grade = _classify_diff(diff_value, execution_threshold_value)
+    execution["diff_grade"] = diff_grade
+    execution["diff_badge"] = DIFF_BADGES.get(diff_grade, "secondary")
+    execution["diff_label"] = DIFF_LABELS.get(diff_grade, "Diff")
+    execution["diff_threshold"] = execution_threshold_value
+    message = execution.get("message")
+    if message:
+        first_line = str(message).splitlines()[0].strip()
+        execution["message_excerpt"] = first_line[:240]
+    else:
+        execution["message_excerpt"] = None
+
+
+def _build_run_context(
+    repo: SceneRepository,
+    run_id: str,
+    *,
+    execution_page: int = 1,
+    execution_page_size: int = EXECUTION_PAGE_SIZE,
+) -> Dict[str, object]:
     record = repo.get_run(run_id)
     if not record:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -364,29 +427,14 @@ def _build_run_context(repo: SceneRepository, run_id: str) -> Dict[str, object]:
     run["diff_threshold"] = run_threshold_value
     run["diff_samples"] = int(run.get("diff_samples") or run.get("summary", {}).get("diff_samples") or 0)
 
-    executions = [dict(execution) for execution in repo.list_executions(run_id=run_id)]
+    all_executions = [dict(execution) for execution in repo.list_executions(run_id=run_id)]
+    executions, execution_pagination = paginate(
+        all_executions,
+        page=execution_page,
+        page_size=execution_page_size,
+    )
     for execution in executions:
-        execution["status_badge"] = EXEC_STATUS_BADGES.get(execution.get("status"), "secondary")
-        execution["can_cancel"] = execution.get("status") in {
-            ExecutionStatus.queued.value,
-            ExecutionStatus.executing.value,
-        }
-        diff_level = execution.get("diff_level")
-        if diff_level is None:
-            diff_level = (execution.get("diff") or {}).get("percentage")
-        diff_value = _coerce_float(diff_level)
-        execution["diff_level"] = round(diff_value, 4)
-        diff_grade = _classify_diff(diff_value, execution_threshold_value)
-        execution["diff_grade"] = diff_grade
-        execution["diff_badge"] = DIFF_BADGES.get(diff_grade, "secondary")
-        execution["diff_label"] = DIFF_LABELS.get(diff_grade, "Diff")
-        execution["diff_threshold"] = execution_threshold_value
-        message = execution.get("message")
-        if message:
-            first_line = message.splitlines()[0].strip()
-            execution["message_excerpt"] = first_line[:240]
-        else:
-            execution["message_excerpt"] = None
+        _annotate_execution(execution, execution_threshold_value)
 
     can_cancel_run = run.get("status") in {
         RunStatus.queued.value,
@@ -404,7 +452,30 @@ def _build_run_context(repo: SceneRepository, run_id: str) -> Dict[str, object]:
         "artifact_order": ARTIFACT_ORDER,
         "execution_diff_threshold": execution_threshold_value,
         "run_diff_threshold": run_threshold_value,
+        "execution_pagination": execution_pagination,
     }
+
+
+def _render_run_detail(
+    request: Request,
+    repo: SceneRepository,
+    run_id: str,
+    *,
+    execution_page: int = 1,
+) -> HTMLResponse:
+    context = _build_run_context(repo, run_id, execution_page=execution_page)
+    context["request"] = request
+    overlay_hash = _run_overlay_signature(
+        run=context["run"],
+        baseline=context.get("baseline"),
+        executions=context["executions"],
+        counts=context["counts"],
+    )
+    context["overlay_hash"] = overlay_hash
+    response = templates.TemplateResponse("runs/_run_detail.html", context)
+    response.headers["X-Scene-Run-Hash"] = overlay_hash
+    response.headers["X-Scene-Run-Id"] = str(context["run"]["id"])
+    return response
 
 
 @router.get("/runs", response_class=HTMLResponse)
@@ -412,6 +483,7 @@ async def runs_home(
     request: Request,
     filter_project_id: Optional[str] = None,
     filter_status: Optional[RunStatus] = None,
+    run_page: int = 1,
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     context = _build_runs_dashboard_context(
@@ -419,6 +491,7 @@ async def runs_home(
         filter_project_id=filter_project_id,
         filter_status=filter_status.value if filter_status else None,
         selected_run_id=None,
+        run_page=run_page,
     )
     context["request"] = request
     return templates.TemplateResponse("runs/index.html", context)
@@ -430,6 +503,7 @@ async def runs_fragment(
     filter_project_id: Optional[str] = None,
     filter_status: Optional[str] = None,
     selected_run_id: Optional[str] = None,
+    run_page: int = 1,
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     context = _build_runs_dashboard_context(
@@ -437,6 +511,7 @@ async def runs_fragment(
         filter_project_id=filter_project_id,
         filter_status=filter_status,
         selected_run_id=selected_run_id,
+        run_page=run_page,
     )
     context["request"] = request
     return templates.TemplateResponse("runs/_dashboard.html", context)
@@ -448,17 +523,19 @@ async def runs_log(
     filter_project_id: Optional[str] = None,
     filter_status: Optional[str] = None,
     selected_run_id: Optional[str] = None,
+    run_page: int = 1,
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     orchestrator = get_orchestrator()
     orchestrator.reconcile()
     projects = repo.list_projects()
     project_lookup = {proj["id"]: proj for proj in projects}
-    runs = _collect_runs(
+    runs, run_pagination = _collect_runs(
         repo,
         project_lookup,
         filter_project_id=filter_project_id,
         filter_status=filter_status,
+        page=run_page,
     )
     timeout_toasts: List[str] = []
     for run in runs:
@@ -476,6 +553,8 @@ async def runs_log(
         "filter_status": filter_status,
         "selected_run_id": selected_run_id,
         "timeout_toasts": timeout_toasts,
+        "run_pagination": run_pagination,
+        "run_total": run_pagination["total"],
     }
     snapshot_hash = _runs_log_signature(runs)
     context["snapshot_hash"] = snapshot_hash
@@ -495,12 +574,31 @@ async def launch_run(
     spm_ticket: Optional[str] = Form(None),
     requested_by: Optional[str] = Form(None),
     timeout_seconds: Optional[int] = Form(None),
+    task_selection: str = Form("all"),
+    task_ids: Optional[List[str]] = Form(default=None),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     if not repo.get_project(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
-    if not repo.get_batch(batch_id):
+    batch = repo.get_batch(batch_id)
+    if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+    if batch.get("project_id") != project_id:
+        raise HTTPException(status_code=400, detail="Batch does not belong to project")
+    task_options = batch_task_details(repo, batch)
+    try:
+        if task_selection == "all":
+            selected_task_ids = None
+        elif task_selection == "smoke":
+            if not task_options:
+                raise ValueError("This batch has no runnable tasks.")
+            selected_task_ids = [str(task_options[0]["id"])]
+        elif task_selection == "selected":
+            selected_task_ids = validate_task_subset(repo, batch, task_ids)
+        else:
+            raise ValueError("Unknown task selection mode.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     default_timeout = int(repo.get_config().get("run_timeout_seconds", 600))
     resolved_timeout = default_timeout
@@ -522,6 +620,7 @@ async def launch_run(
         "note": note,
         "spm_ticket": spm_ticket,
         "timeout_seconds": resolved_timeout,
+        "task_ids": selected_task_ids,
     }
     if baseline_id:
         resolved_baseline = repo.get_baseline(baseline_id)
@@ -549,6 +648,8 @@ async def launch_run(
         "spm_ticket": spm_ticket or "",
         "note": note or "",
         "timeout_seconds": str(resolved_timeout),
+        "task_selection": task_selection,
+        "task_ids": selected_task_ids or [],
     }
 
     context = _build_runs_dashboard_context(
@@ -565,27 +666,22 @@ async def launch_run(
 async def run_overlay(
     run_id: str,
     request: Request,
+    execution_page: int = 1,
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
-    context = _build_run_context(repo, run_id)
-    context["request"] = request
-    overlay_hash = _run_overlay_signature(
-        run=context["run"],
-        baseline=context.get("baseline"),
-        executions=context["executions"],
-        counts=context["counts"],
+    return _render_run_detail(
+        request,
+        repo,
+        run_id,
+        execution_page=execution_page,
     )
-    context["overlay_hash"] = overlay_hash
-    response = templates.TemplateResponse("runs/_run_detail.html", context)
-    response.headers["X-Scene-Run-Hash"] = overlay_hash
-    response.headers["X-Scene-Run-Id"] = context["run"]["id"]
-    return response
 
 
 @router.post("/runs/{run_id}/cancel", response_class=HTMLResponse)
 async def cancel_run(
     run_id: str,
     request: Request,
+    execution_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     run_record = repo.get_run(run_id)
@@ -595,9 +691,7 @@ async def cancel_run(
         raise HTTPException(status_code=400, detail="Finished runs cannot be cancelled.")
     orchestrator = get_orchestrator()
     orchestrator.cancel_run(run_id)
-    context = _build_run_context(repo, run_id)
-    context["request"] = request
-    return templates.TemplateResponse("runs/_run_detail.html", context)
+    return _render_run_detail(request, repo, run_id, execution_page=execution_page)
 
 
 @router.post("/runs/{run_id}/executions/{execution_id}/cancel", response_class=HTMLResponse)
@@ -605,6 +699,7 @@ async def cancel_execution(
     run_id: str,
     execution_id: str,
     request: Request,
+    execution_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     execution = repo.get_execution(execution_id)
@@ -617,9 +712,7 @@ async def cancel_execution(
         raise HTTPException(status_code=400, detail="Finished runs cannot be modified.")
     orchestrator = get_orchestrator()
     orchestrator.cancel_execution(execution_id)
-    context = _build_run_context(repo, run_id)
-    context["request"] = request
-    return templates.TemplateResponse("runs/_run_detail.html", context)
+    return _render_run_detail(request, repo, run_id, execution_page=execution_page)
 
 
 @router.post("/runs/{run_id}/delete", response_class=HTMLResponse)
@@ -629,6 +722,7 @@ async def delete_run_entry(
     filter_project_id: Optional[str] = Form(None),
     filter_status: Optional[str] = Form(None),
     selected_run_id: Optional[str] = Form(None),
+    run_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     run = repo.get_run(run_id)
@@ -642,6 +736,7 @@ async def delete_run_entry(
         filter_project_id=filter_project_id,
         filter_status=filter_status,
         selected_run_id=selected_run_id if selected_run_id != run_id else None,
+        run_page=run_page,
     )
     context["request"] = request
     return templates.TemplateResponse("runs/_dashboard.html", context)
@@ -655,9 +750,11 @@ async def execution_viewer(
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     run_context = _build_run_context(repo, run_id)
-    execution = next((item for item in run_context["executions"] if item["id"] == execution_id), None)
-    if not execution:
+    execution_record = repo.get_execution(execution_id)
+    if not execution_record or execution_record.get("run_id") != run_id:
         raise HTTPException(status_code=404, detail="Execution not found")
+    execution = dict(execution_record)
+    _annotate_execution(execution, run_context.get("execution_diff_threshold"))
     artifacts = execution.get("artifacts") or {}
     store = get_artifact_store()
 
@@ -768,6 +865,7 @@ async def retry_execution(
     run_id: str,
     execution_id: str,
     request: Request,
+    execution_page: int = Form(1),
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     execution = repo.get_execution(execution_id)
@@ -783,6 +881,4 @@ async def retry_execution(
         orchestrator.retry_execution(execution_id)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    context = _build_run_context(repo, run_id)
-    context["request"] = request
-    return templates.TemplateResponse("runs/_run_detail.html", context)
+    return _render_run_detail(request, repo, run_id, execution_page=execution_page)

@@ -256,6 +256,13 @@
     return true;
   }
 
+  function currentExecutionPage() {
+    var shell = getRunDetailShell();
+    var inner = shell ? shell.querySelector("#run-detail-shell-inner") : null;
+    var page = parseInt(inner && inner.dataset ? inner.dataset.executionPage || "1" : "1", 10);
+    return Number.isFinite(page) && page > 0 ? page : 1;
+  }
+
   async function fetchRunDetail(runId, options) {
     options = options || {};
     if (!runId || state.detailInFlight) {
@@ -266,7 +273,9 @@
     }
     state.detailInFlight = true;
     try {
-      var response = await fetch("/runs/" + encodeURIComponent(runId) + "/overlay", {
+      var executionPage = options.executionPage || currentExecutionPage();
+      var detailUrl = "/runs/" + encodeURIComponent(runId) + "/overlay?execution_page=" + encodeURIComponent(executionPage);
+      var response = await fetch(detailUrl, {
         cache: "no-store",
         headers: { "X-Scene-Request": "run-detail-refresh" }
       });
@@ -635,7 +644,13 @@
     var baselineSelect = form.querySelector('[data-role="baseline-select"]');
     var baselineInput = form.querySelector('[data-role="baseline-input"]');
     var baselineHelp = form.querySelector('[data-role="baseline-help"]');
-    if (!projectSelect || !batchSelect || !purposeSelect || !baselineField || !baselineSelect || !baselineInput || !baselineHelp) {
+    var taskModeInputs = Array.prototype.slice.call(form.querySelectorAll('[data-role="launch-task-mode"]'));
+    var taskOptions = form.querySelector('[data-role="launch-task-options"]');
+    var estimateCount = form.querySelector('[data-role="launch-estimate-count"]');
+    var estimateTasks = form.querySelector('[data-role="launch-estimate-tasks"]');
+    var largeWarning = form.querySelector('[data-role="launch-large-warning"]');
+    var launchSubmit = form.querySelector('[data-role="launch-submit"]');
+    if (!projectSelect || !batchSelect || !purposeSelect || !baselineField || !baselineSelect || !baselineInput || !baselineHelp || !taskModeInputs.length || !taskOptions || !estimateCount || !estimateTasks || !largeWarning || !launchSubmit) {
       return;
     }
 
@@ -650,7 +665,9 @@
       activeProject: defaults.project_id || "",
       activeBatch: defaults.batch_id || "",
       baselineSelection: defaults.baseline_id || "",
-      customBaseline: defaults.baseline_input || ""
+      customBaseline: defaults.baseline_input || "",
+      taskSelection: defaults.task_selection || "all",
+      taskIds: Array.isArray(defaults.task_ids) ? defaults.task_ids.map(String) : []
     };
 
     function normalizeBaselineEntries(items) {
@@ -670,6 +687,63 @@
 
     function projectBatches(projectId) {
       return Array.isArray(batchMap[projectId]) ? batchMap[projectId] : [];
+    }
+
+    function activeBatchDetails() {
+      var batches = projectBatches(projectSelect.value);
+      return batches.find(function (batch) {
+        return String(batch.id) === String(batchSelect.value);
+      }) || null;
+    }
+
+    function renderTaskScope() {
+      var batch = activeBatchDetails();
+      var tasks = batch && Array.isArray(batch.tasks) ? batch.tasks : [];
+      if (["all", "smoke", "selected"].indexOf(launchState.taskSelection) === -1) {
+        launchState.taskSelection = "all";
+      }
+      taskModeInputs.forEach(function (input) {
+        input.checked = input.value === launchState.taskSelection;
+        input.disabled = !tasks.length;
+      });
+
+      var selectedSet = new Set(launchState.taskIds);
+      taskOptions.innerHTML = tasks.map(function (task, index) {
+        var taskId = String(task.id || "");
+        var checked = selectedSet.has(taskId) ? " checked" : "";
+        var optionId = "launch-task-" + index;
+        var targetCount = Number(task.execution_count || 0);
+        return [
+          '<div class="form-check">',
+          '  <input class="form-check-input" type="checkbox" name="task_ids" value="' + escapeHtml(taskId) + '" id="' + optionId + '" data-role="launch-task-checkbox"' + checked + ' />',
+          '  <label class="form-check-label d-flex justify-content-between gap-3" for="' + optionId + '">',
+          '    <span>' + escapeHtml(task.name || taskId) + '</span>',
+          '    <span class="text-muted">' + targetCount + '</span>',
+          '  </label>',
+          '</div>'
+        ].join("");
+      }).join("");
+      taskOptions.classList.toggle("d-none", launchState.taskSelection !== "selected");
+
+      var scopedTasks = tasks;
+      if (launchState.taskSelection === "smoke") {
+        scopedTasks = tasks.slice(0, 1);
+      } else if (launchState.taskSelection === "selected") {
+        var checkedIds = new Set(Array.prototype.slice.call(taskOptions.querySelectorAll('input[name="task_ids"]:checked')).map(function (input) {
+          return input.value;
+        }));
+        scopedTasks = tasks.filter(function (task) {
+          return checkedIds.has(String(task.id));
+        });
+      }
+      var executionCount = scopedTasks.reduce(function (total, task) {
+        return total + Number(task.execution_count || 0);
+      }, 0);
+      estimateCount.textContent = String(executionCount);
+      estimateTasks.textContent = "(" + scopedTasks.length + (scopedTasks.length === 1 ? " task)" : " tasks)");
+      var largeThreshold = parseInt(largeWarning.dataset.largeThreshold || "100", 10);
+      largeWarning.classList.toggle("d-none", executionCount <= largeThreshold);
+      launchSubmit.disabled = executionCount < 1;
     }
 
     async function fetchBaselines(batchId, force) {
@@ -727,6 +801,7 @@
         batchSelect.disabled = true;
         launchState.activeBatch = "";
         renderBaselineControls([], true);
+        renderTaskScope();
         return;
       }
       batchSelect.disabled = false;
@@ -737,6 +812,7 @@
         launchState.activeBatch = batches[0].id;
       }
       batchSelect.value = launchState.activeBatch;
+      renderTaskScope();
     }
 
     function renderBaselineControls(options, inactive) {
@@ -809,6 +885,8 @@
       launchState.activeBatch = "";
       launchState.baselineSelection = "";
       launchState.customBaseline = "";
+      launchState.taskSelection = "all";
+      launchState.taskIds = [];
       renderBatchOptions();
       refreshBaselines(true);
     });
@@ -816,6 +894,9 @@
       launchState.activeBatch = batchSelect.value || "";
       launchState.baselineSelection = "";
       launchState.customBaseline = "";
+      launchState.taskSelection = "all";
+      launchState.taskIds = [];
+      renderTaskScope();
       refreshBaselines(true);
     });
     purposeSelect.addEventListener("change", function () {
@@ -844,10 +925,25 @@
     baselineInput.addEventListener("focus", function () {
       refreshBaselines(true);
     });
+    taskModeInputs.forEach(function (input) {
+      input.addEventListener("change", function () {
+        if (input.checked) {
+          launchState.taskSelection = input.value;
+          renderTaskScope();
+        }
+      });
+    });
+    taskOptions.addEventListener("change", function () {
+      launchState.taskIds = Array.prototype.slice.call(taskOptions.querySelectorAll('input[name="task_ids"]:checked')).map(function (input) {
+        return input.value;
+      });
+      renderTaskScope();
+    });
 
     renderProjectOptions();
     renderBatchOptions();
     purposeSelect.value = defaults.purpose || purposeSelect.value || "comparison";
+    renderTaskScope();
     refreshBaselines(false);
     form.dataset.sceneInit = "1";
   }
@@ -856,6 +952,19 @@
     var copyButton = event.target && event.target.closest ? event.target.closest('[data-role="copy-execution-log"]') : null;
     if (copyButton) {
       copyExecutionLog(copyButton);
+      return;
+    }
+
+    var executionPageButton = event.target && event.target.closest
+      ? event.target.closest('[data-role="execution-page"]')
+      : null;
+    if (executionPageButton && !executionPageButton.disabled) {
+      event.preventDefault();
+      var executionPage = parseInt(executionPageButton.dataset.page || "1", 10);
+      fetchRunDetail(selectedFromDom(), {
+        force: true,
+        executionPage: Number.isFinite(executionPage) ? executionPage : 1
+      });
       return;
     }
 

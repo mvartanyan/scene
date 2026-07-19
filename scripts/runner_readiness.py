@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--expected-storage",
-        choices=["filesystem", "pvc", "object"],
+        choices=["filesystem", "pvc", "s3", "object"],
         default=os.environ.get("SCENE_ARTIFACT_STORAGE", "filesystem"),
         help="Expected artifact storage class for this runtime.",
     )
@@ -93,11 +94,9 @@ def check_artifact_dir(
     expected_storage: str,
 ) -> dict[str, Any]:
     if expected_storage == "object":
-        return {
-            "name": "artifact_write",
-            "ok": False,
-            "message": "Object storage is declared, but this runner readiness script only verifies mounted filesystem/PVC writes.",
-        }
+        expected_storage = "s3"
+    if expected_storage == "s3" and not artifact_dir:
+        artifact_dir = str(Path(tempfile.gettempdir()) / "scene-runner")
     if not artifact_dir:
         return {
             "name": "artifact_write",
@@ -127,7 +126,12 @@ def check_artifact_dir(
     return {
         "name": "artifact_write",
         "ok": True,
-        "message": f"Runner can write/read artifacts in {root}.",
+        "message": (
+            f"Runner can write/read its ephemeral workspace in {root}; S3 transfer is verified "
+            "per execution with scoped presigned URLs."
+            if expected_storage == "s3"
+            else f"Runner can write/read artifacts in {root}."
+        ),
     }
 
 

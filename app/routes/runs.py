@@ -777,11 +777,9 @@ async def execution_viewer(
         artifact = artifacts.get(key)
         if not artifact:
             return None
-        path = artifact.get("path")
-        if not path:
-            return None
-        image_path = store.root / path
-        if not image_path.exists():
+        try:
+            image_path = store.materialize(artifact)
+        except FileNotFoundError:
             return None
         try:
             with Image.open(image_path) as img:
@@ -828,12 +826,12 @@ async def execution_log(
     artifact_path = None
     if log_artifact:
         store = get_artifact_store()
-        artifact_path = store.root / log_artifact.get("path", "")
-        if artifact_path.exists():
-            log_text = artifact_path.read_text(encoding="utf-8", errors="replace")
-            log_length = artifact_path.stat().st_size
-        else:
-            log_text = "Log file missing on disk."
+        artifact_path = log_artifact.get("path", "")
+        try:
+            log_text = store.read_text(log_artifact)
+            log_length = int(log_artifact.get("size_bytes") or len(log_text.encode("utf-8")))
+        except (FileNotFoundError, ValueError):
+            log_text = "Log artifact is unavailable."
     context = {
         "request": request,
         "log_text": log_text,
@@ -858,19 +856,32 @@ async def execution_log_stream(
     artifacts = execution.get("artifacts", {}) or {}
     log_artifact = artifacts.get("log")
     store = get_artifact_store()
-    path = store.root / log_artifact.get("path", "") if log_artifact else None
 
     start = time.monotonic()
     last_size = since
     text = "Log not available."
     while True:
-        exists = path is not None and path.exists()
-        size = path.stat().st_size if exists else 0
+        exists = False
+        size = int(log_artifact.get("size_bytes") or 0) if log_artifact else 0
+        if log_artifact and log_artifact.get("storage") == "workspace":
+            try:
+                path = store.materialize(log_artifact)
+                exists = path.exists()
+                size = path.stat().st_size if exists else 0
+            except FileNotFoundError:
+                exists = False
+        elif log_artifact:
+            exists = True
         if size != last_size or time.monotonic() - start >= timeout:
             if exists:
-                text = path.read_text(encoding="utf-8", errors="replace")
+                try:
+                    text = store.read_text(log_artifact)
+                except (FileNotFoundError, ValueError):
+                    exists = False
+                    size = 0
+                    text = "Log artifact is unavailable."
             else:
-                text = "Log file missing on disk." if log_artifact else "Log not available."
+                text = "Log artifact is unavailable." if log_artifact else "Log not available."
             return JSONResponse({"text": text, "length": size, "exists": exists})
         await asyncio.sleep(1)
 

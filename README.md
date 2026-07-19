@@ -22,6 +22,9 @@ uvicorn app.main:app --reload
 - Production state uses `SCENE_STATE_BACKEND=dynamodb`, `AWS_REGION`, and
   `SCENE_DYNAMODB_TABLE`. See `docs/storage.md` for the table contract,
   continuation APIs, and config-only migration workflow.
+- Production artifacts use `SCENE_ARTIFACT_STORAGE=s3`, `SCENE_S3_BUCKET`, and
+  optional `SCENE_S3_PREFIX`. The bucket stays private; SCENE issues short-lived
+  downloads and execution-scoped runner uploads. See `docs/artifacts.md`.
 
 ## Runtime Data Policy
 - `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.
@@ -54,7 +57,9 @@ pytest
 - REST/SPM callers should provide `idempotency_key` when launching a run. A
   retried request returns the same run; reusing the key for different launch
   parameters returns a conflict.
-- Artifacts are stored under `.scene/artifacts/runs/<run>/<execution>/` by default and exposed via `/artifacts/...`.
+- Filesystem artifacts are stored under `.scene/artifacts/runs/<run>/<execution>/`
+  by default. S3 artifacts use deterministic project/batch/run/execution keys,
+  checksums, and private short-lived access through the same `/artifacts/...` URLs.
 - Each execution waits up to 60 s for `page.goto(..., networkidle)` and then idles an additional 7 s by default (`post_wait_ms`, configurable under *Capture Stabilization*) before capturing; add preparatory actions such as `disable_animations` or `wait` to tune per-page behaviour. The same actions/JS are replayed for reference URLs prior to their capture, and reference screenshots are padded server-side to match the observed dimensions so sliders stay aligned. The runner logic now lives in `app/services/runner_script.py` (imported at runtime by the orchestrator) and auto-scrolls lazily rendered pages by driving the actual scrolling container, backing off only when `scrollHeight` stops growing.
 
 ### Preparatory Actions

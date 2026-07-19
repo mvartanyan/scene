@@ -324,6 +324,12 @@ class ArtifactInfo(BaseModel):
     content_type: Optional[str] = None
     label: Optional[str] = None
     size_bytes: Optional[int] = None
+    storage: Optional[str] = None
+    bucket: Optional[str] = None
+    key: Optional[str] = None
+    sha256: Optional[str] = None
+    etag: Optional[str] = None
+    version_id: Optional[str] = None
 
 
 class ExecutionDiff(BaseModel):

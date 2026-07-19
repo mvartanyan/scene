@@ -15,6 +15,8 @@ SCENE_RUNNER_CALLBACK_BASE_URL_ENV = "SCENE_RUNNER_CALLBACK_BASE_URL"
 SCENE_ARTIFACT_STORAGE_ENV = "SCENE_ARTIFACT_STORAGE"
 SCENE_ARTIFACT_PVC_CLAIM_ENV = "SCENE_ARTIFACT_PVC_CLAIM"
 SCENE_ARTIFACT_OBJECT_URL_ENV = "SCENE_ARTIFACT_OBJECT_URL"
+SCENE_S3_BUCKET_ENV = "SCENE_S3_BUCKET"
+SCENE_S3_PREFIX_ENV = "SCENE_S3_PREFIX"
 SCENE_K3S_NAMESPACE_ENV = "SCENE_K3S_NAMESPACE"
 SCENE_K3S_SERVICE_URL_ENV = "SCENE_K3S_SERVICE_URL"
 SCENE_K3S_RUNNER_SERVICE_ACCOUNT_ENV = "SCENE_K3S_RUNNER_SERVICE_ACCOUNT"
@@ -27,7 +29,7 @@ SCENE_RUNNER_MEMORY_LIMIT_ENV = "SCENE_RUNNER_MEMORY_LIMIT"
 
 DEFAULT_RUNNER_IMAGE = "scene-playwright-runner:latest"
 SUPPORTED_BACKENDS = {"docker", "k3s", "worker"}
-SUPPORTED_ARTIFACT_STORAGE = {"filesystem", "pvc", "object"}
+SUPPORTED_ARTIFACT_STORAGE = {"filesystem", "pvc", "s3"}
 PRODUCTION_ENVIRONMENTS = {"prod", "production", "staging", "k3s"}
 
 
@@ -78,6 +80,8 @@ class RunnerRuntimeConfig:
     max_concurrency: int
     artifact_pvc_claim: Optional[str] = None
     artifact_object_url: Optional[str] = None
+    s3_bucket: Optional[str] = None
+    s3_prefix: str = "scene"
     k3s_namespace: str = "scene"
     k3s_service_url: Optional[str] = None
     k3s_runner_service_account: str = "scene-runner"
@@ -105,6 +109,8 @@ class RunnerRuntimeConfig:
             "max_concurrency": self.max_concurrency,
             "artifact_pvc_claim": self.artifact_pvc_claim,
             "artifact_object_url": self.artifact_object_url,
+            "s3_bucket": self.s3_bucket,
+            "s3_prefix": self.s3_prefix,
             "k3s_namespace": self.k3s_namespace,
             "k3s_service_url": self.k3s_service_url,
             "k3s_runner_service_account": self.k3s_runner_service_account,
@@ -165,6 +171,8 @@ def load_runner_runtime_config(
     artifact_storage = (
         os.environ.get(SCENE_ARTIFACT_STORAGE_ENV) or "filesystem"
     ).strip().lower()
+    if artifact_storage == "object":
+        artifact_storage = "s3"
     root = artifact_root or Path(os.environ.get("SCENE_ARTIFACT_ROOT", ".scene/artifacts"))
     max_concurrency = int(config.get("max_concurrent_executions") or 4)
 
@@ -183,6 +191,8 @@ def load_runner_runtime_config(
         max_concurrency=max_concurrency,
         artifact_pvc_claim=_clean(os.environ.get(SCENE_ARTIFACT_PVC_CLAIM_ENV)),
         artifact_object_url=_clean(os.environ.get(SCENE_ARTIFACT_OBJECT_URL_ENV)),
+        s3_bucket=_clean(os.environ.get(SCENE_S3_BUCKET_ENV)),
+        s3_prefix=_clean(os.environ.get(SCENE_S3_PREFIX_ENV)) or "scene",
         k3s_namespace=_clean(os.environ.get(SCENE_K3S_NAMESPACE_ENV)) or "scene",
         k3s_service_url=k3s_service_url,
         k3s_runner_service_account=(
@@ -255,10 +265,10 @@ def validate_runner_runtime_config(config: RunnerRuntimeConfig) -> RunnerReadine
                 "missing_artifact_pvc",
                 "SCENE_ARTIFACT_PVC_CLAIM is required when SCENE_ARTIFACT_STORAGE=pvc.",
             )
-        if config.artifact_storage == "object":
+        if config.artifact_storage == "s3" and not config.s3_bucket:
             error(
-                "object_artifact_store_unimplemented",
-                "Object artifact storage is declared but the current SCENE ArtifactStore is filesystem/PVC-backed.",
+                "missing_s3_bucket",
+                "SCENE_S3_BUCKET is required when SCENE_ARTIFACT_STORAGE=s3.",
             )
     if config.backend == "k3s":
         if not config.k3s_service_url:

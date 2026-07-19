@@ -1,9 +1,12 @@
+import hashlib
 import json
 import os
+import re
 import sys
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -14,26 +17,411 @@ CALLBACK_URL = os.environ.get("SCENE_CALLBACK_URL")
 CALLBACK_TOKEN = os.environ.get("SCENE_CALLBACK_TOKEN")
 EXECUTION_ID = os.environ.get("SCENE_EXECUTION_ID")
 
+_URL_QUERY_RE = re.compile(r"(https?://[^\s\"'<>?]+)\?[^\s\"'<>]*", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_PRESIGNED_QUERY_RE = re.compile(
+    r"\?(?:X-Amz-[^=\s]+|AWSAccessKeyId|Signature|Expires)=[^\s\"'<>]*",
+    re.IGNORECASE,
+)
+_TRANSFER_CONFIG_KEYS = (
+    "artifact_transfer",
+    "artifact_transfer_manifest",
+    "transfer_manifest",
+    "artifact_manifest",
+)
+_RESULT_ARTIFACT_KINDS = {"result", "result_json", "callback_result"}
+_ARTIFACT_RESULT_FIELDS = {
+    "observed": "screenshot",
+    "screenshot": "screenshot",
+    "reference": "reference",
+    "trace": "trace",
+    "video": "video",
+}
+
+
+def _redact_sensitive_text(value: object) -> str:
+    text = str(value)
+    text = _URL_QUERY_RE.sub(r"\1?<redacted>", text)
+    return _PRESIGNED_QUERY_RE.sub("?<redacted>", text)
+
+
+def _strip_urls(value: object):
+    if isinstance(value, dict):
+        return {str(key): _strip_urls(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_strip_urls(item) for item in value]
+    if isinstance(value, tuple):
+        return [_strip_urls(item) for item in value]
+    if isinstance(value, str):
+        return _URL_RE.sub("<redacted-url>", value)
+    return value
+
+
+def _strip_url_text(value: object) -> str:
+    return str(_strip_urls(_redact_sensitive_text(value)))
+
 
 def _log(message: str) -> None:
-    print(f"[scene-runner] {message}", flush=True)
+    print(f"[scene-runner] {_redact_sensitive_text(message)}", flush=True)
+
+
+def _safe_request_error(exc: Exception) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        reason = _strip_url_text(getattr(exc, "reason", "request rejected"))
+        return f"HTTP {exc.code}: {reason}"
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", "request failed")
+        return f"{type(reason).__name__}: {_strip_url_text(reason)}"
+    return f"{type(exc).__name__}: {_strip_url_text(exc)}"
 
 
 def _post_result(payload: dict) -> bool:
     if not CALLBACK_URL or not CALLBACK_TOKEN:
         return False
     try:
-        data = json.dumps({"token": CALLBACK_TOKEN, "result": payload}).encode("utf-8")
+        callback_payload = _strip_urls(payload)
+        data = json.dumps({"token": CALLBACK_TOKEN, "result": callback_payload}).encode("utf-8")
         req = urllib.request.Request(
             CALLBACK_URL,
             data=data,
             headers={"Content-Type": "application/json"},
         )
-        urllib.request.urlopen(req, timeout=30)
+        response = urllib.request.urlopen(req, timeout=30)
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
         return True
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        _log(f"Callback request failed: {_safe_request_error(exc)}")
         return False
+
+
+def _artifact_transfer_manifest(config: dict):
+    for key in _TRANSFER_CONFIG_KEYS:
+        if key in config:
+            return config.get(key)
+    return None
+
+
+def _coerce_bool(value: object, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token in {"false", "0", "no", "off"}:
+            return False
+        if token in {"true", "1", "yes", "on"}:
+            return True
+    return bool(value)
+
+
+def _normalize_upload_entries(manifest: object) -> list[dict]:
+    default_timeout = 60
+    if isinstance(manifest, dict):
+        try:
+            default_timeout = int(manifest.get("timeout_seconds", default_timeout))
+        except (TypeError, ValueError):
+            default_timeout = 60
+        raw_uploads = None
+        for key in ("uploads", "outputs", "artifacts"):
+            if key in manifest:
+                raw_uploads = manifest.get(key)
+                break
+        if raw_uploads is None:
+            raw_uploads = []
+    elif isinstance(manifest, list):
+        raw_uploads = manifest
+    else:
+        raise ValueError("Artifact transfer manifest must be an object or list")
+
+    if isinstance(raw_uploads, dict):
+        items = []
+        for configured_kind, raw_entry in raw_uploads.items():
+            if isinstance(raw_entry, str):
+                entry = {"url": raw_entry}
+            elif isinstance(raw_entry, dict):
+                entry = dict(raw_entry)
+            else:
+                raise ValueError(f"Artifact upload '{configured_kind}' must be an object")
+            entry["kind"] = str(configured_kind)
+            items.append(entry)
+    elif isinstance(raw_uploads, list):
+        items = []
+        for index, raw_entry in enumerate(raw_uploads):
+            if not isinstance(raw_entry, dict):
+                raise ValueError(f"Artifact upload at index {index} must be an object")
+            items.append(dict(raw_entry))
+    else:
+        raise ValueError("Artifact transfer uploads must be an object or list")
+
+    normalized = []
+    seen_keys = set()
+    seen_kinds = set()
+    for index, entry in enumerate(items):
+        request_config = entry.get("request")
+        if isinstance(request_config, dict):
+            merged = dict(request_config)
+            merged.update(entry)
+            entry = merged
+
+        kind = str(entry.get("kind") or entry.get("artifact") or entry.get("name") or "").strip()
+        key = str(entry.get("key") or entry.get("object_key") or "").strip()
+        url = entry.get("url") or entry.get("put_url") or entry.get("upload_url") or entry.get("presigned_url")
+        if not kind:
+            raise ValueError(f"Artifact upload at index {index} is missing kind")
+        if not key:
+            raise ValueError(f"Artifact upload '{kind}' is missing key")
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError(f"Artifact upload '{kind}' is missing an HTTP(S) upload URL")
+        parsed_url = urllib.parse.urlsplit(url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError(f"Artifact upload '{kind}' requires an HTTP(S) upload URL")
+
+        method = str(entry.get("method") or "PUT").upper()
+        if method != "PUT":
+            raise ValueError(f"Artifact upload '{kind}' must use PUT")
+
+        kind_token = kind.lower()
+        if key in seen_keys:
+            raise ValueError(f"Artifact transfer manifest contains duplicate key '{key}'")
+        if kind_token in seen_kinds:
+            raise ValueError(f"Artifact transfer manifest contains duplicate kind '{kind}'")
+        seen_keys.add(key)
+        seen_kinds.add(kind_token)
+
+        raw_headers = entry.get("headers") or {}
+        if not isinstance(raw_headers, dict):
+            raise ValueError(f"Artifact upload '{kind}' headers must be an object")
+        headers = {str(name): str(value) for name, value in raw_headers.items()}
+        content_type = entry.get("content_type") or entry.get("contentType")
+        path = entry.get("path") or entry.get("local_path")
+        filename = entry.get("filename")
+        try:
+            timeout = int(entry.get("timeout_seconds", default_timeout))
+        except (TypeError, ValueError):
+            timeout = default_timeout
+
+        normalized.append(
+            {
+                "kind": kind,
+                "key": key,
+                "url": url.strip(),
+                "path": str(path) if path is not None else None,
+                "filename": str(filename) if filename is not None else None,
+                "headers": headers,
+                "content_type": str(content_type) if content_type else None,
+                "required": _coerce_bool(entry.get("required"), kind_token != "reference"),
+                "timeout_seconds": max(1, min(timeout, 600)),
+            }
+        )
+    return normalized
+
+
+def _is_result_upload(entry: dict) -> bool:
+    if str(entry.get("kind") or "").strip().lower() in _RESULT_ARTIFACT_KINDS:
+        return True
+    configured_path = entry.get("path") or entry.get("filename")
+    return bool(configured_path and Path(str(configured_path)).name == "result.json")
+
+
+def _artifact_path(entry: dict, artifacts_dir: Path, result: dict) -> Path:
+    configured_path = entry.get("path")
+    kind = str(entry.get("kind") or "").strip().lower()
+    if not configured_path:
+        if kind in _RESULT_ARTIFACT_KINDS:
+            configured_path = "result.json"
+        else:
+            result_field = _ARTIFACT_RESULT_FIELDS.get(kind)
+            configured_path = result.get(result_field) if result_field else None
+    if not configured_path:
+        configured_path = entry.get("filename")
+    if not configured_path:
+        raise FileNotFoundError(f"No local artifact was produced for kind '{entry.get('kind')}'")
+
+    relative_path = Path(str(configured_path))
+    if relative_path.is_absolute():
+        raise ValueError(f"Artifact upload '{entry.get('kind')}' path must be relative")
+    root = artifacts_dir.resolve()
+    candidate = (root / relative_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Artifact upload '{entry.get('kind')}' path leaves the artifact directory") from exc
+    if not candidate.is_file():
+        raise FileNotFoundError(f"Expected artifact for kind '{entry.get('kind')}' was not produced")
+    return candidate
+
+
+def _hash_file(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def _default_content_type(kind: str, path: Path) -> str:
+    kind = kind.lower()
+    if kind in {"observed", "screenshot", "reference"} or path.suffix.lower() == ".png":
+        return "image/png"
+    if kind == "trace" or path.suffix.lower() == ".zip":
+        return "application/zip"
+    if kind == "video" or path.suffix.lower() == ".webm":
+        return "video/webm"
+    if kind in _RESULT_ARTIFACT_KINDS or path.suffix.lower() == ".json":
+        return "application/json"
+    if kind == "log" or path.suffix.lower() in {".log", ".txt"}:
+        return "text/plain"
+    return "application/octet-stream"
+
+
+def _response_etag(response: object):
+    headers = getattr(response, "headers", None)
+    etag = headers.get("ETag") if headers is not None and hasattr(headers, "get") else None
+    if etag is None:
+        getheader = getattr(response, "getheader", None)
+        if callable(getheader):
+            etag = getheader("ETag")
+    if etag is None:
+        return None
+    token = str(etag).strip()
+    if len(token) >= 2 and token[0] == token[-1] == '"':
+        token = token[1:-1]
+    return token or None
+
+
+def _upload_artifact(entry: dict, artifacts_dir: Path, result: dict) -> dict:
+    path = _artifact_path(entry, artifacts_dir, result)
+    checksum, size = _hash_file(path)
+    headers = dict(entry.get("headers") or {})
+    for name in list(headers):
+        if name.lower() in {"content-length", "content-type"}:
+            del headers[name]
+    headers["Content-Type"] = entry.get("content_type") or _default_content_type(
+        str(entry.get("kind") or ""), path
+    )
+    headers["Content-Length"] = str(size)
+
+    response = None
+    try:
+        with path.open("rb") as body:
+            request = urllib.request.Request(
+                str(entry["url"]),
+                data=body,
+                headers=headers,
+                method="PUT",
+            )
+            response = urllib.request.urlopen(request, timeout=int(entry["timeout_seconds"]))
+            etag = _response_etag(response)
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+    receipt = {
+        "key": str(entry["key"]),
+        "etag": etag,
+        "size_bytes": size,
+        "sha256": checksum,
+    }
+    _log(
+        f"Uploaded artifact kind={entry['kind']} key={receipt['key']} size={receipt['size_bytes']}"
+    )
+    return receipt
+
+
+def _upload_entries(entries: list[dict], artifacts_dir: Path, result: dict) -> tuple[dict, list[dict]]:
+    receipts = {}
+    errors = []
+    for entry in entries:
+        try:
+            receipts[str(entry["kind"])] = _upload_artifact(entry, artifacts_dir, result)
+        except FileNotFoundError as exc:
+            if not entry.get("required", True):
+                _log(f"Optional artifact kind={entry['kind']} was not produced; upload skipped")
+                continue
+            message = _redact_sensitive_text(exc)
+            errors.append({"kind": entry["kind"], "key": entry["key"], "error": message})
+            _log(f"Artifact upload failed for kind={entry['kind']} key={entry['key']}: {message}")
+        except Exception as exc:
+            message = _safe_request_error(exc)
+            errors.append({"kind": entry["kind"], "key": entry["key"], "error": message})
+            _log(f"Artifact upload failed for kind={entry['kind']} key={entry['key']}: {message}")
+    return receipts, errors
+
+
+def _apply_transfer_errors(result: dict, errors: list[dict]) -> None:
+    if not errors:
+        return
+    result["artifact_transfer_errors"] = errors
+    summary = "; ".join(
+        f"{item['kind']} ({item['key']}): {item['error']}" for item in errors
+    )
+    transfer_error = f"Artifact transfer failed: {summary}"
+    current_error = result.get("error")
+    result["error"] = f"{current_error.rstrip()}\n{transfer_error}" if isinstance(current_error, str) and current_error else transfer_error
+    result["status"] = "error"
+
+
+def _write_result_json(result_path: Path, result: dict) -> bool:
+    try:
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        _log(f"Unable to write result.json to {result_path}: {_redact_sensitive_text(exc)}")
+        return False
+
+
+def _finalize_result(config: dict, artifacts_dir: Path, result: dict) -> dict:
+    result_path = artifacts_dir / "result.json"
+    manifest = _artifact_transfer_manifest(config)
+    if manifest is None:
+        _write_result_json(result_path, result)
+        return result
+
+    receipts = {}
+    errors = []
+    try:
+        entries = _normalize_upload_entries(manifest)
+    except Exception as exc:  # noqa: BLE001
+        entries = []
+        errors.append({"kind": "manifest", "key": "", "error": _redact_sensitive_text(exc)})
+
+    regular_entries = [entry for entry in entries if not _is_result_upload(entry)]
+    result_entries = [entry for entry in entries if _is_result_upload(entry)]
+    uploaded, upload_errors = _upload_entries(regular_entries, artifacts_dir, result)
+    receipts.update(uploaded)
+    errors.extend(upload_errors)
+    result["uploads"] = receipts
+    _apply_transfer_errors(result, errors)
+
+    result_written = _write_result_json(result_path, result)
+    if not result_written:
+        write_error = {
+            "kind": "result",
+            "key": result_entries[0]["key"] if result_entries else "",
+            "error": "Unable to write result.json",
+        }
+        errors.append(write_error)
+        _apply_transfer_errors(result, errors)
+        return result
+
+    result_receipts, result_errors = _upload_entries(result_entries, artifacts_dir, result)
+    receipts.update(result_receipts)
+    errors.extend(result_errors)
+    result["uploads"] = receipts
+    _apply_transfer_errors(result, errors)
+
+    # A successful result upload must remain byte-for-byte identical to its receipt.
+    # If it failed, no remote checksum exists and the local diagnostic can be updated.
+    if result_errors and not result_receipts:
+        _write_result_json(result_path, result)
+    return result
 
 
 def _run_actions(page, actions, label: str) -> None:
@@ -743,7 +1131,7 @@ def main(config_path: str) -> None:
                     last_error = exc
                     success = False
                     _log(f"Screenshot attempt {attempt_no} failed: {type(exc).__name__}: {exc}")
-                    traceback.print_exc()
+                    _log(traceback.format_exc())
                     try:
                         page.close()
                     except Exception:
@@ -792,13 +1180,9 @@ def main(config_path: str) -> None:
             _log("Execution completed successfully")
     except Exception:
         _log("Execution failed; see traceback below")
-        result["error"] = traceback.format_exc()
+        result["error"] = _redact_sensitive_text(traceback.format_exc())
 
-    result_path = artifacts_dir / "result.json"
-    try:
-        result_path.write_text(json.dumps(result), encoding="utf-8")
-    except Exception:  # noqa: BLE001
-        _log(f"Unable to write result.json to {result_path}")
+    result = _finalize_result(config, artifacts_dir, result)
 
     if not _post_result(result):
         _log("Callback failed; emitting JSON payload to stdout")

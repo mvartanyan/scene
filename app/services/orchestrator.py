@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import json
 import logging
 import os
@@ -903,9 +904,10 @@ class RunOrchestrator:
         baseline: Optional[Dict[str, object]],
         execution_dir: Path,
         result: RunnerResult,
+        uploaded_artifacts: Optional[Dict[str, Dict[str, object]]] = None,
     ) -> None:
         execution_id = execution["id"]
-        artifacts = self._artifact_payload(result, execution_dir)
+        artifacts: Dict[str, Dict[str, object]] = {}
         extra_artifacts: Dict[str, object] = {}
 
         if run["purpose"] == RunPurpose.baseline_recording.value and baseline:
@@ -937,6 +939,7 @@ class RunOrchestrator:
             if diff_artifacts:
                 extra_artifacts.update(diff_artifacts)
             if diff_error:
+                artifacts = self._artifact_payload(result, execution, uploaded_artifacts)
                 artifacts.update(extra_artifacts)
                 self._repo.update_execution(
                     execution_id,
@@ -961,7 +964,7 @@ class RunOrchestrator:
             diff_level_value = 0.0
 
         self._harmonize_reference_dimensions(execution_dir)
-        artifacts = self._artifact_payload(result, execution_dir)
+        artifacts = self._artifact_payload(result, execution, uploaded_artifacts)
         artifacts.update(extra_artifacts)
         update_payload = {
             "status": ExecutionStatus.finished.value,
@@ -990,10 +993,13 @@ class RunOrchestrator:
     def _ensure_log_artifact(self, run_id: str, execution_id: str) -> None:
         log_path = self._log_path(run_id, execution_id)
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        relative_path = self._artifacts.relative(log_path)
         artifact = {
             "kind": ArtifactKind.log.value,
-            "path": self._artifacts.relative(log_path),
-            "url": self._artifacts.url(log_path),
+            "storage": "workspace" if self._artifacts.backend == "s3" else "filesystem",
+            "path": relative_path,
+            "key": relative_path,
+            "url": None if self._artifacts.backend == "s3" else self._artifacts.url(log_path),
             "label": "Execution Log",
             "content_type": "text/plain",
             "size_bytes": log_path.stat().st_size if log_path.exists() else 0,
@@ -1102,10 +1108,30 @@ class RunOrchestrator:
                 "post_wait_ms": config.get("post_wait_ms", self._post_wait_ms),
             }
 
+        transfer_descriptor: Optional[Dict[str, object]] = None
+        if self._artifacts.backend == "s3" and hasattr(self._artifacts, "create_execution_transfer"):
+            baseline_artifact = self._baseline_artifact_for_execution(baseline, execution)
+            transfer = self._artifacts.create_execution_transfer(
+                project_id=str(execution["project_id"]),
+                batch_id=str(execution["batch_id"]),
+                run_id=str(run_id),
+                execution_id=str(execution_id),
+                baseline_artifact=baseline_artifact,
+            )
+            config["artifact_transfer"] = transfer
+            transfer_descriptor = self._transfer_descriptor(transfer)
+
         self._runner.prepare_workspace(config, execution_dir)
 
         callback_url = self._scene_host_url.rstrip("/") + f"/api/executions/{execution_id}/complete"
         token = secrets.token_urlsafe(32)
+        callback_state: Dict[str, object] = {
+            "callback_token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+        }
+        if transfer_descriptor:
+            callback_state["artifact_transfer"] = transfer_descriptor
+            callback_state["callback_expires_at"] = transfer_descriptor.get("expires_at")
+        self._repo.update_execution(execution_id, callback_state)
         env = {
             "SCENE_CALLBACK_URL": callback_url,
             "SCENE_CALLBACK_TOKEN": token,
@@ -1192,6 +1218,50 @@ class RunOrchestrator:
         self._execution_contexts[execution_id] = context
         self._execution_tokens[execution_id] = token
         return context
+
+    @staticmethod
+    def _transfer_descriptor(transfer: Dict[str, object]) -> Dict[str, object]:
+        descriptor: Dict[str, object] = {
+            "version": transfer.get("version"),
+            "expires_at": transfer.get("expires_at"),
+            "outputs": {},
+            "inputs": {},
+        }
+        for direction in ("outputs", "inputs"):
+            raw_entries = transfer.get(direction)
+            if not isinstance(raw_entries, dict):
+                continue
+            entries: Dict[str, object] = {}
+            for kind, raw_entry in raw_entries.items():
+                if not isinstance(raw_entry, dict):
+                    continue
+                entries[str(kind)] = {
+                    key: value
+                    for key, value in raw_entry.items()
+                    if key != "url"
+                }
+            descriptor[direction] = entries
+        return descriptor
+
+    @staticmethod
+    def _baseline_artifact_for_execution(
+        baseline: Optional[Dict[str, object]],
+        execution: Dict[str, object],
+    ) -> Optional[Dict[str, object]]:
+        if not baseline:
+            return None
+        viewport = execution.get("viewport") or {}
+        for item in baseline.get("items", []):
+            item_viewport = item.get("viewport") or {}
+            if (
+                item.get("task_id") == execution.get("task_id")
+                and item.get("browser") == execution.get("browser")
+                and item_viewport.get("width") == viewport.get("width")
+                and item_viewport.get("height") == viewport.get("height")
+            ):
+                artifact = (item.get("artifacts") or {}).get(ArtifactKind.baseline.value)
+                return artifact if isinstance(artifact, dict) else None
+        return None
 
     def _ensure_runner_image(self, run_id: Optional[str], execution_id: Optional[str]) -> None:
         image = getattr(self._runner, "image", DEFAULT_RUNNER_IMAGE)
@@ -1898,44 +1968,116 @@ class RunOrchestrator:
         )
         return counts
 
-    def _artifact_payload(self, result: RunnerResult, execution_dir: Path) -> Dict[str, Dict[str, object]]:
+    def _artifact_payload(
+        self,
+        result: RunnerResult,
+        execution: Dict[str, object],
+        uploaded: Optional[Dict[str, Dict[str, object]]] = None,
+    ) -> Dict[str, Dict[str, object]]:
         payload: Dict[str, Dict[str, object]] = {}
+        uploaded = uploaded or {}
+
+        def record(
+            kind: ArtifactKind,
+            path: Path,
+            label: str,
+            content_type: str,
+            *,
+            filename: Optional[str] = None,
+        ) -> Dict[str, object]:
+            existing = uploaded.get(kind.value)
+            if existing:
+                artifact = dict(existing)
+                artifact.update(
+                    {
+                        "kind": kind.value,
+                        "label": label,
+                        "content_type": content_type,
+                    }
+                )
+                return artifact
+            return self._build_artifact(
+                path,
+                kind,
+                label,
+                content_type,
+                execution=execution,
+                filename=filename,
+            )
+
         if result.screenshot:
-            payload[ArtifactKind.observed.value] = self._build_artifact(
-                result.screenshot,
+            payload[ArtifactKind.observed.value] = record(
                 ArtifactKind.observed,
+                result.screenshot,
                 "Observed Screenshot",
                 "image/png",
             )
         if result.reference:
-            payload[ArtifactKind.reference.value] = self._build_artifact(
-                result.reference,
+            payload[ArtifactKind.reference.value] = record(
                 ArtifactKind.reference,
+                result.reference,
                 "Reference Screenshot",
                 "image/png",
             )
         if result.trace:
-            payload[ArtifactKind.trace.value] = self._build_artifact(
-                result.trace,
+            payload[ArtifactKind.trace.value] = record(
                 ArtifactKind.trace,
+                result.trace,
                 "Playwright Trace",
                 "application/zip",
             )
         if result.video:
-            payload[ArtifactKind.video.value] = self._build_artifact(
-                result.video,
+            payload[ArtifactKind.video.value] = record(
                 ArtifactKind.video,
+                result.video,
                 "Session Video",
                 "video/webm",
+                filename="video.webm",
             )
         if result.log:
-            payload[ArtifactKind.log.value] = self._build_artifact(
-                result.log,
+            payload[ArtifactKind.log.value] = record(
                 ArtifactKind.log,
+                result.log,
                 "Execution Log",
                 "text/plain",
             )
         return payload
+
+    def _verify_callback_uploads(
+        self,
+        execution: Dict[str, object],
+        result_data: Dict[str, object],
+    ) -> Dict[str, Dict[str, object]]:
+        if self._artifacts.backend != "s3":
+            return {}
+        receipts = result_data.get("uploads")
+        transfer = execution.get("artifact_transfer")
+        if not isinstance(receipts, dict):
+            return {}
+        if not isinstance(transfer, dict) or not hasattr(self._artifacts, "verify_upload_receipts"):
+            raise ValueError("S3 callback included uploads without a persisted transfer scope.")
+        verified = self._artifacts.verify_upload_receipts(transfer, receipts)
+        execution_dir = self._artifacts.execution_dir(
+            str(execution["run_id"]),
+            str(execution["id"]),
+        )
+        names = {
+            ArtifactKind.observed.value: (execution_dir / "observed.png", "screenshot", "observed.png"),
+            ArtifactKind.reference.value: (execution_dir / "reference.png", "reference", "reference.png"),
+            ArtifactKind.trace.value: (execution_dir / "trace.zip", "trace", "trace.zip"),
+            ArtifactKind.video.value: (
+                execution_dir / "videos" / "video.webm",
+                "video",
+                "videos/video.webm",
+            ),
+        }
+        for kind, (destination, result_field, result_name) in names.items():
+            artifact = verified.get(kind)
+            if artifact and not destination.exists():
+                self._artifacts.materialize(artifact, destination)
+            if artifact:
+                result_data[result_field] = result_name
+        return verified
 
     def _runner_result_from_payload(
         self,
@@ -2010,6 +2152,14 @@ class RunOrchestrator:
         if not execution:
             LOGGER.warning("Execution %s missing during finalization", execution_id)
             return
+        try:
+            uploaded = self._verify_callback_uploads(execution, result_data)
+        except (FileNotFoundError, ValueError) as exc:
+            LOGGER.warning("Rejected artifact uploads for execution %s: %s", execution_id, exc)
+            result_data = dict(result_data)
+            result_data["status"] = "error"
+            result_data["error"] = f"Artifact upload validation failed: {exc}"
+            uploaded = {}
         runner_result = self._runner_result_from_payload(run["id"], execution_id, result_data)
         execution_dir = self._artifacts.execution_dir(run["id"], execution_id)
         log_path = self._log_path(run["id"], execution_id)
@@ -2023,6 +2173,7 @@ class RunOrchestrator:
                 baseline=baseline_record,
                 execution_dir=execution_dir,
                 result=runner_result,
+                uploaded_artifacts=uploaded,
             )
         else:
             if runner_result.success and not runner_result.screenshot:
@@ -2035,7 +2186,7 @@ class RunOrchestrator:
             if status_token in {"cancelled", "timeout"}:
                 status_value = ExecutionStatus.cancelled.value
             message = runner_result.message or "Runner failure"
-            artifacts = self._artifact_payload(runner_result, execution_dir)
+            artifacts = self._artifact_payload(runner_result, execution, uploaded)
             update_payload = {
                 "status": status_value,
                 "completed_at": _utcnow(),
@@ -2081,15 +2232,23 @@ class RunOrchestrator:
         kind: ArtifactKind,
         label: str,
         content_type: str,
+        *,
+        execution: Dict[str, object],
+        baseline_id: Optional[str] = None,
+        filename: Optional[str] = None,
     ) -> Dict[str, object]:
-        return {
-            "kind": kind.value,
-            "path": self._artifacts.relative(path),
-            "url": self._artifacts.url(path),
-            "label": label,
-            "content_type": content_type,
-            "size_bytes": path.stat().st_size if path.exists() else 0,
-        }
+        return self._artifacts.persist(
+            path,
+            project_id=str(execution["project_id"]),
+            batch_id=str(execution["batch_id"]),
+            run_id=None if baseline_id else str(execution["run_id"]),
+            execution_id=str(execution["id"]),
+            baseline_id=baseline_id,
+            kind=kind.value,
+            label=label,
+            content_type=content_type,
+            filename=filename,
+        )
 
     def _store_baseline_artifacts(
         self,
@@ -2104,6 +2263,9 @@ class RunOrchestrator:
             ArtifactKind.baseline,
             "Baseline Screenshot",
             "image/png",
+            execution=execution,
+            baseline_id=baseline_id,
+            filename=f"{execution['id']}.png",
         )
         item = {
             "task_id": execution["task_id"],
@@ -2159,9 +2321,11 @@ class RunOrchestrator:
             LOGGER.warning(message)
             return {"artifacts": {}, "diff": None, "error": message}
 
-        baseline_path = self._artifacts.root / Path(baseline_artifact["path"])
-        if not baseline_path.exists():
-            message = f"Baseline artifact missing on disk: {baseline_path}"
+        baseline_copy = execution_dir / "baseline.png"
+        try:
+            baseline_path = self._artifacts.materialize(baseline_artifact, baseline_copy)
+        except FileNotFoundError:
+            message = f"Baseline artifact is unavailable: {baseline_artifact.get('path')}"
             LOGGER.warning(message)
             return {"artifacts": {}, "diff": None, "error": message}
 
@@ -2174,8 +2338,7 @@ class RunOrchestrator:
             execution["viewport"]["height"],
         )
 
-        baseline_copy = execution_dir / "baseline.png"
-        if not baseline_copy.exists():
+        if baseline_path.resolve() != baseline_copy.resolve():
             shutil.copy2(baseline_path, baseline_copy)
 
         diff_path = execution_dir / "diff.png"
@@ -2194,18 +2357,21 @@ class RunOrchestrator:
                 ArtifactKind.baseline,
                 "Baseline Screenshot",
                 "image/png",
+                execution=execution,
             ),
             ArtifactKind.diff.value: self._build_artifact(
                 diff_path,
                 ArtifactKind.diff,
                 "Pixel Diff",
                 "image/png",
+                execution=execution,
             ),
             ArtifactKind.heatmap.value: self._build_artifact(
                 heatmap_path,
                 ArtifactKind.heatmap,
                 "Heatmap Overlay",
                 "image/png",
+                execution=execution,
             ),
         }
         return {

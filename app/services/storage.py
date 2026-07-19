@@ -99,6 +99,22 @@ def _utcnow() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def _artifact_records(value: object) -> List[Dict[str, Any]]:
+    """Collect persisted artifact metadata without inferring storage prefixes."""
+
+    records: List[Dict[str, Any]] = []
+    if isinstance(value, dict):
+        if value.get("kind") and (value.get("key") or value.get("path")):
+            records.append(value)
+        else:
+            for child in value.values():
+                records.extend(_artifact_records(child))
+    elif isinstance(value, list):
+        for child in value:
+            records.extend(_artifact_records(child))
+    return records
+
+
 def _fingerprint(payload: Dict[str, Any], fields: Iterable[str]) -> str:
     canonical = {field: payload.get(field) for field in fields}
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
@@ -1029,8 +1045,9 @@ class SceneRepository:
         return self._update_record("baselines", baseline_id, mutate)
 
     def delete_baseline(self, baseline_id: str) -> None:
+        baseline = self.get_baseline(baseline_id)
         store = get_artifact_store()
-        store.purge_baseline(baseline_id)
+        store.purge_baseline(baseline_id, _artifact_records(baseline or {}))
         self._storage.delete("baselines", baseline_id)
 
     def get_latest_baseline(self, batch_id: str) -> Optional[Dict[str, Any]]:
@@ -1168,13 +1185,14 @@ class SceneRepository:
         run = self.get_run(run_id)
         if not run:
             return
-        store = get_artifact_store()
-        store.purge_run(run_id)
-        executions = [
-            execution["id"]
+        execution_records = [
+            execution
             for execution in self._storage.list("executions")
             if execution.get("run_id") == run_id
         ]
+        store = get_artifact_store()
+        store.purge_run(run_id, _artifact_records(execution_records))
+        executions = [execution["id"] for execution in execution_records]
         self._storage.bulk_delete("executions", executions)
         self._storage.delete("runs", run_id)
         if cascade_baseline:

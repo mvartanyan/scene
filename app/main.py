@@ -10,6 +10,7 @@ from app.routes import artifacts
 from app.routes import config as config_ui
 from app.routes import projects as projects_ui
 from app.routes import runs as runs_ui
+from app.services.artifacts import get_artifact_store
 from app.services.storage import SCENE_STATE_BACKEND_ENV, get_repository
 from app.services.storage_types import InvalidStorageCursorError, StorageConflictError
 
@@ -18,6 +19,8 @@ from app.services.storage_types import InvalidStorageCursorError, StorageConflic
 async def lifespan(_app: FastAPI):
     if os.environ.get(SCENE_STATE_BACKEND_ENV, "json").strip().lower() == "dynamodb":
         get_repository().probe()
+    if os.environ.get("SCENE_ARTIFACT_STORAGE", "filesystem").strip().lower() in {"s3", "object"}:
+        get_artifact_store().probe()
     yield
 
 

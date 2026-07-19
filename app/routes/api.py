@@ -213,13 +213,13 @@ def _log_payload(
 
     store = get_artifact_store()
     relative_path = str(log_artifact.get("path") or "")
-    artifact_path = store.root / relative_path
-    exists = artifact_path.exists()
-    if exists:
-        text = artifact_path.read_text(encoding="utf-8", errors="replace")
-        length = artifact_path.stat().st_size
-    else:
-        text = "Log file missing on disk."
+    try:
+        text = store.read_text(log_artifact)
+        exists = True
+        length = int(log_artifact.get("size_bytes") or len(text.encode("utf-8")))
+    except (FileNotFoundError, ValueError):
+        text = "Log artifact is unavailable."
+        exists = False
         length = 0
     url = log_artifact.get("url") or f"/artifacts/{relative_path}"
     return ExecutionLog(

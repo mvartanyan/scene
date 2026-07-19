@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +53,26 @@ def test_k3s_backend_uses_cluster_service_url_and_pvc(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.unit
+def test_k3s_backend_accepts_private_s3_artifacts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SCENE_RUNNER_BACKEND", "k3s")
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE", "registry.example.com/scene-runner:1.47.0-20260719")
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE_AUTOBUILD", "false")
+    monkeypatch.setenv("SCENE_K3S_SERVICE_URL", "http://scene.scene.svc.cluster.local:8000")
+    monkeypatch.setenv("SCENE_ARTIFACT_STORAGE", "s3")
+    monkeypatch.setenv("SCENE_S3_BUCKET", "scene-private")
+
+    config = load_runner_runtime_config(
+        {"max_concurrent_executions": 2},
+        artifact_root=tmp_path / "artifacts",
+    )
+    report = validate_runner_runtime_config(config)
+
+    assert config.artifact_storage == "s3"
+    assert config.s3_bucket == "scene-private"
+    assert report.ok
+
+
+@pytest.mark.unit
 def test_k3s_backend_rejects_host_docker_and_local_artifacts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -98,3 +119,28 @@ def test_runner_readiness_script_rejects_host_docker_for_k3s(tmp_path: Path) -> 
 
     assert proc.returncode == 1
     assert "host.docker.internal is not valid for k3s runner pods" in proc.stdout
+
+
+@pytest.mark.unit
+def test_runner_readiness_s3_uses_only_ephemeral_workspace(tmp_path: Path) -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "scripts/runner_readiness.py",
+            "--callback-url",
+            "http://127.0.0.1:9",
+            "--artifact-dir",
+            str(tmp_path),
+            "--expected-storage",
+            "s3",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    payload = json.loads(proc.stdout)
+    artifact_check = next(check for check in payload["checks"] if check["name"] == "artifact_write")
+    assert artifact_check["ok"]
+    assert "ephemeral workspace" in artifact_check["message"]

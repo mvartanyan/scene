@@ -31,17 +31,18 @@ export SCENE_K3S_SERVICE_URL=http://scene.scene.svc.cluster.local:8000
 Do not use `host.docker.internal` in k3s. The runner pod should call
 `$SCENE_K3S_SERVICE_URL/api/executions/{execution_id}/complete`.
 
-Use shared artifacts:
+Use private S3 artifacts:
 
 ```bash
-export SCENE_ARTIFACT_STORAGE=pvc
-export SCENE_ARTIFACT_PVC_CLAIM=scene-artifacts
-export SCENE_ARTIFACT_ROOT=/artifacts
+export SCENE_ARTIFACT_STORAGE=s3
+export SCENE_S3_BUCKET=scene-staging-artifacts-<account-id>
+export SCENE_S3_PREFIX=scene
+export SCENE_ARTIFACT_TEMP_ROOT=/tmp/scene-artifacts
 ```
 
-The current artifact store supports filesystem/PVC semantics. Object storage is
-called out in readiness checks as not implemented yet, so multi-pod acceptance
-must use a PVC until an object-backed `ArtifactStore` exists.
+Only the SCENE app principal has S3 permissions. Runner Jobs receive scoped,
+short-lived PUT/GET URLs in their execution config and must not receive AWS
+credentials or a shared artifact volume.
 
 ## Browser Runtime Defaults
 
@@ -72,11 +73,10 @@ shape that will execute Playwright:
 ```bash
 scene-runner-readiness \
   --callback-url "$SCENE_K3S_SERVICE_URL" \
-  --artifact-dir "$SCENE_ARTIFACT_ROOT" \
-  --expected-storage pvc \
+  --expected-storage s3 \
   --json
 ```
 
 This proves that the runner can reach `/api/orchestrator/ping` and write/read
-the artifact mount. The example job in `deploy/k3s/runner-readiness-job.yaml`
-shows the expected pod wiring.
+its ephemeral workspace. A real execution proves the presigned S3 path. The
+example job in `deploy/k3s/runner-readiness-job.yaml` shows the expected pod wiring.

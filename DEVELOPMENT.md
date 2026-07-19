@@ -161,6 +161,17 @@
 - Run selection is persisted via `data-scene-selected-run`, so htmx refreshes keep the user’s chosen execution in focus, preparatory/task actions can now be configured declaratively alongside custom JS with structured logging, cookie-banner/animation suppression lives in configuration instead of bespoke snippets, and the default post-capture wait is configurable (currently 7 s) to absorb late UI transitions.
 
 ## Session Updates
+- SCENE-20 adds `SCENE_ARTIFACT_STORAGE=filesystem|s3`. S3 objects use
+  deterministic environment/project/batch/run/execution/kind keys and persist
+  content type, size, SHA-256, ETag, and version metadata. The private bucket is
+  never exposed directly through stored URLs.
+- Runner containers receive short-lived execution manifests and upload with
+  presigned PUT requests using only Python's standard library. Callback receipts
+  are checked against persisted keys, object size, and streamed SHA-256 before
+  SCENE accepts them; presigned query strings are removed from logs and payloads.
+- Image diffing materializes only the required baseline into a bounded local
+  workspace. Run and baseline cleanup deletes explicit recorded keys and does
+  not use normal-path bucket scans. Filesystem behavior remains the local default.
 - SCENE-19 introduces `SCENE_STATE_BACKEND=json|dynamodb`. The production
   adapter validates `pk`/`sk` plus three GSIs at startup, performs a
   write/read/delete readiness probe, converts floats safely for DynamoDB, and

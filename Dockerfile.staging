@@ -7,6 +7,9 @@ WORKDIR /app
 
 COPY pyproject.toml REQUIREMENTS.md README.md ./
 COPY app ./app
+COPY docs ./docs
+COPY scene_mcp ./scene_mcp
+COPY scripts ./scripts
 COPY Dockerfile.playwright ./
 
 RUN python -m pip install --no-cache-dir --upgrade pip && \

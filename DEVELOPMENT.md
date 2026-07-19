@@ -161,6 +161,26 @@
 - Run selection is persisted via `data-scene-selected-run`, so htmx refreshes keep the user’s chosen execution in focus, preparatory/task actions can now be configured declaratively alongside custom JS with structured logging, cookie-banner/animation suppression lives in configuration instead of bespoke snippets, and the default post-capture wait is configurable (currently 7 s) to absorb late UI transitions.
 
 ## Session Updates
+- SCENE-19 introduces `SCENE_STATE_BACKEND=json|dynamodb`. The production
+  adapter validates `pk`/`sk` plus three GSIs at startup, performs a
+  write/read/delete readiness probe, converts floats safely for DynamoDB, and
+  uses conditional integer versions for every entity mutation.
+- Repository updates retry optimistic conflicts without dropping concurrent
+  fields. Stable run/execution creation keys make dispatcher replay idempotent,
+  and terminal cancel/completion races now converge on the first successful
+  write instead of allowing a late callback to reverse the result.
+- Project, page, task, batch, run, and execution APIs expose bounded cursor
+  pages. Existing HTML numbered views now fetch only their active page from the
+  backend, while status aggregation iterates in bounded chunks.
+- Added `scripts/scene_config.py` for private mode-0600 config exports and
+  dry-run-first imports. It preserves IDs, credentials, actions, thresholds,
+  SPM references, and global config while excluding runs, executions,
+  baselines, webhooks, and artifacts. Graph validation runs before writes and
+  reports counts without field values.
+- Backend, pagination, conflict, race, idempotency, importer, secret-redaction,
+  and file-permission tests run without AWS through an injected DynamoDB table
+  double. Real table provisioning and cross-replica staging proof remain with
+  SCENE-13.
 - SCENE-17 adds bounded large-project behaviour: project tabs load independently, page/task lists use 25-item pages, run history uses 25-item pages, and execution overlays use 50-item pages while retaining direct execution navigation.
 - The run launcher now estimates the execution matrix, warns above 100 targets, and supports full-batch, one-task smoke, and validated selected-task scopes. REST and MCP launch methods accept the same optional `task_ids` contract.
 - Agent setup now applies local JSON writes in one rollback-capable transaction and indexes existing entities by name, avoiding repeated full-state serialization and scans during 200+ item imports.

@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.schemas import (
     AgentManifest,
@@ -16,6 +17,7 @@ from app.schemas import (
     AgentSetupResponse,
     Batch,
     BatchComparisonRunCreate,
+    BatchCursorPage,
     BatchCreate,
     BatchUpdate,
     Baseline,
@@ -24,16 +26,20 @@ from app.schemas import (
     CheckCandidate,
     ExecutionCallbackRequest,
     ExecutionArtifactSet,
+    ExecutionCursorPage,
     ExecutionLog,
     ExecutionStatus,
     IntegrationRunResult,
     Page,
+    PageCursorPage,
     PageCreate,
     PageUpdate,
     Project,
+    ProjectCursorPage,
     ProjectCreate,
     ProjectUpdate,
     Run,
+    RunCursorPage,
     RunCreate,
     RunArtifacts,
     RunDetail,
@@ -44,6 +50,7 @@ from app.schemas import (
     SceneConfig,
     SceneConfigUpdate,
     Task,
+    TaskCursorPage,
     TaskCreate,
     TaskUpdate,
     TaskExecution,
@@ -802,6 +809,18 @@ async def list_projects(repo: SceneRepository = RepositoryDep) -> List[Project]:
     return repo.list_projects()
 
 
+@router.get("/projects/page", response_model=ProjectCursorPage)
+async def page_projects(
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> ProjectCursorPage:
+    items, next_cursor = repo.query_page(
+        "projects", limit=limit, cursor=cursor
+    )
+    return ProjectCursorPage(items=items, next_cursor=next_cursor)
+
+
 @router.post("/projects", response_model=Project, status_code=201)
 async def create_project(
     payload: ProjectCreate,
@@ -846,6 +865,24 @@ async def delete_project(
 async def list_pages(project_id: str, repo: SceneRepository = RepositoryDep) -> List[Page]:
     _ensure_project(repo, project_id)
     return repo.list_pages(project_id)
+
+
+@router.get("/projects/{project_id}/pages/page", response_model=PageCursorPage)
+async def page_pages(
+    project_id: str,
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> PageCursorPage:
+    _ensure_project(repo, project_id)
+    items, next_cursor = repo.query_page(
+        "pages",
+        key="project_id",
+        value=project_id,
+        limit=limit,
+        cursor=cursor,
+    )
+    return PageCursorPage(items=items, next_cursor=next_cursor)
 
 
 @router.post("/pages", response_model=Page, status_code=201)
@@ -895,6 +932,24 @@ async def list_tasks(project_id: str, repo: SceneRepository = RepositoryDep) -> 
     return repo.list_tasks(project_id)
 
 
+@router.get("/projects/{project_id}/tasks/page", response_model=TaskCursorPage)
+async def page_tasks(
+    project_id: str,
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> TaskCursorPage:
+    _ensure_project(repo, project_id)
+    items, next_cursor = repo.query_page(
+        "tasks",
+        key="project_id",
+        value=project_id,
+        limit=limit,
+        cursor=cursor,
+    )
+    return TaskCursorPage(items=items, next_cursor=next_cursor)
+
+
 @router.post("/tasks", response_model=Task, status_code=201)
 async def create_task(
     payload: TaskCreate,
@@ -942,6 +997,24 @@ async def delete_task(
 async def list_batches(project_id: str, repo: SceneRepository = RepositoryDep) -> List[Batch]:
     _ensure_project(repo, project_id)
     return repo.list_batches(project_id)
+
+
+@router.get("/projects/{project_id}/batches/page", response_model=BatchCursorPage)
+async def page_batches(
+    project_id: str,
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> BatchCursorPage:
+    _ensure_project(repo, project_id)
+    items, next_cursor = repo.query_page(
+        "batches",
+        key="project_id",
+        value=project_id,
+        limit=limit,
+        cursor=cursor,
+    )
+    return BatchCursorPage(items=items, next_cursor=next_cursor)
 
 
 @router.post("/batches", response_model=Batch, status_code=201)
@@ -1088,6 +1161,7 @@ async def launch_batch_comparison_run(
             "spm_ticket": payload.spm_ticket,
             "timeout_seconds": payload.timeout_seconds,
             "task_ids": selected_task_ids,
+            "idempotency_key": payload.idempotency_key,
         }
     )
     orchestrator = get_orchestrator()
@@ -1103,6 +1177,29 @@ async def list_runs(
     repo: SceneRepository = RepositoryDep,
 ) -> List[Run]:
     return repo.list_runs(project_id=project_id, batch_id=batch_id)
+
+
+@router.get("/runs/page", response_model=RunCursorPage)
+async def page_runs(
+    project_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> RunCursorPage:
+    key = "batch_id" if batch_id else "project_id" if project_id else None
+    value = batch_id or project_id
+    items, next_cursor = repo.query_page(
+        "runs",
+        key=key,
+        value=value,
+        limit=limit,
+        cursor=cursor,
+        descending=True,
+    )
+    if project_id and batch_id:
+        items = [item for item in items if item.get("project_id") == project_id]
+    return RunCursorPage(items=items, next_cursor=next_cursor)
 
 
 @router.post("/runs", response_model=Run, status_code=201)
@@ -1270,6 +1367,25 @@ async def list_run_executions(run_id: str, repo: SceneRepository = RepositoryDep
     return repo.list_executions(run_id=run_id)
 
 
+@router.get("/runs/{run_id}/executions/page", response_model=ExecutionCursorPage)
+async def page_run_executions(
+    run_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+) -> ExecutionCursorPage:
+    if not repo.get_run(run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    items, next_cursor = repo.query_page(
+        "executions",
+        key="run_id",
+        value=run_id,
+        limit=limit,
+        cursor=cursor,
+    )
+    return ExecutionCursorPage(items=items, next_cursor=next_cursor)
+
+
 @router.get("/executions/{execution_id}", response_model=TaskExecution)
 async def get_execution(execution_id: str, repo: SceneRepository = RepositoryDep) -> TaskExecution:
     execution = repo.get_execution(execution_id)
@@ -1322,8 +1438,23 @@ async def orchestrator_ping() -> Dict[str, str]:
 
 
 @router.get("/orchestrator/readiness")
-async def orchestrator_readiness() -> Dict[str, object]:
-    return get_orchestrator().deployment_readiness().as_dict()
+async def orchestrator_readiness(
+    repo: SceneRepository = RepositoryDep,
+) -> Dict[str, object]:
+    report = get_orchestrator().deployment_readiness().as_dict()
+    try:
+        report["state"] = await run_in_threadpool(repo.probe)
+    except Exception:  # noqa: BLE001
+        report["ok"] = False
+        report["state"] = {"ok": False, **repo.backend_info()}
+        report.setdefault("issues", []).append(
+            {
+                "level": "error",
+                "code": "state_backend_unavailable",
+                "message": "The configured state backend failed its readiness probe.",
+            }
+        )
+    return report
 
 
 def _format_baseline_option_payload(baseline: Dict[str, object]) -> BaselineOption:

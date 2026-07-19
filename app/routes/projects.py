@@ -90,19 +90,15 @@ def _build_project_context(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    all_pages = repo.list_pages(project_id)
-    all_tasks = repo.list_tasks(project_id)
-    all_batches = repo.list_batches(project_id)
-    for batch in all_batches:
-        for key in ("run_diff_threshold", "execution_diff_threshold"):
-            raw_value = batch.get(key)
-            if raw_value in (None, "", "None"):
-                batch[key] = None
-            else:
-                try:
-                    batch[key] = float(raw_value)
-                except (TypeError, ValueError):
-                    batch[key] = None
+    page_count = repo.count("pages", key="project_id", value=project_id)
+    task_count = repo.count("tasks", key="project_id", value=project_id)
+    batch_count = repo.count("batches", key="project_id", value=project_id)
+    all_pages: List[dict] = []
+    all_tasks: List[dict] = []
+    if active_tab == "tasks":
+        all_pages = repo.list_pages(project_id)
+    elif active_tab == "batches":
+        all_tasks = repo.list_tasks(project_id)
 
     if editing_batch:
         for key in ("run_diff_threshold", "execution_diff_threshold"):
@@ -116,29 +112,46 @@ def _build_project_context(
                     editing_batch[key] = None
 
     if active_tab == "tasks":
-        tasks, item_pagination = paginate(
-            all_tasks,
+        tasks, item_pagination = repo.numbered_page(
+            "tasks",
+            key="project_id",
+            value=project_id,
             page=item_page,
             page_size=DEFAULT_PAGE_SIZE,
         )
         pages = all_pages
         batches = []
     elif active_tab == "batches":
-        batches, item_pagination = paginate(
-            all_batches,
+        batches, item_pagination = repo.numbered_page(
+            "batches",
+            key="project_id",
+            value=project_id,
             page=item_page,
             page_size=DEFAULT_PAGE_SIZE,
         )
         pages = []
         tasks = all_tasks
     else:
-        pages, item_pagination = paginate(
-            all_pages,
+        pages, item_pagination = repo.numbered_page(
+            "pages",
+            key="project_id",
+            value=project_id,
             page=item_page,
             page_size=DEFAULT_PAGE_SIZE,
         )
         tasks = []
         batches = []
+
+    for batch in batches:
+        for key in ("run_diff_threshold", "execution_diff_threshold"):
+            raw_value = batch.get(key)
+            if raw_value in (None, "", "None"):
+                batch[key] = None
+            else:
+                try:
+                    batch[key] = float(raw_value)
+                except (TypeError, ValueError):
+                    batch[key] = None
 
     config = repo.get_config()
     available_browsers = config.get("browsers") or DEFAULT_BROWSERS
@@ -150,9 +163,9 @@ def _build_project_context(
         "tasks": tasks,
         "batches": batches,
         "page_lookup": {page["id"]: page for page in all_pages},
-        "page_count": len(all_pages),
-        "task_count": len(all_tasks),
-        "batch_count": len(all_batches),
+        "page_count": page_count,
+        "task_count": task_count,
+        "batch_count": batch_count,
         "item_pagination": item_pagination,
         "status_choices": list(RunStatus),
         "available_browsers": available_browsers,

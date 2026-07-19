@@ -1365,6 +1365,7 @@ class RunOrchestrator:
                 "viewport": execution["viewport"],
                 "status": ExecutionStatus.queued.value,
                 "sequence": max_sequence + 1,
+                "idempotency_key": f"retry:{execution_id}:{max_sequence + 1}",
             }
         )
 
@@ -1839,6 +1840,7 @@ class RunOrchestrator:
                             },
                             "status": ExecutionStatus.queued.value,
                             "sequence": sequence,
+                            "idempotency_key": f"matrix:{sequence}",
                         }
                     )
                     self._append_log(run["id"], execution["id"], "Execution queued")

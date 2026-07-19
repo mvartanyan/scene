@@ -63,6 +63,11 @@ class Project(ProjectBase):
     model_config = {"from_attributes": True}
 
 
+class ProjectCursorPage(BaseModel):
+    items: List[Project]
+    next_cursor: Optional[str] = None
+
+
 class PageBase(BaseModel):
     name: str
     url: HttpUrl
@@ -94,6 +99,11 @@ class Page(PageBase):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class PageCursorPage(BaseModel):
+    items: List[Page]
+    next_cursor: Optional[str] = None
 
 
 class Viewport(BaseModel):
@@ -139,6 +149,11 @@ class Task(TaskBase):
     model_config = {"from_attributes": True}
 
 
+class TaskCursorPage(BaseModel):
+    items: List[Task]
+    next_cursor: Optional[str] = None
+
+
 class BatchBase(SpmTicketAliasModel):
     name: str
     description: Optional[str] = None
@@ -168,6 +183,11 @@ class Batch(BatchBase):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class BatchCursorPage(BaseModel):
+    items: List[Batch]
+    next_cursor: Optional[str] = None
 
 
 class SceneConfig(BaseModel):
@@ -335,6 +355,11 @@ class TaskExecution(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ExecutionCursorPage(BaseModel):
+    items: List[TaskExecution]
+    next_cursor: Optional[str] = None
+
+
 class ExecutionCallbackRequest(BaseModel):
     token: str
     result: Dict[str, object]
@@ -395,6 +420,12 @@ class BatchComparisonRunCreate(SpmTicketAliasModel):
         default=None,
         description="Optional subset of task ids from the batch. Omit to run the full batch.",
     )
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Caller-stable key used to return the same run after a retried launch.",
+    )
 
 
 class RunFailureStatus(BaseModel):
@@ -444,6 +475,7 @@ class RunBase(SpmTicketAliasModel):
         default=None,
         description="Optional subset of task ids from the batch. Omit to run the full batch.",
     )
+    idempotency_key: Optional[str] = Field(default=None, min_length=1, max_length=200)
 
 
 class RunCreate(RunBase):
@@ -464,6 +496,11 @@ class Run(RunBase):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class RunCursorPage(BaseModel):
+    items: List[Run]
+    next_cursor: Optional[str] = None
 
 
 class RunDetail(BaseModel):

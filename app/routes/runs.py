@@ -209,12 +209,25 @@ def _collect_runs(
     page: int = 1,
     page_size: int = RUN_PAGE_SIZE,
 ) -> Tuple[List[Dict[str, object]], Dict[str, object]]:
-    raw_runs = repo.list_runs(project_id=filter_project_id) if filter_project_id else repo.list_runs()
-    runs = [dict(run) for run in raw_runs]
     if filter_status:
+        raw_runs = (
+            repo.list_runs(project_id=filter_project_id)
+            if filter_project_id
+            else repo.list_runs()
+        )
+        runs = [dict(run) for run in raw_runs]
         runs = [run for run in runs if run.get("status") == filter_status]
-
-    page_runs, pagination = paginate(runs, page=page, page_size=page_size)
+        page_runs, pagination = paginate(runs, page=page, page_size=page_size)
+    else:
+        page_runs, pagination = repo.numbered_page(
+            "runs",
+            key="project_id" if filter_project_id else None,
+            value=filter_project_id,
+            page=page,
+            page_size=page_size,
+            descending=True,
+        )
+        page_runs = [dict(run) for run in page_runs]
     for run in page_runs:
         counts = repo.execution_status_counts(run["id"])
         _annotate_run(repo, run, project_lookup, counts=counts)
@@ -427,12 +440,14 @@ def _build_run_context(
     run["diff_threshold"] = run_threshold_value
     run["diff_samples"] = int(run.get("diff_samples") or run.get("summary", {}).get("diff_samples") or 0)
 
-    all_executions = [dict(execution) for execution in repo.list_executions(run_id=run_id)]
-    executions, execution_pagination = paginate(
-        all_executions,
+    executions, execution_pagination = repo.numbered_page(
+        "executions",
+        key="run_id",
+        value=run_id,
         page=execution_page,
         page_size=execution_page_size,
     )
+    executions = [dict(execution) for execution in executions]
     for execution in executions:
         _annotate_execution(execution, execution_threshold_value)
 

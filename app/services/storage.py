@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -7,13 +8,19 @@ import uuid
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
+from math import ceil
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from fastapi import Depends
 
 from app.constants import DEFAULT_BROWSERS, DEFAULT_VIEWPORTS
 from app.services.artifacts import get_artifact_store
+from app.services.storage_types import (
+    InvalidStorageCursorError,
+    StorageBackend,
+    StorageConflictError,
+)
 
 STATE_VERSION = 1
 SCENE_STATE_PATH_ENV = "SCENE_STATE_PATH"
@@ -24,6 +31,19 @@ SCENE_CAPTURE_DELAY_MS_ENV = "SCENE_CAPTURE_DELAY_MS"
 SCENE_DIFF_PIXEL_TOLERANCE_ENV = "SCENE_DIFF_PIXEL_TOLERANCE"
 DEFAULT_LOCAL_ROOT = Path(".scene")
 DEFAULT_STATE_PATH = DEFAULT_LOCAL_ROOT / "dev.dynamodb.json"
+SCENE_STATE_BACKEND_ENV = "SCENE_STATE_BACKEND"
+SCENE_DYNAMODB_TABLE_ENV = "SCENE_DYNAMODB_TABLE"
+SCENE_DYNAMODB_ENDPOINT_URL_ENV = "SCENE_DYNAMODB_ENDPOINT_URL"
+SCENE_AWS_REGION_ENV = "AWS_REGION"
+DEFAULT_AWS_REGION = "eu-central-1"
+
+CONFIG_COLLECTIONS = ("projects", "pages", "tasks", "batches")
+MAX_CONFLICT_RETRIES = 5
+TERMINAL_RUN_STATUSES = {"finished", "failed", "cancelled"}
+TERMINAL_EXECUTION_STATUSES = {"finished", "failed", "cancelled"}
+RUN_IDEMPOTENCY_NAMESPACE = uuid.UUID("6740667e-e6d2-4f80-bbe8-8c73742f38d2")
+BASELINE_IDEMPOTENCY_NAMESPACE = uuid.UUID("a2c250c5-8a92-4d83-bc94-34f167285f62")
+EXECUTION_IDEMPOTENCY_NAMESPACE = uuid.UUID("7aaef15c-3e65-49f4-b122-49883d68d85e")
 
 
 def resolve_state_path() -> Path:
@@ -77,6 +97,12 @@ def _apply_config_env_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
 def _utcnow() -> str:
     """Return timezone-aware ISO timestamp."""
     return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _fingerprint(payload: Dict[str, Any], fields: Iterable[str]) -> str:
+    canonical = {field: payload.get(field) for field in fields}
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _default_state() -> Dict[str, Any]:
@@ -245,6 +271,7 @@ class LocalDynamoStorage:
         scene_host_url: Optional[str] = None,
         capture_post_wait_ms: Optional[int] = None,
         diff_pixel_tolerance: Optional[int] = None,
+        **extra_updates: Any,
     ) -> Dict[str, Any]:
         with self._lock:
             config = self._state.setdefault("config", _default_config())
@@ -264,17 +291,42 @@ class LocalDynamoStorage:
                 config["capture_post_wait_ms"] = capture_post_wait_ms
             if diff_pixel_tolerance is not None:
                 config["diff_pixel_tolerance"] = diff_pixel_tolerance
+            for key, value in extra_updates.items():
+                if value is not None:
+                    config[key] = value
             self._persist()
             return _apply_config_env_overrides(config)
 
     def upsert(self, collection: str, item_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self._lock:
-            self._collection(collection)[item_id] = payload
+            current = self._collection(collection).get(item_id)
+            record = deepcopy(payload)
+            expected_version = record.pop("_version", None)
+            if current is None:
+                if expected_version is not None:
+                    raise StorageConflictError(
+                        f"{collection}/{item_id} was deleted before it could be updated"
+                    )
+                next_version = 1
+            else:
+                current_version = int(current.get("_version", 0))
+                if expected_version is None or int(expected_version) != current_version:
+                    raise StorageConflictError(
+                        f"{collection}/{item_id} changed during update"
+                    )
+                next_version = current_version + 1
+            record["_version"] = next_version
+            self._collection(collection)[item_id] = record
             self._persist()
-            return payload
+            return deepcopy(record)
 
     def get(self, collection: str, item_id: str) -> Optional[Dict[str, Any]]:
-        return self._collection(collection).get(item_id)
+        record = self._collection(collection).get(item_id)
+        if record is None:
+            return None
+        copied = deepcopy(record)
+        copied.setdefault("_version", 0)
+        return copied
 
     def delete(self, collection: str, item_id: str) -> None:
         with self._lock:
@@ -283,7 +335,12 @@ class LocalDynamoStorage:
                 self._persist()
 
     def list(self, collection: str) -> List[Dict[str, Any]]:
-        return list(self._collection(collection).values())
+        records = []
+        for record in self._collection(collection).values():
+            copied = deepcopy(record)
+            copied.setdefault("_version", 0)
+            records.append(copied)
+        return records
 
     def filter(self, collection: str, *, key: str, value: Any) -> List[Dict[str, Any]]:
         return [item for item in self.list(collection) if item.get(key) == value]
@@ -299,17 +356,217 @@ class LocalDynamoStorage:
             if removed:
                 self._persist()
 
+    def query_page(
+        self,
+        collection: str,
+        *,
+        key: Optional[str] = None,
+        value: Any = None,
+        limit: int = 25,
+        cursor: Optional[str] = None,
+        descending: bool = False,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        records = self.list(collection)
+        if key is not None:
+            records = [record for record in records if record.get(key) == value]
+        records.sort(
+            key=lambda record: (
+                str(record.get("created_at") or ""),
+                str(record.get("id") or ""),
+            ),
+            reverse=descending,
+        )
+        try:
+            offset = int(cursor or 0)
+        except (TypeError, ValueError) as exc:
+            raise InvalidStorageCursorError("Invalid pagination cursor") from exc
+        if offset < 0:
+            raise InvalidStorageCursorError("Invalid pagination cursor")
+        page_size = max(1, min(int(limit), 100))
+        page = records[offset : offset + page_size]
+        next_offset = offset + len(page)
+        next_cursor = str(next_offset) if next_offset < len(records) else None
+        return page, next_cursor
+
+    def backend_info(self) -> Dict[str, Any]:
+        return {"backend": "json", "path": str(self._path)}
+
+    def count(
+        self,
+        collection: str,
+        *,
+        key: Optional[str] = None,
+        value: Any = None,
+    ) -> int:
+        if key is None:
+            return len(self._collection(collection))
+        return sum(
+            1
+            for record in self._collection(collection).values()
+            if record.get(key) == value
+        )
+
+    def probe(self) -> Dict[str, Any]:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        return {"ok": True, **self.backend_info()}
+
 
 class SceneRepository:
-    """Repository offering domain-focused helpers on top of LocalDynamoStorage."""
+    """Repository offering domain-focused helpers on top of a storage backend."""
 
-    def __init__(self, storage: LocalDynamoStorage) -> None:
+    def __init__(self, storage: StorageBackend) -> None:
         self._storage = storage
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
         with self._storage.transaction():
             yield
+
+    def backend_info(self) -> Dict[str, Any]:
+        return self._storage.backend_info()
+
+    def probe(self) -> Dict[str, Any]:
+        return self._storage.probe()
+
+    def _update_record(
+        self,
+        collection: str,
+        item_id: str,
+        mutate: Callable[[Dict[str, Any]], Optional[bool]],
+    ) -> Optional[Dict[str, Any]]:
+        for attempt in range(MAX_CONFLICT_RETRIES):
+            record = self._storage.get(collection, item_id)
+            if record is None:
+                return None
+            changed = mutate(record)
+            if changed is False:
+                return record
+            try:
+                return self._storage.upsert(collection, item_id, record)
+            except StorageConflictError:
+                if attempt + 1 == MAX_CONFLICT_RETRIES:
+                    raise
+        raise AssertionError("unreachable")
+
+    def configuration_records(self) -> Dict[str, List[Dict[str, Any]]]:
+        return {
+            collection: self._storage.list(collection)
+            for collection in CONFIG_COLLECTIONS
+        }
+
+    def get_configuration_record(
+        self,
+        collection: str,
+        item_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        if collection not in CONFIG_COLLECTIONS:
+            raise ValueError(f"Unsupported configuration collection: {collection}")
+        return self._storage.get(collection, item_id)
+
+    def put_configuration_record(
+        self,
+        collection: str,
+        record: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if collection not in CONFIG_COLLECTIONS:
+            raise ValueError(f"Unsupported configuration collection: {collection}")
+        item_id = str(record.get("id") or "").strip()
+        if not item_id:
+            raise ValueError(f"Imported {collection} record is missing an id")
+        candidate = deepcopy(record)
+        candidate.pop("_version", None)
+        for attempt in range(MAX_CONFLICT_RETRIES):
+            current = self._storage.get(collection, item_id)
+            if current is not None:
+                candidate["_version"] = current.get("_version", 0)
+            else:
+                candidate.pop("_version", None)
+            try:
+                return self._storage.upsert(collection, item_id, candidate)
+            except StorageConflictError:
+                if attempt + 1 == MAX_CONFLICT_RETRIES:
+                    raise
+        raise AssertionError("unreachable")
+
+    def replace_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        return self._storage.update_config(**config)
+
+    def query_page(
+        self,
+        collection: str,
+        *,
+        key: Optional[str] = None,
+        value: Any = None,
+        limit: int = 25,
+        cursor: Optional[str] = None,
+        descending: bool = False,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        return self._storage.query_page(
+            collection,
+            key=key,
+            value=value,
+            limit=limit,
+            cursor=cursor,
+            descending=descending,
+        )
+
+    def count(
+        self,
+        collection: str,
+        *,
+        key: Optional[str] = None,
+        value: Any = None,
+    ) -> int:
+        return self._storage.count(collection, key=key, value=value)
+
+    def numbered_page(
+        self,
+        collection: str,
+        *,
+        key: Optional[str] = None,
+        value: Any = None,
+        page: int = 1,
+        page_size: int = 25,
+        descending: bool = False,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        resolved_size = max(1, min(int(page_size or 25), 100))
+        total = self._storage.count(collection, key=key, value=value)
+        total_pages = max(1, ceil(total / resolved_size))
+        resolved_page = max(1, min(int(page or 1), total_pages))
+        cursor: Optional[str] = None
+        for _index in range(1, resolved_page):
+            _discarded, cursor = self._storage.query_page(
+                collection,
+                key=key,
+                value=value,
+                limit=resolved_size,
+                cursor=cursor,
+                descending=descending,
+            )
+            if cursor is None:
+                break
+        items, next_cursor = self._storage.query_page(
+            collection,
+            key=key,
+            value=value,
+            limit=resolved_size,
+            cursor=cursor,
+            descending=descending,
+        )
+        start = ((resolved_page - 1) * resolved_size) + 1 if total else 0
+        end = min(start + len(items) - 1, total) if total else 0
+        return items, {
+            "page": resolved_page,
+            "page_size": resolved_size,
+            "total": total,
+            "total_pages": total_pages,
+            "start": start,
+            "end": end,
+            "has_previous": resolved_page > 1,
+            "has_next": next_cursor is not None,
+            "previous_page": resolved_page - 1 if resolved_page > 1 else None,
+            "next_page": resolved_page + 1 if next_cursor is not None else None,
+        }
 
     # -- Config -------------------------------------------------------------------
     def get_config(self) -> Dict[str, Any]:
@@ -443,17 +700,17 @@ class SceneRepository:
         return self._storage.upsert("projects", project_id, record)
 
     def update_project(self, project_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_project(project_id)
-        if not record:
-            return None
         updated = {k: v for k, v in payload.items() if v is not None}
         if "task_js" in updated:
             updated["task_js"] = _sanitize_script(updated["task_js"])
         if "task_actions" in updated:
             updated["task_actions"] = _sanitize_actions(updated["task_actions"])
-        record.update(updated)
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("projects", project_id, record)
+
+        def mutate(record: Dict[str, Any]) -> None:
+            record.update(updated)
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("projects", project_id, mutate)
 
     def delete_project(self, project_id: str) -> None:
         # Cascade delete pages, tasks, batches, runs referencing the project.
@@ -513,9 +770,6 @@ class SceneRepository:
         return self._storage.upsert("pages", page_id, record)
 
     def update_page(self, page_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_page(page_id)
-        if not record:
-            return None
         updates = {}
         for key, value in payload.items():
             if key in {"url", "reference_url"}:
@@ -529,9 +783,11 @@ class SceneRepository:
                     updates[key] = _sanitize_actions(value)
                 else:
                     updates[key] = value
-        record.update(updates)
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("pages", page_id, record)
+        def mutate(record: Dict[str, Any]) -> None:
+            record.update(updates)
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("pages", page_id, mutate)
 
     def delete_page(self, page_id: str) -> None:
         # Remove tasks tied to the page.
@@ -570,18 +826,17 @@ class SceneRepository:
         return self._storage.upsert("tasks", task_id, record)
 
     def update_task(self, task_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_task(task_id)
-        if not record:
-            return None
-        for key, value in payload.items():
-            if key == "task_js":
-                record[key] = _sanitize_script(value)
-            elif key == "task_actions":
-                record[key] = _sanitize_actions(value)
-            else:
-                record[key] = value
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("tasks", task_id, record)
+        def mutate(record: Dict[str, Any]) -> None:
+            for key, value in payload.items():
+                if key == "task_js":
+                    record[key] = _sanitize_script(value)
+                elif key == "task_actions":
+                    record[key] = _sanitize_actions(value)
+                else:
+                    record[key] = value
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("tasks", task_id, mutate)
 
     def delete_task(self, task_id: str) -> None:
         # Remove task references from batches.
@@ -651,19 +906,19 @@ class SceneRepository:
         return self._storage.upsert("batches", batch_id, record)
 
     def update_batch(self, batch_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_batch(batch_id)
-        if not record:
-            return None
         threshold_keys = {"run_diff_threshold", "execution_diff_threshold"}
-        for key in threshold_keys:
-            if key in payload:
-                record[key] = payload[key]
-        for key, value in payload.items():
-            if key not in threshold_keys and key not in {"spm_ticket", "jira_issue"}:
-                record[key] = value
-        _apply_spm_ticket_update(record, payload)
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("batches", batch_id, record)
+
+        def mutate(record: Dict[str, Any]) -> None:
+            for key in threshold_keys:
+                if key in payload:
+                    record[key] = payload[key]
+            for key, value in payload.items():
+                if key not in threshold_keys and key not in {"spm_ticket", "jira_issue"}:
+                    record[key] = value
+            _apply_spm_ticket_update(record, payload)
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("batches", batch_id, mutate)
 
     def delete_batch(self, batch_id: str) -> None:
         # Remove runs tied to the batch.
@@ -694,11 +949,14 @@ class SceneRepository:
         project_id: Optional[str] = None,
         batch_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        items = self._storage.list("baselines")
-        if project_id:
-            items = [it for it in items if it.get("project_id") == project_id]
         if batch_id:
-            items = [it for it in items if it.get("batch_id") == batch_id]
+            items = self._storage.filter("baselines", key="batch_id", value=batch_id)
+            if project_id:
+                items = [it for it in items if it.get("project_id") == project_id]
+        elif project_id:
+            items = self._storage.filter("baselines", key="project_id", value=project_id)
+        else:
+            items = self._storage.list("baselines")
         return sorted(items, key=lambda it: it["created_at"], reverse=True)
 
     def get_baseline(self, baseline_id: str) -> Optional[Dict[str, Any]]:
@@ -706,7 +964,17 @@ class SceneRepository:
 
     def create_baseline(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
-        baseline_id = str(uuid.uuid4())
+        run_id = payload.get("run_id")
+        baseline_id = (
+            str(
+                uuid.uuid5(
+                    BASELINE_IDEMPOTENCY_NAMESPACE,
+                    f"{payload['project_id']}:{payload['batch_id']}:{run_id}",
+                )
+            )
+            if run_id
+            else str(uuid.uuid4())
+        )
         record = {
             "id": baseline_id,
             "project_id": payload["project_id"],
@@ -718,31 +986,47 @@ class SceneRepository:
             "created_at": now,
             "updated_at": now,
         }
-        return self._storage.upsert("baselines", baseline_id, record)
+        try:
+            return self._storage.upsert("baselines", baseline_id, record)
+        except StorageConflictError:
+            existing = self.get_baseline(baseline_id)
+            if run_id and existing and existing.get("run_id") == run_id:
+                return existing
+            raise
 
     def update_baseline(self, baseline_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_baseline(baseline_id)
-        if not record:
-            return None
-        for key, value in payload.items():
-            if value is None:
-                continue
-            if key == "items":
-                record["items"] = value
-            else:
+        def mutate(record: Dict[str, Any]) -> None:
+            for key, value in payload.items():
+                if value is None:
+                    continue
                 record[key] = value
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("baselines", baseline_id, record)
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("baselines", baseline_id, mutate)
 
     def append_baseline_item(self, baseline_id: str, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_baseline(baseline_id)
-        if not record:
-            return None
-        items = record.get("items") or []
-        items.append(item)
-        record["items"] = items
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("baselines", baseline_id, record)
+        def identity(value: Dict[str, Any]) -> Tuple[Any, Any, Any, Any]:
+            viewport = value.get("viewport") or {}
+            return (
+                value.get("task_id"),
+                value.get("browser"),
+                viewport.get("width"),
+                viewport.get("height"),
+            )
+
+        def mutate(record: Dict[str, Any]) -> None:
+            items = list(record.get("items") or [])
+            item_identity = identity(item)
+            for index, existing in enumerate(items):
+                if identity(existing) == item_identity:
+                    items[index] = item
+                    break
+            else:
+                items.append(item)
+            record["items"] = items
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("baselines", baseline_id, mutate)
 
     def delete_baseline(self, baseline_id: str) -> None:
         store = get_artifact_store()
@@ -760,11 +1044,14 @@ class SceneRepository:
         project_id: Optional[str] = None,
         batch_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        items = self._storage.list("runs")
-        if project_id:
-            items = [it for it in items if it.get("project_id") == project_id]
         if batch_id:
-            items = [it for it in items if it.get("batch_id") == batch_id]
+            items = self._storage.filter("runs", key="batch_id", value=batch_id)
+            if project_id:
+                items = [it for it in items if it.get("project_id") == project_id]
+        elif project_id:
+            items = self._storage.filter("runs", key="project_id", value=project_id)
+        else:
+            items = self._storage.list("runs")
         normalized = [
             run
             for run in (_with_spm_ticket(item) for item in items)
@@ -777,7 +1064,17 @@ class SceneRepository:
 
     def create_run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
-        run_id = str(uuid.uuid4())
+        idempotency_key = str(payload.get("idempotency_key") or "").strip() or None
+        run_id = (
+            str(
+                uuid.uuid5(
+                    RUN_IDEMPOTENCY_NAMESPACE,
+                    f"{payload['project_id']}:{payload['batch_id']}:{idempotency_key}",
+                )
+            )
+            if idempotency_key
+            else str(uuid.uuid4())
+        )
         spm_ticket = _spm_ticket_value(payload)
         if not spm_ticket and payload.get("batch_id"):
             batch = self.get_batch(payload["batch_id"])
@@ -813,23 +1110,59 @@ class SceneRepository:
             "summary": summary,
             "timeout_seconds": timeout_seconds,
             "task_ids": list(payload["task_ids"]) if payload.get("task_ids") is not None else None,
+            "idempotency_key": idempotency_key,
         }
-        return self._storage.upsert("runs", run_id, record)
+        if idempotency_key:
+            record["idempotency_fingerprint"] = _fingerprint(
+                record,
+                (
+                    "project_id",
+                    "batch_id",
+                    "baseline_id",
+                    "purpose",
+                    "requested_by",
+                    "note",
+                    "spm_ticket",
+                    "timeout_seconds",
+                    "task_ids",
+                ),
+            )
+        try:
+            return self._storage.upsert("runs", run_id, record)
+        except StorageConflictError:
+            existing = self.get_run(run_id)
+            if (
+                idempotency_key
+                and existing
+                and existing.get("idempotency_key") == idempotency_key
+                and existing.get("idempotency_fingerprint")
+                == record.get("idempotency_fingerprint")
+            ):
+                return existing
+            raise
 
     def update_run(self, run_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_run(run_id)
-        if not record:
-            return None
-        record.update(
-            {
-                k: v
-                for k, v in payload.items()
-                if v is not None and k not in {"spm_ticket", "jira_issue"}
-            }
-        )
-        _apply_spm_ticket_update(record, payload)
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("runs", run_id, record)
+        def mutate(record: Dict[str, Any]) -> None:
+            requested_status = payload.get("status")
+            current_status = record.get("status")
+            status_conflict = (
+                current_status in TERMINAL_RUN_STATUSES
+                and requested_status is not None
+                and requested_status != current_status
+            )
+            record.update(
+                {
+                    k: v
+                    for k, v in payload.items()
+                    if v is not None
+                    and k not in {"spm_ticket", "jira_issue"}
+                    and not (status_conflict and k == "status")
+                }
+            )
+            _apply_spm_ticket_update(record, payload)
+            record["updated_at"] = _utcnow()
+
+        return self._update_record("runs", run_id, mutate)
 
     def delete_run(self, run_id: str, *, cascade_baseline: bool = False) -> None:
         run = self.get_run(run_id)
@@ -863,9 +1196,10 @@ class SceneRepository:
         *,
         run_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        items = self._storage.list("executions")
         if run_id:
-            items = [it for it in items if it.get("run_id") == run_id]
+            items = self._storage.filter("executions", key="run_id", value=run_id)
+        else:
+            items = self._storage.list("executions")
         return sorted(
             items,
             key=lambda it: (
@@ -879,7 +1213,17 @@ class SceneRepository:
 
     def create_execution(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
-        execution_id = str(uuid.uuid4())
+        idempotency_key = str(payload.get("idempotency_key") or "").strip() or None
+        execution_id = (
+            str(
+                uuid.uuid5(
+                    EXECUTION_IDEMPOTENCY_NAMESPACE,
+                    f"{payload['run_id']}:{idempotency_key}",
+                )
+            )
+            if idempotency_key
+            else str(uuid.uuid4())
+        )
         record = {
             "id": execution_id,
             "run_id": payload["run_id"],
@@ -899,26 +1243,59 @@ class SceneRepository:
             "updated_at": now,
             "started_at": payload.get("started_at"),
             "completed_at": payload.get("completed_at"),
+            "idempotency_key": idempotency_key,
         }
-        return self._storage.upsert("executions", execution_id, record)
+        if idempotency_key:
+            record["idempotency_fingerprint"] = _fingerprint(
+                record,
+                (
+                    "run_id",
+                    "project_id",
+                    "batch_id",
+                    "task_id",
+                    "page_id",
+                    "browser",
+                    "viewport",
+                    "sequence",
+                ),
+            )
+        try:
+            return self._storage.upsert("executions", execution_id, record)
+        except StorageConflictError:
+            existing = self.get_execution(execution_id)
+            if (
+                idempotency_key
+                and existing
+                and existing.get("idempotency_key") == idempotency_key
+                and existing.get("idempotency_fingerprint")
+                == record.get("idempotency_fingerprint")
+            ):
+                return existing
+            raise
 
     def update_execution(self, execution_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        record = self.get_execution(execution_id)
-        if not record:
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            requested_status = payload.get("status")
+            current_status = record.get("status")
+            if (
+                current_status in TERMINAL_EXECUTION_STATUSES
+                and requested_status is not None
+                and requested_status != current_status
+            ):
+                return False
+            for key, value in payload.items():
+                if value is None:
+                    continue
+                if key == "artifacts":
+                    artifacts = record.get("artifacts", {}).copy()
+                    artifacts.update(value)
+                    record["artifacts"] = artifacts
+                else:
+                    record[key] = value
+            record["updated_at"] = _utcnow()
             return None
-        for key, value in payload.items():
-            if value is None:
-                continue
-            if key == "artifacts":
-                artifacts = record.get("artifacts", {}).copy()
-                artifacts.update(value)
-                record["artifacts"] = artifacts
-            elif key == "diff":
-                record["diff"] = value
-            else:
-                record[key] = value
-        record["updated_at"] = _utcnow()
-        return self._storage.upsert("executions", execution_id, record)
+
+        return self._update_record("executions", execution_id, mutate)
 
     def delete_execution(self, execution_id: str) -> None:
         self._storage.delete("executions", execution_id)
@@ -931,24 +1308,56 @@ class SceneRepository:
             "failed": 0,
             "cancelled": 0,
         }
-        for execution in self.list_executions(run_id=run_id):
-            status = execution.get("status", "queued")
-            if status not in counts:
-                continue
-            counts[status] += 1
+        cursor: Optional[str] = None
+        while True:
+            executions, cursor = self.query_page(
+                "executions",
+                key="run_id",
+                value=run_id,
+                limit=100,
+                cursor=cursor,
+            )
+            for execution in executions:
+                status = execution.get("status", "queued")
+                if status in counts:
+                    counts[status] += 1
+            if cursor is None:
+                break
         return counts
 
 
 _repository: Optional[SceneRepository] = None
 
 
+def _build_storage_backend() -> StorageBackend:
+    backend_name = os.environ.get(SCENE_STATE_BACKEND_ENV, "json").strip().lower()
+    if backend_name in {"json", "local"}:
+        return LocalDynamoStorage(resolve_state_path())
+    if backend_name != "dynamodb":
+        raise RuntimeError(
+            f"Unsupported SCENE_STATE_BACKEND '{backend_name}'. Use json or dynamodb."
+        )
+    table_name = os.environ.get(SCENE_DYNAMODB_TABLE_ENV, "").strip()
+    if not table_name:
+        raise RuntimeError(
+            "SCENE_DYNAMODB_TABLE is required when SCENE_STATE_BACKEND=dynamodb"
+        )
+    from app.services.dynamodb_storage import DynamoDBStorage
+
+    return DynamoDBStorage(
+        table_name=table_name,
+        region_name=os.environ.get(SCENE_AWS_REGION_ENV, DEFAULT_AWS_REGION),
+        endpoint_url=os.environ.get(SCENE_DYNAMODB_ENDPOINT_URL_ENV) or None,
+        default_config_factory=_default_config,
+        config_override=_apply_config_env_overrides,
+    )
+
+
 def get_repository() -> SceneRepository:
     """FastAPI dependency to retrieve the singleton repository instance."""
     global _repository
     if _repository is None:
-        storage_path = resolve_state_path()
-        backend = LocalDynamoStorage(storage_path)
-        _repository = SceneRepository(backend)
+        _repository = SceneRepository(_build_storage_backend())
     return _repository
 
 

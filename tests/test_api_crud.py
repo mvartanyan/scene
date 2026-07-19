@@ -74,6 +74,70 @@ def test_project_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     assert resp.json() == []
 
 
+def test_cursor_pages_bound_project_run_and_execution_lists(
+    client: Tuple[TestClient, SceneRepository],
+) -> None:
+    api, repo = client
+    projects = [
+        repo.create_project({"name": f"Project {index}", "slug": f"project-{index}"})
+        for index in range(3)
+    ]
+
+    first_projects = api.get("/api/projects/page", params={"limit": 2})
+    assert first_projects.status_code == 200
+    assert len(first_projects.json()["items"]) == 2
+    cursor = first_projects.json()["next_cursor"]
+    last_projects = api.get(
+        "/api/projects/page", params={"limit": 2, "cursor": cursor}
+    )
+    assert [item["id"] for item in last_projects.json()["items"]] == [projects[2]["id"]]
+    assert last_projects.json()["next_cursor"] is None
+    invalid = api.get("/api/projects/page", params={"cursor": "bad"})
+    assert invalid.status_code == 400
+
+    project = projects[0]
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    runs = [
+        repo.create_run(
+            {
+                "project_id": project["id"],
+                "batch_id": batch["id"],
+                "purpose": "comparison",
+                "idempotency_key": f"invocation-{index}",
+            }
+        )
+        for index in range(3)
+    ]
+    for index, run in enumerate(runs):
+        repo.create_execution(
+            {
+                "run_id": run["id"],
+                "project_id": project["id"],
+                "batch_id": batch["id"],
+                "task_id": f"task-{index}",
+                "task_name": f"Task {index}",
+                "browser": "chromium",
+                "viewport": {"width": 1280, "height": 720},
+                "sequence": 1,
+            }
+        )
+
+    run_page = api.get(
+        "/api/runs/page",
+        params={"project_id": project["id"], "limit": 2},
+    )
+    assert run_page.status_code == 200
+    assert len(run_page.json()["items"]) == 2
+    assert run_page.json()["next_cursor"] is not None
+    execution_page = api.get(
+        f"/api/runs/{runs[0]['id']}/executions/page", params={"limit": 1}
+    )
+    assert execution_page.status_code == 200
+    assert len(execution_page.json()["items"]) == 1
+
+
 def test_page_task_batch_crud_flow(client: Tuple[TestClient, SceneRepository]) -> None:
     api, _repo = client
 

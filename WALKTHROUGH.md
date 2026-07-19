@@ -15,9 +15,9 @@ The UI is organised into three primary areas:
 - `Dockerfile.playwright` produces the `scene-playwright-runner:latest` image used for orchestration.
 - HTMX is vendored locally at `app/static/htmx.min.js` to avoid CDN hiccups.
 - Pillow is bundled into the runner image so reference screenshots can be resized to match observed dimensions before slider display.
-- Mutable runtime state defaults to `.scene/dev.dynamodb.json`; set `SCENE_STATE_PATH` to point at a different JSON state file.
+- Mutable runtime state defaults to `.scene/dev.dynamodb.json`; set `SCENE_STATE_PATH` to point at a different JSON state file. Production selects DynamoDB with `SCENE_STATE_BACKEND=dynamodb`, `AWS_REGION`, and `SCENE_DYNAMODB_TABLE`.
 - Mutable artifacts default to `.scene/artifacts/`; set `SCENE_ARTIFACT_ROOT` to point at another artifact directory.
-- `dev.dynamodb.json` is retained as a tracked demo/seed snapshot. Seed a local runtime copy with `mkdir -p .scene && cp dev.dynamodb.json .scene/dev.dynamodb.json`.
+- `dev.dynamodb.json`, when present in an established workspace, is an ignored local data snapshot. Reuse it explicitly with `SCENE_STATE_PATH=dev.dynamodb.json`; it is not supplied by Git.
 - Local runtime roots, Playwright reports, traces, videos, screenshots, and temp DBs are ignored. Clean disposable local state with `rm -rf .scene frontend/playwright-report frontend/test-results` when retention is no longer useful.
 
 ## Typical Flow
@@ -34,13 +34,18 @@ The UI is organised into three primary areas:
 - `app/services/orchestrator.py` — queue-backed orchestrator, Docker runner integration, diffing, and runtime loading of the Playwright runner script.
 - `app/services/runner_script.py` — the executable Playwright runner injected into containers (auto-scrolls the detected scrollable element and waits for lazy content).
 - `app/services/storage.py` — JSON-backed local persistence, including config defaults, run timeout, and transactional agent setup writes.
+- `app/services/dynamodb_storage.py` — production single-table DynamoDB adapter
+  with conditional versions, GSIs, and continuation cursors.
+- `app/services/config_transfer.py` and `scripts/scene_config.py` — validated,
+  idempotent config-only export/import without run or artifact history.
 - `app/services/run_scope.py` — task-subset validation and execution-count helpers shared by UI/API launch paths.
 - `app/pagination.py` — bounded pagination used by large project and run views.
 - `app/templates/runs/*.html` — HTMX partials for the run log, dashboards, viewers, detail modal.
 - `.scene/artifacts/` — default local screenshots, traces, videos, logs.
-- `dev.dynamodb.json` — tracked demo/seed snapshot, not the mutable default runtime database.
+- `dev.dynamodb.json` — optional ignored workspace snapshot, not the mutable default runtime database.
 - `tests/` — unit/integration coverage for CRUD, orchestrator behaviour, and dashboard rendering.
 - `docs/agent-api.md` — agent-readable REST/MCP contract, served at `/api/agent/docs`.
+- `docs/storage.md` — state backend, table key, bounded-read, and migration contract.
 - `scene_mcp/` — MCP server wrapper that forwards tools to SCENE REST APIs.
 
 Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding issues, and next steps.

@@ -19,22 +19,27 @@ uvicorn app.main:app --reload
 - Hot reload is enabled via `--reload`.
 - Runtime state is written to `.scene/dev.dynamodb.json` and artifacts to `.scene/artifacts/` by default.
 - Override those locations with `SCENE_STATE_PATH=/path/to/state.json` and `SCENE_ARTIFACT_ROOT=/path/to/artifacts`.
+- Production state uses `SCENE_STATE_BACKEND=dynamodb`, `AWS_REGION`, and
+  `SCENE_DYNAMODB_TABLE`. See `docs/storage.md` for the table contract,
+  continuation APIs, and config-only migration workflow.
 
 ## Runtime Data Policy
-- `dev.dynamodb.json` is a tracked demo/seed snapshot, not the default mutable development database.
-- To seed a local runtime database from the tracked snapshot:
+- `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.
+- To reuse that local snapshot as the active database:
   ```bash
-  mkdir -p .scene
-  cp dev.dynamodb.json .scene/dev.dynamodb.json
+  SCENE_STATE_PATH=dev.dynamodb.json uvicorn app.main:app --reload
   ```
 - Local runtime data, Playwright reports, traces, videos, screenshots, and temp DB files are ignored. They can be removed when no longer needed; use `rm -rf .scene frontend/playwright-report frontend/test-results` for a local cleanup.
-- Tests should create state and artifact roots under pytest temporary directories or explicit env-configured paths, never by writing to `dev.dynamodb.json`.
+- Tests should create state and artifact roots under pytest temporary directories or explicit env-configured paths, never by writing to a workspace's `dev.dynamodb.json`.
 
 ## Key Screens & Workflows
 - **Projects**: Select a project then manage Pages, Tasks, and Batches via Bootstrap tabs. Tabs load independently, page/task lists use 25-item pages, and large batch task selectors scroll within a fixed-height region. Inline edit/delete is available via collapsible forms.
 - **Runs**: Launch baseline/comparison runs for all tasks, a one-task smoke scope, or an explicit task selection. The launcher estimates executions and warns above 100 targets before submission. Run history uses 25-item pages and execution overlays use 50-item pages so polling remains bounded. The baseline picker refreshes via `/api/batches/{id}/baselines`, filtering out failed recordings so operators only see completed baselines.
 - **Config**: Use the gear icon in the navbar to toggle browser availability, manage viewport presets, switch timestamp display, and set the default run timeout. Browsers/viewports that are in use stay locked; add new entries with the inline form.
 - **Agent API/MCP**: Agents should discover capabilities via `/api/agent/manifest`, read docs from `/api/agent/docs`, and use `python -m scene_mcp.server` for MCP access. Set `SCENE_API_TOKEN` to require bearer auth for mutation/control endpoints.
+- **State transfer**: `scripts/scene_config.py export` creates a private
+  config-only snapshot; `import` validates by default and requires `--apply` to
+  write. Runs, baselines, executions, and artifact history are never imported.
 
 ## Run Tests
 ```bash
@@ -46,6 +51,9 @@ pytest
 - Docker is required; the Playwright container image is `scene-playwright-runner:latest` (built from `Dockerfile.playwright`).
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
 - Run records can carry `task_ids`; when present, the orchestrator expands only that validated subset while preserving the batch's task order. Omitting `task_ids` retains full-batch behaviour.
+- REST/SPM callers should provide `idempotency_key` when launching a run. A
+  retried request returns the same run; reusing the key for different launch
+  parameters returns a conflict.
 - Artifacts are stored under `.scene/artifacts/runs/<run>/<execution>/` by default and exposed via `/artifacts/...`.
 - Each execution waits up to 60 s for `page.goto(..., networkidle)` and then idles an additional 7 s by default (`post_wait_ms`, configurable under *Capture Stabilization*) before capturing; add preparatory actions such as `disable_animations` or `wait` to tune per-page behaviour. The same actions/JS are replayed for reference URLs prior to their capture, and reference screenshots are padded server-side to match the observed dimensions so sliders stay aligned. The runner logic now lives in `app/services/runner_script.py` (imported at runtime by the orchestrator) and auto-scrolls lazily rendered pages by driving the actual scrolling container, backing off only when `scrollHeight` stops growing.
 

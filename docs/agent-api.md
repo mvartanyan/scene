@@ -120,6 +120,7 @@ curl -X POST http://127.0.0.1:8000/api/runs \
     "purpose": "baseline_recording",
     "requested_by": "agent",
     "spm_ticket": "SCENE-123",
+    "idempotency_key": "spm-invocation-456",
     "task_ids": ["<optional-task-id>"]
   }'
 ```
@@ -134,6 +135,7 @@ curl -X POST http://127.0.0.1:8000/api/batches/<batch-id>/comparison-runs \
     "requested_by": "spm",
     "spm_ticket": "SCENE-123",
     "note": "ticket success criteria",
+    "idempotency_key": "spm-invocation-456",
     "task_ids": ["<optional-task-id>"]
   }'
 ```
@@ -143,6 +145,21 @@ curl -X POST http://127.0.0.1:8000/api/batches/<batch-id>/comparison-runs \
 ID must belong to the selected batch and at least one task is required. SCENE
 stores the scope on the run and expands only those tasks, in batch order. Omit
 the field to run the complete batch.
+
+SPM and other unattended callers must send a stable `idempotency_key` for each
+logical invocation. Retrying the same launch returns the same run. Reusing the
+key with different launch parameters returns `409`.
+
+For large reads, use the cursor endpoints instead of collecting an unbounded
+list:
+
+```bash
+curl "http://127.0.0.1:8000/api/runs/page?project_id=<project-id>&limit=25"
+curl "http://127.0.0.1:8000/api/runs/<run-id>/executions/page?limit=50&cursor=<next-cursor>"
+```
+
+The response contains `items` and `next_cursor`. Treat the cursor as opaque and
+omit it when `next_cursor` is null.
 
 Read status and results:
 

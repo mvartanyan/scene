@@ -122,6 +122,11 @@ def test_agent_manifest_docs_and_openapi(client: Tuple[TestClient, SceneReposito
     assert openapi["paths"]["/api/agent/setup"]["post"]["operationId"] == "apply_agent_setup"
     assert "HTTPBearer" in openapi["components"]["securitySchemes"]
 
+    readiness = api.get("/api/orchestrator/readiness")
+    assert readiness.status_code == 200
+    assert readiness.json()["state"]["ok"] is True
+    assert readiness.json()["state"]["backend"] == "json"
+
 
 def test_agent_token_auth_guards_mutation_routes(
     monkeypatch,

@@ -28,6 +28,9 @@ cp .env.staging.example .env.staging
 Required staging variables:
 
 - `SCENE_STATE_PATH`: JSON state file, for example `/var/lib/scene/staging/state/scene.dynamodb.json`.
+- `SCENE_STATE_BACKEND`: `json` for this single-host profile or `dynamodb` for
+  the k3s production profile. DynamoDB also requires `AWS_REGION` and
+  `SCENE_DYNAMODB_TABLE`; see `docs/storage.md`.
 - `SCENE_ARTIFACT_ROOT`: persistent artifact directory, for example `/var/lib/scene/staging/artifacts`.
 - `SCENE_ARTIFACT_BASE_URL`: artifact URL prefix, normally `/artifacts`.
 - `SCENE_ARTIFACT_STORAGE`: storage class for this profile. Use `filesystem` for local Linux Docker staging.

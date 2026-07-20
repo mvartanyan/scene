@@ -1099,7 +1099,6 @@ def test_dynamodb_backend_uses_indexes_conditional_versions_and_opaque_pages() -
     storage.upsert("runs", "run-1", first)
     assert table.put_requests[-1]["ExpressionAttributeNames"] == {
         "#pk": "pk",
-        "#sk": "sk",
         "#version": "version",
     }
     with pytest.raises(StorageConflictError):
@@ -1135,6 +1134,23 @@ def test_dynamodb_backend_uses_indexes_conditional_versions_and_opaque_pages() -
 
     assert storage.probe()["write_read_delete"] is True
     assert not any(key[0] == "COLLECTION#probes" for key in table.items)
+
+
+def test_dynamodb_backend_legacy_version_write_uses_only_referenced_aliases() -> None:
+    table = _FakeDynamoTable()
+    storage = _dynamo_storage(table)
+    table.items[("COLLECTION#runs", "run-legacy")] = {
+        "pk": "COLLECTION#runs",
+        "sk": "run-legacy",
+        "id": "run-legacy",
+    }
+
+    storage.upsert("runs", "run-legacy", {"id": "run-legacy", "_version": 0})
+
+    assert table.put_requests[-1]["ExpressionAttributeNames"] == {
+        "#pk": "pk",
+        "#version": "version",
+    }
 
 
 def test_dynamodb_backend_fails_closed_on_wrong_index_schema() -> None:

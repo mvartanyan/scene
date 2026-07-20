@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
-import sys
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
 from urllib import error, request
 from urllib.parse import urlparse
+
+
+BROWSER_SMOKE_NAMES = ("chromium", "firefox")
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +44,16 @@ def parse_args() -> argparse.Namespace:
         "--allow-host-docker-internal",
         action="store_true",
         help="Allow host.docker.internal callbacks for local Docker smoke checks.",
+    )
+    parser.add_argument(
+        "--browser-smoke",
+        action="store_true",
+        help="Launch the supported browsers using the production runner's launch contract.",
+    )
+    parser.add_argument(
+        "--runner-script",
+        default=os.environ.get("SCENE_RUNNER_SCRIPT_PATH", "/opt/scene/runner.py"),
+        help="Production runner script that owns the browser launch contract.",
     )
     parser.add_argument(
         "--json",
@@ -135,6 +148,78 @@ def check_artifact_dir(
     }
 
 
+def _load_browser_launcher(runner_script: str):
+    path = Path(runner_script).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Runner script does not exist: {path}")
+    spec = importlib.util.spec_from_file_location("scene_runner_readiness_contract", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load runner script: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    launch_browser = getattr(module, "launch_browser", None)
+    if not callable(launch_browser):
+        raise RuntimeError(f"Runner script does not expose launch_browser(): {path}")
+    return launch_browser
+
+
+def check_browser_launches(
+    artifact_dir: str | None,
+    *,
+    runner_script: str,
+) -> dict[str, Any]:
+    if not artifact_dir:
+        return {
+            "name": "browser_launch",
+            "ok": False,
+            "message": "Artifact directory is required for browser readiness.",
+        }
+
+    root = Path(artifact_dir).expanduser()
+    screenshots: list[Path] = []
+    browser = None
+    try:
+        launch_browser = _load_browser_launcher(runner_script)
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as playwright:
+            for browser_name in BROWSER_SMOKE_NAMES:
+                browser_type = getattr(playwright, browser_name)
+                browser = launch_browser(browser_type, browser_name)
+                page = browser.new_page(viewport={"width": 1280, "height": 720})
+                page.set_content("<title>SCENE readiness</title><h1>ready</h1>")
+                if page.title() != "SCENE readiness" or page.locator("h1").inner_text() != "ready":
+                    raise RuntimeError(f"{browser_name} rendered unexpected readiness content")
+                screenshot = root / f".{browser_name}-readiness-{uuid.uuid4().hex}.png"
+                screenshots.append(screenshot)
+                page.screenshot(path=str(screenshot))
+                browser.close()
+                browser = None
+    except Exception as exc:
+        return {
+            "name": "browser_launch",
+            "ok": False,
+            "message": f"Browser readiness failed: {type(exc).__name__}: {exc}",
+        }
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        for screenshot in screenshots:
+            screenshot.unlink(missing_ok=True)
+
+    return {
+        "name": "browser_launch",
+        "ok": True,
+        "message": (
+            "Production launch settings started Chromium and Firefox; Chromium uses the "
+            "mounted /dev/shm and remains unsandboxed inside the restricted pod boundary."
+        ),
+    }
+
+
 def main() -> int:
     args = parse_args()
     checks: list[dict[str, Any]] = []
@@ -157,6 +242,13 @@ def main() -> int:
             expected_storage=args.expected_storage,
         )
     )
+    if args.browser_smoke:
+        checks.append(
+            check_browser_launches(
+                args.artifact_dir,
+                runner_script=args.runner_script,
+            )
+        )
     ok = all(check["ok"] for check in checks)
     payload = {
         "status": "ok" if ok else "failed",

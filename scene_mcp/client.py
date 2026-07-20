@@ -5,9 +5,13 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from app.services.agent_auth import SCENE_API_TOKEN_HEADER
+
 SCENE_BASE_URL_ENV = "SCENE_BASE_URL"
 SCENE_API_TOKEN_ENV = "SCENE_API_TOKEN"
 SCENE_MCP_TIMEOUT_ENV = "SCENE_MCP_TIMEOUT_SECONDS"
+SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV = "SCENE_INGRESS_BASIC_AUTH_USERNAME"
+SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV = "SCENE_INGRESS_BASIC_AUTH_PASSWORD"
 
 
 class SceneClientError(RuntimeError):
@@ -21,17 +25,43 @@ class SceneAgentClient:
         base_url: Optional[str] = None,
         api_token: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
+        ingress_basic_auth_username: Optional[str] = None,
+        ingress_basic_auth_password: Optional[str] = None,
     ) -> None:
         self.base_url = (base_url or os.environ.get(SCENE_BASE_URL_ENV) or "http://127.0.0.1:8000").rstrip("/")
         self.api_token = api_token if api_token is not None else os.environ.get(SCENE_API_TOKEN_ENV)
         if timeout_seconds is None:
             timeout_seconds = float(os.environ.get(SCENE_MCP_TIMEOUT_ENV, "30"))
         self.timeout_seconds = timeout_seconds
+        self._ingress_username = (
+            ingress_basic_auth_username
+            if ingress_basic_auth_username is not None
+            else os.environ.get(SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV)
+        )
+        self._ingress_password = (
+            ingress_basic_auth_password
+            if ingress_basic_auth_password is not None
+            else os.environ.get(SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV)
+        )
+        if bool(self._ingress_username) != bool(self._ingress_password):
+            raise SceneClientError(
+                "Ingress BasicAuth requires both "
+                f"{SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV} and "
+                f"{SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV}"
+            )
+        self._ingress_auth = (
+            httpx.BasicAuth(self._ingress_username, self._ingress_password)
+            if self._ingress_username and self._ingress_password
+            else None
+        )
 
     def _headers(self) -> Dict[str, str]:
         headers = {"Accept": "application/json"}
         if self.api_token:
-            headers["Authorization"] = f"Bearer {self.api_token}"
+            if self._ingress_auth is None:
+                headers["Authorization"] = f"Bearer {self.api_token}"
+            else:
+                headers[SCENE_API_TOKEN_HEADER] = self.api_token
         return headers
 
     def request(
@@ -43,7 +73,7 @@ class SceneAgentClient:
         params: Optional[Dict[str, Any]] = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
-        with httpx.Client(timeout=self.timeout_seconds) as client:
+        with httpx.Client(timeout=self.timeout_seconds, auth=self._ingress_auth) as client:
             response = client.request(
                 method,
                 url,

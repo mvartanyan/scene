@@ -30,6 +30,7 @@ AWS_REGION_ENV = "AWS_REGION"
 DEFAULT_GET_TTL_SECONDS = 300
 DEFAULT_PUT_TTL_SECONDS = 900
 MAX_PRESIGN_TTL_SECONDS = 3600
+MAX_DELETE_SWEEPS = 5
 
 
 def _positive_ttl(name: str, default: int) -> int:
@@ -43,6 +44,11 @@ def _positive_ttl(name: str, default: int) -> int:
 
 def _clean_segment(value: object) -> str:
     return str(value or "").strip().strip("/")
+
+
+def _version_id(value: Mapping[str, object]) -> Optional[str]:
+    version_id = str(value.get("version_id") or "").strip()
+    return version_id or None
 
 
 class S3ArtifactStore(ArtifactStore):
@@ -158,8 +164,12 @@ class S3ArtifactStore(ArtifactStore):
         label: str,
         content_type: Optional[str] = None,
         sha256: Optional[str] = None,
+        version_id: Optional[str] = None,
     ) -> Dict[str, object]:
-        head = self._client.head_object(Bucket=self.bucket, Key=key)
+        head_request: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
+        if version_id:
+            head_request["VersionId"] = version_id
+        head = self._client.head_object(**head_request)
         metadata = head.get("Metadata") or {}
         checksum = sha256 or metadata.get("sha256")
         result: Dict[str, object] = {
@@ -178,8 +188,9 @@ class S3ArtifactStore(ArtifactStore):
         etag = str(head.get("ETag") or "").strip('"')
         if etag:
             result["etag"] = etag
-        if head.get("VersionId"):
-            result["version_id"] = str(head["VersionId"])
+        resolved_version_id = str(head.get("VersionId") or version_id or "").strip()
+        if resolved_version_id:
+            result["version_id"] = resolved_version_id
         return result
 
     def materialize(self, artifact: Mapping[str, object], destination: Optional[Path] = None) -> Path:
@@ -193,7 +204,16 @@ class S3ArtifactStore(ArtifactStore):
             suffix = Path(key).suffix
             destination = self.root / "materialized" / f"{digest}{suffix}"
         destination.parent.mkdir(parents=True, exist_ok=True)
-        self._client.download_file(self.bucket, key, str(destination))
+        version_id = _version_id(artifact)
+        if version_id:
+            self._client.download_file(
+                self.bucket,
+                key,
+                str(destination),
+                ExtraArgs={"VersionId": version_id},
+            )
+        else:
+            self._client.download_file(self.bucket, key, str(destination))
         return destination
 
     def download_url(self, artifact: Mapping[str, object]) -> Optional[str]:
@@ -203,9 +223,13 @@ class S3ArtifactStore(ArtifactStore):
         key = str(artifact.get("key") or artifact.get("path") or "")
         if not key:
             return None
+        params: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
+        version_id = _version_id(artifact)
+        if version_id:
+            params["VersionId"] = version_id
         return self._client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": self.bucket, "Key": key},
+            Params=params,
             ExpiresIn=self.get_ttl_seconds,
         )
 
@@ -298,7 +322,14 @@ class S3ArtifactStore(ArtifactStore):
             key = str(raw_receipt.get("key") or "")
             if not key or key != str(expected.get("key") or ""):
                 raise ValueError(f"Artifact upload receipt '{kind}' has the wrong key.")
-            head = self._client.head_object(Bucket=self.bucket, Key=key)
+            receipt_version_id = _version_id(raw_receipt)
+            head_request: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
+            if receipt_version_id:
+                head_request["VersionId"] = receipt_version_id
+            head = self._client.head_object(**head_request)
+            actual_version_id = str(head.get("VersionId") or receipt_version_id or "").strip()
+            if receipt_version_id and actual_version_id and receipt_version_id != actual_version_id:
+                raise ValueError(f"Artifact upload receipt '{kind}' has the wrong version.")
             expected_size = raw_receipt.get("size_bytes")
             if expected_size is not None and int(expected_size) != int(head.get("ContentLength") or 0):
                 raise ValueError(f"Artifact upload receipt '{kind}' has the wrong size.")
@@ -312,7 +343,10 @@ class S3ArtifactStore(ArtifactStore):
                 raise ValueError(f"Artifact upload receipt '{kind}' has the wrong checksum.")
             verified_sha = stored_sha
             if expected_sha and not verified_sha:
-                response = self._client.get_object(Bucket=self.bucket, Key=key)
+                get_request: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
+                if actual_version_id:
+                    get_request["VersionId"] = actual_version_id
+                response = self._client.get_object(**get_request)
                 digest = hashlib.sha256()
                 body = response["Body"]
                 for chunk in iter(lambda: body.read(1024 * 1024), b""):
@@ -326,21 +360,71 @@ class S3ArtifactStore(ArtifactStore):
                 label=str(kind).replace("_", " ").title(),
                 content_type=str(expected.get("content_type") or "application/octet-stream"),
                 sha256=verified_sha or expected_sha or None,
+                version_id=actual_version_id or None,
             )
         return verified
 
+    def _list_exact_versions(self, keys: Iterable[str]) -> list[dict[str, str]]:
+        identifiers: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for key in keys:
+            request: Dict[str, object] = {"Bucket": self.bucket, "Prefix": key}
+            while True:
+                response = self._client.list_object_versions(**request)
+                for item in [
+                    *(response.get("Versions") or []),
+                    *(response.get("DeleteMarkers") or []),
+                ]:
+                    if str(item.get("Key") or "") != key:
+                        continue
+                    version_id = str(item.get("VersionId") or "").strip()
+                    identifier = (key, version_id)
+                    if version_id and identifier not in seen:
+                        seen.add(identifier)
+                        identifiers.append({"Key": key, "VersionId": version_id})
+                if not response.get("IsTruncated"):
+                    break
+                request["KeyMarker"] = response.get("NextKeyMarker")
+                request["VersionIdMarker"] = response.get("NextVersionIdMarker")
+        return identifiers
+
+    def _delete_version_identifiers(self, identifiers: list[dict[str, str]]) -> None:
+        for start in range(0, len(identifiers), 1000):
+            response = self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": identifiers[start : start + 1000], "Quiet": True},
+            )
+            errors = response.get("Errors") or []
+            if errors:
+                details = ", ".join(
+                    f"{item.get('Key', '<unknown>')}:{item.get('Code', 'Unknown')}"
+                    for item in errors[:10]
+                )
+                raise RuntimeError(f"S3 artifact deletion failed: {details}")
+
     def delete_artifacts(self, artifacts: Iterable[Mapping[str, object]]) -> None:
-        identifiers = []
+        keys: list[str] = []
         seen: set[str] = set()
         for artifact in artifacts:
             key = str(artifact.get("key") or artifact.get("path") or "")
             if key and key not in seen:
                 seen.add(key)
-                identifiers.append({"Key": key})
-        for start in range(0, len(identifiers), 1000):
-            self._client.delete_objects(
-                Bucket=self.bucket,
-                Delete={"Objects": identifiers[start : start + 1000], "Quiet": True},
+                keys.append(key)
+
+        for _sweep in range(MAX_DELETE_SWEEPS):
+            identifiers = self._list_exact_versions(keys)
+            if not identifiers:
+                return
+            self._delete_version_identifiers(identifiers)
+
+        remaining = self._list_exact_versions(keys)
+        if remaining:
+            details = ", ".join(
+                f"{item['Key']}:{item['VersionId']}" for item in remaining[:10]
+            )
+            raise RuntimeError(
+                "S3 artifact deletion did not converge after "
+                f"{MAX_DELETE_SWEEPS} sweeps; object versions continued to appear: {details}"
             )
 
     def purge_run(
@@ -378,20 +462,29 @@ class S3ArtifactStore(ArtifactStore):
     def probe(self) -> Dict[str, object]:
         key = "/".join(part for part in [self.prefix, self.environment, ".probe", str(uuid.uuid4())] if part)
         body = json.dumps({"probe": "scene"}).encode("utf-8")
+        version_id: Optional[str] = None
         try:
-            self._client.put_object(
+            put_response = self._client.put_object(
                 Bucket=self.bucket,
                 Key=key,
                 Body=body,
                 ContentType="application/json",
             )
-            response = self._client.get_object(Bucket=self.bucket, Key=key)
+            if isinstance(put_response, Mapping) and put_response.get("VersionId"):
+                version_id = str(put_response["VersionId"])
+            get_request = {"Bucket": self.bucket, "Key": key}
+            if version_id:
+                get_request["VersionId"] = version_id
+            response = self._client.get_object(**get_request)
             received = response["Body"].read()
             if received != body:
                 raise RuntimeError("S3 artifact probe read did not match its write.")
         finally:
             try:
-                self._client.delete_object(Bucket=self.bucket, Key=key)
+                delete_request = {"Bucket": self.bucket, "Key": key}
+                if version_id:
+                    delete_request["VersionId"] = version_id
+                self._client.delete_object(**delete_request)
             except ClientError:
                 LOGGER.exception("Failed to remove S3 artifact readiness probe object %s", key)
         return {

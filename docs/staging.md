@@ -48,7 +48,7 @@ Required staging variables:
 - `SCENE_DIFF_PIXEL_TOLERANCE`: per-channel pixel tolerance for diff/heatmap metrics. Start with `0`.
 
 k3s uses different settings: `SCENE_RUNNER_BACKEND=k3s`,
-`SCENE_K3S_SERVICE_URL=http://scene.<namespace>.svc.cluster.local:8000`, and
+`SCENE_K3S_SERVICE_URL=http://scene.<namespace>.svc.cluster.local`, and
 `SCENE_ARTIFACT_STORAGE=s3` with a private bucket. See `docs/k3s-runner.md` and
 `docs/artifacts.md`.
 
@@ -123,7 +123,8 @@ python scripts/staging_smoke.py \
 The smoke verifies:
 
 - app health via `/api/orchestrator/ping`
-- runner config via `/api/orchestrator/readiness`
+- dependency and dispatcher readiness via `/readyz`
+- legacy runner config detail via `/api/orchestrator/readiness`
 - pinned runner image is present
 - callback reachability from a runner container
 - host artifact write and read through `/artifacts/...`

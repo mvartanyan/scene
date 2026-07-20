@@ -20,11 +20,11 @@ export SCENE_DYNAMODB_TABLE=scene-staging
 tests only. AWS credentials come from the SCENE app or worker principal. Do not
 put AWS credentials in runner manifests or Jobs.
 
-When `SCENE_STATE_BACKEND=dynamodb`, application startup validates the table and
-all index key schemas, then performs a write/read/delete probe. Startup fails if
-the table is unavailable, incorrectly keyed, or the principal lacks access.
-`GET /api/orchestrator/readiness` repeats the probe and reports the backend,
-region, and table without credentials or record contents.
+When `SCENE_STATE_BACKEND=dynamodb`, constructing the adapter validates the
+table and all index key schemas. `GET /readyz` performs the write/read/delete
+probe and reports a sanitized failure without coupling process liveness to an
+AWS outage. The legacy `GET /api/orchestrator/readiness` also exposes state and
+runner readiness for agent compatibility.
 
 ## Table Model
 

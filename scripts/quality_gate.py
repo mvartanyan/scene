@@ -16,9 +16,10 @@ QUALITY_ROOT = REPO_ROOT / ".scene" / "quality-gate"
 
 
 def _python() -> str:
-    venv_python = REPO_ROOT / "venv" / "bin" / "python"
-    if venv_python.exists():
-        return str(venv_python)
+    for environment in (".venv", "venv"):
+        venv_python = REPO_ROOT / environment / "bin" / "python"
+        if venv_python.exists():
+            return str(venv_python)
     return sys.executable
 
 
@@ -53,9 +54,11 @@ def _frontend_env(env: dict[str, str]) -> dict[str, str]:
         )
     frontend_env.setdefault("BASE_URL", base_url)
     frontend_env.setdefault("API_BASE_URL", base_url.rstrip("/") + "/api")
-    frontend_env.setdefault("SCENE_RUNNER_BACKEND", "k3s")
+    # UI tests need a stable terminal execution but do not exercise Docker or k3s.
+    frontend_env.setdefault("SCENE_RUNNER_BACKEND", "worker")
     frontend_env.setdefault("SCENE_RUNNER_IMAGE", "scene-playwright-runner:1.47.0-jammy")
     frontend_env.setdefault("SCENE_RUNNER_IMAGE_AUTOBUILD", "false")
+    frontend_env.setdefault("SCENE_RUNNER_CALLBACK_BASE_URL", base_url)
     frontend_env.setdefault("SCENE_K3S_SERVICE_URL", base_url)
     frontend_env.setdefault("SCENE_ARTIFACT_STORAGE", "pvc")
     frontend_env.setdefault("SCENE_ARTIFACT_PVC_CLAIM", "scene-quality-gate")
@@ -63,8 +66,32 @@ def _frontend_env(env: dict[str, str]) -> dict[str, str]:
     return frontend_env
 
 
+def _integration_env(env: dict[str, str]) -> dict[str, str]:
+    integration_env = env.copy()
+    if integration_env.get("DOCKER_HOST") or not shutil.which("docker"):
+        return integration_env
+    context = subprocess.run(
+        ["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    endpoint = context.stdout.strip()
+    if context.returncode == 0 and endpoint:
+        integration_env["DOCKER_HOST"] = endpoint
+    return integration_env
+
+
+def _staging_env() -> dict[str, str]:
+    # Compose should validate its own defaults, not paths injected for pytest.
+    return os.environ.copy()
+
+
 def _commands(group: str) -> list[list[str]]:
     python = _python()
+    if group == "lint":
+        return [[python, "-m", "ruff", "check", "app", "scene_mcp", "scripts", "tests"]]
     if group == "unit":
         return [[python, "-m", "pytest", "-m", "not integration", "-q"]]
     if group == "integration":
@@ -91,7 +118,7 @@ def _expand_groups(groups: Iterable[str]) -> list[str]:
     expanded: list[str] = []
     for group in groups:
         if group == "all":
-            expanded.extend(["unit", "integration", "frontend", "staging-config"])
+            expanded.extend(["lint", "unit", "integration", "frontend", "staging-config"])
         else:
             expanded.append(group)
     return expanded
@@ -124,8 +151,11 @@ def main() -> int:
         "groups",
         nargs="*",
         default=["unit"],
-        choices=["unit", "integration", "frontend", "staging-config", "all"],
-        help="Quality gate group(s) to run. Use 'all' for unit, integration, frontend, and staging config.",
+        choices=["lint", "unit", "integration", "frontend", "staging-config", "all"],
+        help=(
+            "Quality gate group(s) to run. Use 'all' for lint, unit, integration, "
+            "frontend, and staging config."
+        ),
     )
     parser.add_argument("--dry-run", action="store_true", help="Print commands without running them.")
     args = parser.parse_args()
@@ -134,7 +164,14 @@ def main() -> int:
     QUALITY_ROOT.mkdir(parents=True, exist_ok=True)
     for group in _expand_groups(args.groups):
         _prepare_group(group, dry_run=args.dry_run)
-        group_env = _frontend_env(env) if group == "frontend" else env
+        if group == "frontend":
+            group_env = _frontend_env(env)
+        elif group == "integration":
+            group_env = _integration_env(env)
+        elif group == "staging-config":
+            group_env = _staging_env()
+        else:
+            group_env = env
         for command in _commands(group):
             result = _run(command, group_env, dry_run=args.dry_run)
             if result != 0:

@@ -141,11 +141,20 @@ def test_presigned_outputs_upload_before_result_and_receipts_reach_callback(
 
     monkeypatch.setattr(runner_script, "CALLBACK_URL", "https://scene.test/executions/1/complete")
     monkeypatch.setattr(runner_script, "CALLBACK_TOKEN", "callback-token")
+    monkeypatch.setattr(runner_script, "RUN_ID", "run-1")
+    monkeypatch.setattr(runner_script, "EXECUTION_ID", "execution-1")
+    monkeypatch.setattr(runner_script, "DISPATCH_GENERATION", "3")
     assert runner_script._post_result(callback_result)
     callback_request = requests[-1]
     assert callback_request["method"] == "POST"
     callback_payload = json.loads(callback_request["data"])
-    assert callback_payload == {"token": "callback-token", "result": callback_result}
+    assert callback_payload == {
+        "token": "callback-token",
+        "run_id": "run-1",
+        "execution_id": "execution-1",
+        "dispatch_generation": 3,
+        "result": callback_result,
+    }
     assert "https://" not in callback_request["data"].decode("utf-8")
 
     output = capsys.readouterr().out

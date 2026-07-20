@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes import api as api_routes
 from app.routes import runs as runs_routes
-from app.schemas import BaselineStatus, ExecutionStatus, RunPurpose, RunStatus
+from app.schemas import BaselineStatus, ExecutionStatus, RunStatus
 from app.services.storage import LocalDynamoStorage, SceneRepository, get_repository
 
 

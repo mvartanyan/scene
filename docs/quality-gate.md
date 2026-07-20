@@ -4,24 +4,43 @@ SCENE changes should pass the same deterministic gate locally and in CI before t
 
 ## Local Commands
 
+Run static checks:
+
+```bash
+uv run python scripts/quality_gate.py lint
+```
+
+This runs Ruff against application, MCP, script, and test code from the locked
+development environment.
+
 Run the fast unit gate:
 
 ```bash
-venv/bin/python scripts/quality_gate.py unit
+uv run python scripts/quality_gate.py unit
 ```
 
 Run Docker-backed integration coverage:
 
 ```bash
-venv/bin/python scripts/quality_gate.py integration
+uv run python scripts/quality_gate.py integration
 ```
 
 Run frontend Playwright coverage. By default this starts an isolated local app on
 an available loopback port with state and artifacts under `.scene/quality-gate/`:
 
 ```bash
-venv/bin/python scripts/quality_gate.py frontend
+uv run python scripts/quality_gate.py frontend
 ```
+
+The UI-only harness uses the reserved fail-closed `worker` backend so seeded
+runs produce deterministic terminal records without launching Docker or
+pretending that a k3s dispatcher is present. Kubernetes dispatch acceptance is
+run separately from `deploy/k3s`.
+
+The integration group honors an explicit `DOCKER_HOST`. When it is unset, the
+gate resolves the active Docker CLI context and passes that endpoint to the
+Python Docker SDK. Colima and other non-default local sockets therefore require
+no machine-specific shell export.
 
 Set `BASE_URL` and `API_BASE_URL` to test an already-running environment. A
 Playwright-managed server is never reused unless `PW_REUSE_EXISTING_SERVER=true`
@@ -31,24 +50,30 @@ readiness probe.
 Render the staging Compose configuration:
 
 ```bash
-venv/bin/python scripts/quality_gate.py staging-config
+uv run python scripts/quality_gate.py staging-config
 ```
+
+This group renders the Compose file against its staging defaults. The isolated
+pytest state and artifact paths are intentionally not forwarded into Compose.
 
 Run the full local gate:
 
 ```bash
-venv/bin/python scripts/quality_gate.py all
+uv run python scripts/quality_gate.py all
 ```
 
 ## CI Contract
 
-A Linux CI job should run these commands from a clean checkout after installing Python and frontend dependencies:
+A Linux CI job should run these commands from a clean checkout after installing
+Python, `uv`, and frontend dependencies:
 
 ```bash
-python -m pytest -m "not integration" -q
-python -m pytest -m integration -q
+uv sync --extra dev --locked
+uv run python scripts/quality_gate.py lint
+uv run python -m pytest -m "not integration" -q
+uv run python -m pytest -m integration -q
 npm --prefix frontend ci
-python scripts/quality_gate.py frontend
+uv run python scripts/quality_gate.py frontend
 docker compose -f docker-compose.staging.yml config
 ```
 

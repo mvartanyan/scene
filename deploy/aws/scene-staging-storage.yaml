@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Retained DynamoDB and S3 storage plus the least-privilege IAM principal used by
+  SCENE staging on the non-AWS horse k3s cluster.
+
+Metadata:
+  Scene:
+    StackName: scene-staging-storage
+    Region: eu-central-1
+    Ticket: SCENE-13
+
+Parameters:
+  DeploymentEnvironment:
+    Type: String
+    Default: staging
+    AllowedValues:
+      - staging
+    Description: Environment segment used in the private artifact object prefix.
+  DynamoDBTableName:
+    Type: String
+    Default: scene-staging
+    AllowedPattern: "^[a-zA-Z0-9_.-]{3,255}$"
+    Description: Name of the SCENE single-table DynamoDB table.
+  ArtifactRootPrefix:
+    Type: String
+    Default: scene
+    AllowedPattern: "^[a-zA-Z0-9][a-zA-Z0-9._-]*(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$"
+    Description: Root prefix; the environment name is appended by the application.
+  ApplicationUserName:
+    Type: String
+    Default: scene-staging-app
+    AllowedPattern: "^[a-zA-Z0-9+=,.@_-]{1,64}$"
+    Description: Dedicated IAM user for the app and dispatcher; no access key is created.
+
+Resources:
+  SceneTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName:
+        Ref: DynamoDBTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+        - AttributeName: gsi2pk
+          AttributeType: S
+        - AttributeName: gsi2sk
+          AttributeType: S
+        - AttributeName: gsi3pk
+          AttributeType: S
+        - AttributeName: gsi3sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi2
+          KeySchema:
+            - AttributeName: gsi2pk
+              KeyType: HASH
+            - AttributeName: gsi2sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi3
+          KeySchema:
+            - AttributeName: gsi3pk
+              KeyType: HASH
+            - AttributeName: gsi3sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      DeletionProtectionEnabled: true
+      Tags:
+        - Key: application
+          Value: scene
+        - Key: environment
+          Value:
+            Ref: DeploymentEnvironment
+        - Key: managed-by
+          Value: cloudformation
+
+  SceneArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: application
+          Value: scene
+        - Key: environment
+          Value:
+            Ref: DeploymentEnvironment
+        - Key: managed-by
+          Value: cloudformation
+
+  SceneArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Bucket:
+        Ref: SceneArtifactBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - Fn::GetAtt:
+                  - SceneArtifactBucket
+                  - Arn
+              - Fn::Sub: "${SceneArtifactBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: DenyOutdatedTls
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - Fn::GetAtt:
+                  - SceneArtifactBucket
+                  - Arn
+              - Fn::Sub: "${SceneArtifactBucket.Arn}/*"
+            Condition:
+              NumericLessThan:
+                s3:TlsVersion: "1.2"
+
+  SceneApplicationUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName:
+        Ref: ApplicationUserName
+      Tags:
+        - Key: application
+          Value: scene
+        - Key: environment
+          Value:
+            Ref: DeploymentEnvironment
+        - Key: managed-by
+          Value: cloudformation
+
+  SceneApplicationPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Least-privilege SCENE staging access to its table and artifact prefix.
+      Users:
+        - Ref: SceneApplicationUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DynamoDBTableData
+            Effect: Allow
+            Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:Query
+              - dynamodb:TransactGetItems
+              - dynamodb:TransactWriteItems
+              - dynamodb:UpdateItem
+            Resource:
+              - Fn::GetAtt:
+                  - SceneTable
+                  - Arn
+              - Fn::Sub: "${SceneTable.Arn}/index/*"
+          - Sid: S3BucketLocation
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+            Resource:
+              - Fn::GetAtt:
+                  - SceneArtifactBucket
+                  - Arn
+          - Sid: S3ArtifactVersionListing
+            Effect: Allow
+            Action:
+              - s3:ListBucketVersions
+            Resource:
+              - Fn::GetAtt:
+                  - SceneArtifactBucket
+                  - Arn
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - Fn::Sub: "${ArtifactRootPrefix}/${DeploymentEnvironment}/*"
+          - Sid: S3ArtifactObjects
+            Effect: Allow
+            Action:
+              - s3:AbortMultipartUpload
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:ListMultipartUploadParts
+              - s3:PutObject
+            Resource:
+              - Fn::Sub: >-
+                  ${SceneArtifactBucket.Arn}/${ArtifactRootPrefix}/${DeploymentEnvironment}/*
+
+Outputs:
+  DynamoDBTableName:
+    Description: Value for SCENE_DYNAMODB_TABLE.
+    Value:
+      Ref: SceneTable
+  DynamoDBTableArn:
+    Description: ARN of the retained SCENE staging table.
+    Value:
+      Fn::GetAtt:
+        - SceneTable
+        - Arn
+  ArtifactBucketName:
+    Description: Generated private bucket name for SCENE_S3_BUCKET.
+    Value:
+      Ref: SceneArtifactBucket
+  ArtifactBucketArn:
+    Description: ARN of the retained artifact bucket.
+    Value:
+      Fn::GetAtt:
+        - SceneArtifactBucket
+        - Arn
+  ArtifactRootPrefix:
+    Description: Value for SCENE_S3_PREFIX; SCENE_ENV appends the environment segment.
+    Value:
+      Ref: ArtifactRootPrefix
+  ApplicationUserName:
+    Description: IAM user whose access key is created and rotated operationally.
+    Value:
+      Ref: SceneApplicationUser
+  ApplicationUserArn:
+    Description: ARN of the dedicated non-AWS k3s application principal.
+    Value:
+      Fn::GetAtt:
+        - SceneApplicationUser
+        - Arn
+  ApplicationPolicyArn:
+    Description: ARN of the attached least-privilege managed policy.
+    Value:
+      Ref: SceneApplicationPolicy

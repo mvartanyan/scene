@@ -1,6 +1,3 @@
-import os
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -8,24 +5,15 @@ from fastapi.staticfiles import StaticFiles
 from app.routes import api
 from app.routes import artifacts
 from app.routes import config as config_ui
+from app.routes import operations
 from app.routes import projects as projects_ui
 from app.routes import runs as runs_ui
-from app.services.artifacts import get_artifact_store
-from app.services.storage import SCENE_STATE_BACKEND_ENV, get_repository
 from app.services.storage_types import InvalidStorageCursorError, StorageConflictError
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    if os.environ.get(SCENE_STATE_BACKEND_ENV, "json").strip().lower() == "dynamodb":
-        get_repository().probe()
-    if os.environ.get("SCENE_ARTIFACT_STORAGE", "filesystem").strip().lower() in {"s3", "object"}:
-        get_artifact_store().probe()
-    yield
-
-
-app = FastAPI(title="Scene Visual Testing Dashboard", lifespan=lifespan)
+app = FastAPI(title="Scene Visual Testing Dashboard")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(operations.router)
 app.include_router(api.router)
 app.include_router(artifacts.router)
 app.include_router(config_ui.router)

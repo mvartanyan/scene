@@ -369,6 +369,9 @@ class ExecutionCursorPage(BaseModel):
 class ExecutionCallbackRequest(BaseModel):
     token: str
     result: Dict[str, object]
+    run_id: Optional[str] = None
+    execution_id: Optional[str] = None
+    dispatch_generation: Optional[int] = None
 
 
 class BaselineItem(BaseModel):

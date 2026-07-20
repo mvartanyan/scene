@@ -161,6 +161,33 @@
 - Run selection is persisted via `data-scene-selected-run`, so htmx refreshes keep the user’s chosen execution in focus, preparatory/task actions can now be configured declaratively alongside custom JS with structured logging, cookie-banner/animation suppression lives in configuration instead of bespoke snippets, and the default post-capture wait is configurable (currently 7 s) to absorb late UI transitions.
 
 ## Session Updates
+- SCENE-15 adds process-only `/healthz`, dependency-aware `/readyz`, sanitized
+  `/version`, and bounded Prometheus `/metrics`. Dependency initialization and
+  probe errors return a no-secret 503 readiness report instead of preventing
+  liveness. k3s readiness also requires a fresh dispatcher lease and a current
+  successful Kubernetes Job/Secret/Pod permission audit published by the
+  dispatcher; Docker mode does not require that lease.
+- SCENE-7 adds a dedicated k3s dispatcher. The FastAPI process materializes the
+  complete execution matrix in durable state and does not start an in-process
+  queue or watchdog in k3s mode. A DynamoDB leader lease and per-execution CAS
+  claims assign monotonic generations and deterministic Kubernetes Job/Secret
+  identities, allowing a restarted dispatcher to adopt existing work.
+- Runner Jobs use an immutable execution Secret, restricted security context,
+  no mounted ServiceAccount token, no AWS credentials, explicit resources,
+  `backoffLimit: 0`, active deadline, and TTL. Callback authority is scoped to
+  run, execution, generation, token digest, and expiry; identical replay is
+  idempotent and conflicting replay is rejected.
+- The dispatcher reconciles queued/active cancellation and run deadlines,
+  classifies Kubernetes scheduling/image/OOM/eviction/deadline failures,
+  recovers lost callbacks from deterministic S3 results, preserves bounded pod
+  logs, and replays Job/Secret cleanup after restart. Active run deletion is
+  deferred with HTTP 409 until cleanup completes, and failed/cancelled runs can
+  be explicitly reopened for a retry without relaunching terminal executions.
+- Callback acceptance is persisted before artifact verification. An
+  owner-fenced finalizer lease allows crash recovery and takeover without
+  double-finalizing a generation; accepted results win over late cancellation,
+  and replay remains digest-idempotent after lease expiry. Infrastructure
+  failure finalization uses the same atomic accepted-callback guard.
 - SCENE-20 adds `SCENE_ARTIFACT_STORAGE=filesystem|s3`. S3 objects use
   deterministic environment/project/batch/run/execution/kind keys and persist
   content type, size, SHA-256, ETag, and version metadata. The private bucket is
@@ -171,7 +198,11 @@
   SCENE accepts them; presigned query strings are removed from logs and payloads.
 - Image diffing materializes only the required baseline into a bounded local
   workspace. Run and baseline cleanup deletes explicit recorded keys and does
-  not use normal-path bucket scans. Filesystem behavior remains the local default.
+  not use normal-path bucket scans. Versioned S3 cleanup removes every version
+  and delete marker for each recorded key in bounded re-listing sweeps, waits
+  for PUT authorization expiry, and leaves metadata intact when any purge
+  fails. Stored version IDs pin reads against later key overwrites. Filesystem
+  behavior remains the local default.
 - SCENE-19 introduces `SCENE_STATE_BACKEND=json|dynamodb`. The production
   adapter validates `pk`/`sk` plus three GSIs at startup, performs a
   write/read/delete readiness probe, converts floats safely for DynamoDB, and
@@ -183,6 +214,12 @@
 - Project, page, task, batch, run, and execution APIs expose bounded cursor
   pages. Existing HTML numbered views now fetch only their active page from the
   backend, while status aggregation iterates in bounded chunks.
+- Run, batch, and project deletion preflight strongly consistent ownership data
+  before any purge, then delete metadata only after all artifact work succeeds.
+  Active resources and pending Job/Secret cleanup return HTTP 409, and shared
+  baseline artifacts are retained while another run references them. Direct
+  baseline deletion is blocked while referenced, and deleting page/task config
+  preserves historical runs, executions, baselines, and artifacts.
 - Added `scripts/scene_config.py` for private mode-0600 config exports and
   dry-run-first imports. It preserves IDs, credentials, actions, thresholds,
   SPM references, and global config while excluding runs, executions,
@@ -192,6 +229,17 @@
   and file-permission tests run without AWS through an injected DynamoDB table
   double. Real table provisioning and cross-replica staging proof remain with
   SCENE-13.
+- Local development is pinned by `uv.lock`; app and Playwright runner images use
+  independent hash-locked requirements files. The app supports current
+  FastAPI/Starlette's request-explicit template rendering contract.
+- Temporary staging BasicAuth and SCENE application tokens use separate HTTP
+  headers. MCP supports paired ingress credentials without putting them in URLs,
+  while direct clients retain Bearer authentication.
+- Runner readiness imports the production browser launch helper. Chromium and
+  Firefox therefore exercise the same settings as real Jobs, including use of
+  mounted `/dev/shm`; Chromium's unsandboxed limitation is explicit and bounded
+  by the restricted, credential-free per-execution pod. SCENE-22 tracks the
+  supported-image upgrade and long-term sandbox/isolation posture.
 - SCENE-17 adds bounded large-project behaviour: project tabs load independently, page/task lists use 25-item pages, run history uses 25-item pages, and execution overlays use 50-item pages while retaining direct execution navigation.
 - The run launcher now estimates the execution matrix, warns above 100 targets, and supports full-batch, one-task smoke, and validated selected-task scopes. REST and MCP launch methods accept the same optional `task_ids` contract.
 - Agent setup now applies local JSON writes in one rollback-capable transaction and indexes existing entities by name, avoiding repeated full-state serialization and scans during 200+ item imports.
@@ -232,5 +280,6 @@
 
 
 ## Local Usage Notes
-- Activate the venv and launch the FastAPI dev server with `source venv/bin/activate` followed by `uvicorn app.main:app --reload`.
-- Run tests via `source venv/bin/activate && pytest`.
+- Install the pinned development environment with `uv sync --extra dev --locked`.
+- Launch the FastAPI dev server with `uv run uvicorn app.main:app --reload`.
+- Run tests with `uv run --extra dev python -m pytest`.

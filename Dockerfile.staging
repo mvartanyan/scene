@@ -1,19 +1,20 @@
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY pyproject.toml REQUIREMENTS.md README.md ./
+COPY pyproject.toml requirements.staging.lock ./
+
+RUN python -m pip install --no-cache-dir --require-hashes \
+    -r requirements.staging.lock
+
+COPY REQUIREMENTS.md README.md Dockerfile.playwright ./
 COPY app ./app
 COPY docs ./docs
 COPY scene_mcp ./scene_mcp
 COPY scripts ./scripts
-COPY Dockerfile.playwright ./
-
-RUN python -m pip install --no-cache-dir --upgrade pip && \
-    python -m pip install --no-cache-dir -e .
 
 EXPOSE 8000
 

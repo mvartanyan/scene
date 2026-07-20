@@ -1,0 +1,45 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: scene-staging-auth
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: ingress
+spec:
+  basicAuth:
+    secret: scene-ingress-basic-auth
+    # BasicAuth owns Authorization at staging. API clients send the separate
+    # X-SCENE-API-Token header, and Basic credentials are never forwarded.
+    removeHeader: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scene
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: scene-scene-staging-auth@kubernetescrd
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: scene.135.181.140.68.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: scene
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - scene.135.181.140.68.sslip.io
+      secretName: scene-staging-tls

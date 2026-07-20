@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import threading
@@ -99,12 +100,31 @@ def _utcnow() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def _future_iso(seconds: int) -> str:
+    return datetime.fromtimestamp(
+        datetime.now(tz=timezone.utc).timestamp() + max(1, int(seconds)),
+        tz=timezone.utc,
+    ).isoformat()
+
+
+def _parse_utc_timestamp(value: object) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def _artifact_records(value: object) -> List[Dict[str, Any]]:
     """Collect persisted artifact metadata without inferring storage prefixes."""
 
     records: List[Dict[str, Any]] = []
     if isinstance(value, dict):
-        if value.get("kind") and (value.get("key") or value.get("path")):
+        if value.get("key") or value.get("path"):
             records.append(value)
         else:
             for child in value.values():
@@ -444,6 +464,95 @@ class SceneRepository:
     def probe(self) -> Dict[str, Any]:
         return self._storage.probe()
 
+    def dispatcher_status(self) -> Optional[Dict[str, Any]]:
+        return self._storage.get("leases", "k3s-dispatcher")
+
+    def acquire_dispatcher_lease(
+        self,
+        owner: str,
+        *,
+        lease_seconds: int = 30,
+    ) -> bool:
+        now = _utcnow()
+        for attempt in range(MAX_CONFLICT_RETRIES):
+            record = self._storage.get("leases", "k3s-dispatcher")
+            if record:
+                current_owner = str(record.get("owner") or "")
+                expires_at = str(record.get("expires_at") or "")
+                if current_owner != owner and expires_at > now:
+                    return False
+                if current_owner != owner:
+                    for field in (
+                        "capabilities",
+                        "capabilities_checked_at",
+                        "capabilities_ok",
+                    ):
+                        record.pop(field, None)
+                record.update(
+                    {
+                        "owner": owner,
+                        "heartbeat_at": now,
+                        "expires_at": _future_iso(lease_seconds),
+                    }
+                )
+            else:
+                record = {
+                    "id": "k3s-dispatcher",
+                    "owner": owner,
+                    "created_at": now,
+                    "heartbeat_at": now,
+                    "expires_at": _future_iso(lease_seconds),
+                }
+            try:
+                self._storage.upsert("leases", "k3s-dispatcher", record)
+                return True
+            except StorageConflictError:
+                if attempt + 1 == MAX_CONFLICT_RETRIES:
+                    return False
+        return False
+
+    def release_dispatcher_lease(self, owner: str) -> bool:
+        released = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal released
+            released = False
+            if record.get("owner") != owner:
+                return False
+            record["expires_at"] = _utcnow()
+            record["released_at"] = _utcnow()
+            released = True
+            return None
+
+        self._update_record("leases", "k3s-dispatcher", mutate)
+        return released
+
+    def report_dispatcher_health(
+        self,
+        owner: str,
+        *,
+        capabilities: Dict[str, bool],
+    ) -> bool:
+        reported = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal reported
+            reported = False
+            if record.get("owner") != owner or str(record.get("expires_at") or "") <= _utcnow():
+                return False
+            normalized = {
+                str(name): bool(allowed)
+                for name, allowed in sorted(capabilities.items())
+            }
+            record["capabilities"] = normalized
+            record["capabilities_ok"] = bool(normalized) and all(normalized.values())
+            record["capabilities_checked_at"] = _utcnow()
+            reported = True
+            return None
+
+        self._update_record("leases", "k3s-dispatcher", mutate)
+        return reported
+
     def _update_record(
         self,
         collection: str,
@@ -699,6 +808,73 @@ class SceneRepository:
     def list_projects(self) -> List[Dict[str, Any]]:
         return sorted(self._storage.list("projects"), key=lambda it: it["created_at"])
 
+    def _consistent_runs(
+        self,
+        *,
+        project_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        return [
+            normalized
+            for item in self._storage.list("runs")
+            if (normalized := _with_spm_ticket(item)) is not None
+            and (not project_id or item.get("project_id") == project_id)
+            and (not batch_id or item.get("batch_id") == batch_id)
+        ]
+
+    def _consistent_scope(
+        self,
+        collection: str,
+        *,
+        key: str,
+        value: str,
+    ) -> List[Dict[str, Any]]:
+        return [
+            record
+            for record in self._storage.list(collection)
+            if str(record.get(key) or "") == str(value)
+        ]
+
+    def _run_execution_records(self, run_id: str) -> List[Dict[str, Any]]:
+        return [
+            execution
+            for execution in self._storage.list("executions")
+            if execution.get("run_id") == run_id
+        ]
+
+    @staticmethod
+    def _assert_run_deletable(
+        run: Dict[str, Any],
+        executions: Iterable[Dict[str, Any]],
+    ) -> None:
+        execution_records = list(executions)
+        if run.get("status") in {"queued", "executing"} or any(
+            execution.get("status") in {"queued", "executing"}
+            for execution in execution_records
+        ):
+            raise ValueError("Cannot delete a run while it is active.")
+        if any(
+            (execution.get("kubernetes_job_name") or execution.get("kubernetes_secret_name"))
+            and not execution.get("kubernetes_cleaned_at")
+            for execution in execution_records
+        ):
+            raise ValueError("Cannot delete a run while Kubernetes cleanup is pending.")
+        now = datetime.now(tz=timezone.utc)
+        active_transfer_expiries = []
+        for execution in execution_records:
+            transfer = execution.get("artifact_transfer")
+            if not isinstance(transfer, dict):
+                continue
+            expires_at = _parse_utc_timestamp(transfer.get("expires_at"))
+            if expires_at and expires_at > now:
+                active_transfer_expiries.append(expires_at)
+        if active_transfer_expiries:
+            retry_after = max(active_transfer_expiries).isoformat()
+            raise ValueError(
+                "Cannot delete a run while an artifact upload URL is still valid; "
+                f"retry after {retry_after}."
+            )
+
     def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
         return self._storage.get("projects", project_id)
 
@@ -729,28 +905,61 @@ class SceneRepository:
         return self._update_record("projects", project_id, mutate)
 
     def delete_project(self, project_id: str) -> None:
-        # Cascade delete pages, tasks, batches, runs referencing the project.
-        pages = [page["id"] for page in self.list_pages(project_id)]
-        tasks = [task["id"] for task in self.list_tasks(project_id)]
-        batches = [batch["id"] for batch in self.list_batches(project_id)]
-        runs = [run["id"] for run in self.list_runs(project_id=project_id)]
-        baselines = [
-            baseline["id"] for baseline in self.list_baselines(project_id=project_id)
+        active_runs = self.list_active_runs(project_id=project_id)
+        if active_runs:
+            raise ValueError("Cannot delete a project while it has active runs.")
+        pages = [
+            page["id"]
+            for page in self._consistent_scope(
+                "pages", key="project_id", value=project_id
+            )
         ]
-        executions = [
-            execution["id"]
-            for execution in self._storage.list("executions")
-            if execution.get("run_id") in runs
+        tasks = [
+            task["id"]
+            for task in self._consistent_scope(
+                "tasks", key="project_id", value=project_id
+            )
         ]
-
-        for collection, ids in [
-            ("pages", pages),
-            ("tasks", tasks),
-            ("batches", batches),
-            ("runs", runs),
-            ("baselines", baselines),
-            ("executions", executions),
-        ]:
+        batches = [
+            batch["id"]
+            for batch in self._consistent_scope(
+                "batches", key="project_id", value=project_id
+            )
+        ]
+        run_records = self._consistent_runs(project_id=project_id)
+        execution_records = {
+            str(run["id"]): self._run_execution_records(str(run["id"]))
+            for run in run_records
+        }
+        for run in run_records:
+            self._assert_run_deletable(run, execution_records[str(run["id"])])
+        baseline_records = self._consistent_scope(
+            "baselines", key="project_id", value=project_id
+        )
+        store = get_artifact_store()
+        for run in run_records:
+            store.purge_run(
+                str(run["id"]),
+                _artifact_records(execution_records[str(run["id"])]),
+            )
+        for baseline in baseline_records:
+            store.purge_baseline(
+                str(baseline["id"]),
+                _artifact_records(baseline),
+            )
+        self._storage.bulk_delete(
+            "executions",
+            [
+                execution["id"]
+                for records in execution_records.values()
+                for execution in records
+            ],
+        )
+        self._storage.bulk_delete("runs", [run["id"] for run in run_records])
+        self._storage.bulk_delete(
+            "baselines", [baseline["id"] for baseline in baseline_records]
+        )
+        for collection, ids in [("pages", pages), ("tasks", tasks), ("batches", batches)]:
             self._storage.bulk_delete(collection, ids)
 
         self._storage.delete("projects", project_id)
@@ -806,12 +1015,14 @@ class SceneRepository:
         return self._update_record("pages", page_id, mutate)
 
     def delete_page(self, page_id: str) -> None:
-        # Remove tasks tied to the page.
-        tasks = [
-            task["id"]
-            for task in self._storage.filter("tasks", key="page_id", value=page_id)
+        # Configuration deletion must not erase execution or baseline history.
+        task_ids = [
+            str(task["id"])
+            for task in self._storage.list("tasks")
+            if task.get("page_id") == page_id
         ]
-        self._storage.bulk_delete("tasks", tasks)
+        for task_id in task_ids:
+            self.delete_task(task_id)
         self._storage.delete("pages", page_id)
 
     # -- Tasks --------------------------------------------------------------------
@@ -855,34 +1066,21 @@ class SceneRepository:
         return self._update_record("tasks", task_id, mutate)
 
     def delete_task(self, task_id: str) -> None:
-        # Remove task references from batches.
-        batches = self._storage.list("batches")
-        updates = []
-        for batch in batches:
-            if task_id in batch.get("task_ids", []):
-                batch["task_ids"] = [tid for tid in batch["task_ids"] if tid != task_id]
-                batch["updated_at"] = _utcnow()
-                updates.append(batch)
-        for batch in updates:
-            self._storage.upsert("batches", batch["id"], batch)
-        # Remove baseline items for the task.
-        baselines = self._storage.list("baselines")
-        for baseline in baselines:
-            items = baseline.get("items") or []
-            filtered = [
-                item for item in items if item.get("task_id") != task_id
-            ]
-            if len(filtered) != len(items):
-                baseline["items"] = filtered
-                baseline["updated_at"] = _utcnow()
-                self._storage.upsert("baselines", baseline["id"], baseline)
-        # Remove executions for the task.
-        executions = [
-            execution["id"]
-            for execution in self._storage.list("executions")
-            if execution.get("task_id") == task_id
-        ]
-        self._storage.bulk_delete("executions", executions)
+        # Batches are mutable configuration. Runs, executions, baselines, and
+        # their artifact descriptors are historical records and remain intact.
+        for batch in self._storage.list("batches"):
+            if task_id not in batch.get("task_ids", []):
+                continue
+
+            def remove_reference(record: Dict[str, Any]) -> None:
+                record["task_ids"] = [
+                    existing_id
+                    for existing_id in record.get("task_ids", [])
+                    if existing_id != task_id
+                ]
+                record["updated_at"] = _utcnow()
+
+            self._update_record("batches", str(batch["id"]), remove_reference)
         self._storage.delete("tasks", task_id)
 
     # -- Batches ------------------------------------------------------------------
@@ -937,25 +1135,43 @@ class SceneRepository:
         return self._update_record("batches", batch_id, mutate)
 
     def delete_batch(self, batch_id: str) -> None:
-        # Remove runs tied to the batch.
-        runs = [
-            run["id"]
-            for run in self._storage.filter("runs", key="batch_id", value=batch_id)
-        ]
-        if runs:
-            executions = [
+        active_runs = self.list_active_runs(batch_id=batch_id)
+        if active_runs:
+            raise ValueError("Cannot delete a batch while it has active runs.")
+        run_records = self._consistent_runs(batch_id=batch_id)
+        execution_records = {
+            str(run["id"]): self._run_execution_records(str(run["id"]))
+            for run in run_records
+        }
+        for run in run_records:
+            self._assert_run_deletable(run, execution_records[str(run["id"])])
+        runs = [run["id"] for run in run_records]
+        baseline_records = self._consistent_scope(
+            "baselines", key="batch_id", value=batch_id
+        )
+        store = get_artifact_store()
+        for run in run_records:
+            store.purge_run(
+                str(run["id"]),
+                _artifact_records(execution_records[str(run["id"])]),
+            )
+        for baseline in baseline_records:
+            store.purge_baseline(
+                str(baseline["id"]),
+                _artifact_records(baseline),
+            )
+        self._storage.bulk_delete(
+            "executions",
+            [
                 execution["id"]
-                for execution in self._storage.list("executions")
-                if execution.get("run_id") in runs
-            ]
-            self._storage.bulk_delete("executions", executions)
+                for records in execution_records.values()
+                for execution in records
+            ],
+        )
         self._storage.bulk_delete("runs", runs)
-        # Remove baselines tied to the batch.
-        baselines = [
-            baseline["id"]
-            for baseline in self._storage.filter("baselines", key="batch_id", value=batch_id)
-        ]
-        self._storage.bulk_delete("baselines", baselines)
+        self._storage.bulk_delete(
+            "baselines", [baseline["id"] for baseline in baseline_records]
+        )
         self._storage.delete("batches", batch_id)
 
     # -- Baselines ----------------------------------------------------------------
@@ -1046,12 +1262,32 @@ class SceneRepository:
 
     def delete_baseline(self, baseline_id: str) -> None:
         baseline = self.get_baseline(baseline_id)
+        if not baseline:
+            return
+        linked_runs = [
+            run
+            for run in self._storage.list("runs")
+            if str(run.get("baseline_id") or "") == str(baseline_id)
+        ]
+        if linked_runs:
+            raise ValueError("Cannot delete a baseline while it is referenced by a run.")
         store = get_artifact_store()
-        store.purge_baseline(baseline_id, _artifact_records(baseline or {}))
+        store.purge_baseline(baseline_id, _artifact_records(baseline))
         self._storage.delete("baselines", baseline_id)
 
     def get_latest_baseline(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        baselines = self.list_baselines(batch_id=batch_id)
+        # Baseline selection affects comparison correctness, so it must not use
+        # an eventually consistent batch index or an incomplete baseline.
+        baselines = sorted(
+            [
+                baseline
+                for baseline in self._storage.list("baselines")
+                if baseline.get("batch_id") == batch_id
+                and baseline.get("status") == "completed"
+            ],
+            key=lambda item: item["created_at"],
+            reverse=True,
+        )
         return baselines[0] if baselines else None
 
     # -- Runs ---------------------------------------------------------------------
@@ -1075,6 +1311,22 @@ class SceneRepository:
             if run is not None
         ]
         return sorted(normalized, key=lambda it: it["created_at"], reverse=True)
+
+    def list_active_runs(
+        self,
+        *,
+        project_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        # Lifecycle guards cannot rely on eventually consistent DynamoDB GSIs.
+        runs = [
+            normalized
+            for item in self._storage.list("runs")
+            if (normalized := _with_spm_ticket(item)) is not None
+            and (not project_id or item.get("project_id") == project_id)
+            and (not batch_id or item.get("batch_id") == batch_id)
+        ]
+        return [run for run in runs if run.get("status") in {"queued", "executing"}]
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
         return _with_spm_ticket(self._storage.get("runs", run_id))
@@ -1181,32 +1433,62 @@ class SceneRepository:
 
         return self._update_record("runs", run_id, mutate)
 
+    def reopen_run_for_retry(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Explicitly reopen a failed or cancelled run before adding retry work."""
+
+        reopened = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal reopened
+            reopened = False
+            if record.get("status") not in {"failed", "cancelled"}:
+                return False
+            record["status"] = "executing"
+            for field in (
+                "cancellation_requested_at",
+                "completed_at",
+                "timeout_deadline",
+                "timeout_deadline_iso",
+                "timeout_reason",
+                "timeout_notified",
+            ):
+                record.pop(field, None)
+            record["updated_at"] = _utcnow()
+            reopened = True
+            return None
+
+        result = self._update_record("runs", run_id, mutate)
+        return result if reopened else None
+
     def delete_run(self, run_id: str, *, cascade_baseline: bool = False) -> None:
         run = self.get_run(run_id)
         if not run:
             return
-        execution_records = [
-            execution
-            for execution in self._storage.list("executions")
-            if execution.get("run_id") == run_id
-        ]
+        execution_records = self._run_execution_records(run_id)
+        self._assert_run_deletable(run, execution_records)
         store = get_artifact_store()
+        baseline_to_delete: Optional[Dict[str, Any]] = None
+        if cascade_baseline and run.get("baseline_id"):
+            baseline = self.get_baseline(str(run["baseline_id"]))
+            if baseline:
+                still_linked = any(
+                    other.get("baseline_id") == baseline["id"]
+                    and other.get("id") != run_id
+                    for other in self._storage.list("runs")
+                )
+                if not still_linked:
+                    baseline_to_delete = baseline
         store.purge_run(run_id, _artifact_records(execution_records))
+        if baseline_to_delete:
+            store.purge_baseline(
+                str(baseline_to_delete["id"]),
+                _artifact_records(baseline_to_delete),
+            )
         executions = [execution["id"] for execution in execution_records]
         self._storage.bulk_delete("executions", executions)
         self._storage.delete("runs", run_id)
-        if cascade_baseline:
-            baseline_id = run.get("baseline_id")
-            if baseline_id:
-                baseline = self.get_baseline(baseline_id)
-                if not baseline:
-                    return
-                still_linked = any(
-                    other.get("baseline_id") == baseline_id and other.get("id") != run_id
-                    for other in self._storage.list("runs")
-                )
-                if baseline.get("run_id") == run_id or not still_linked:
-                    self.delete_baseline(baseline_id)
+        if baseline_to_delete:
+            self._storage.delete("baselines", str(baseline_to_delete["id"]))
 
     # -- Executions ----------------------------------------------------------------
     def list_executions(
@@ -1215,7 +1497,13 @@ class SceneRepository:
         run_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         if run_id:
-            items = self._storage.filter("executions", key="run_id", value=run_id)
+            # Execution lifecycle decisions must see newly-created records even
+            # before DynamoDB's run GSI has converged.
+            items = [
+                item
+                for item in self._storage.list("executions")
+                if item.get("run_id") == run_id
+            ]
         else:
             items = self._storage.list("executions")
         return sorted(
@@ -1228,6 +1516,506 @@ class SceneRepository:
 
     def get_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
         return self._storage.get("executions", execution_id)
+
+    def list_execution_records_bounded(
+        self,
+        *,
+        statuses: Optional[Iterable[str]] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        wanted = set(statuses or [])
+        records: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        page_size = max(1, min(int(limit), 100))
+        while len(records) < limit:
+            page, cursor = self.query_page(
+                "executions",
+                limit=page_size,
+                cursor=cursor,
+            )
+            for record in page:
+                if not wanted or str(record.get("status")) in wanted:
+                    records.append(record)
+                    if len(records) >= limit:
+                        break
+            if not cursor:
+                break
+        return records
+
+    def list_cleanup_pending_executions(self, *, limit: int = 100) -> List[Dict[str, Any]]:
+        """Return terminal Kubernetes executions whose owned resources need deletion."""
+
+        records: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        result_limit = max(1, int(limit))
+        while len(records) < result_limit:
+            page, cursor = self.query_page(
+                "executions",
+                limit=100,
+                cursor=cursor,
+            )
+            for record in page:
+                if (
+                    str(record.get("status")) in TERMINAL_EXECUTION_STATUSES
+                    and (
+                        record.get("kubernetes_job_name")
+                        or record.get("kubernetes_secret_name")
+                    )
+                    and not record.get("kubernetes_cleaned_at")
+                ):
+                    records.append(record)
+                    if len(records) >= result_limit:
+                        break
+            if not cursor:
+                break
+        return records
+
+    def list_pending_callback_finalizations(self, *, limit: int = 100) -> List[Dict[str, Any]]:
+        """Return accepted callbacks, including terminal records left by a crash."""
+
+        return [
+            record
+            for record in self._storage.list("executions")
+            if record.get("callback_state") == "accepted"
+        ][: max(1, int(limit))]
+
+    def list_dispatchable_executions(self, *, limit: int = 25) -> List[Dict[str, Any]]:
+        now = _utcnow()
+        records: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        result_limit = max(0, int(limit))
+        if result_limit == 0:
+            return records
+        while len(records) < result_limit:
+            page, cursor = self.query_page(
+                "executions",
+                limit=100,
+                cursor=cursor,
+            )
+            for record in page:
+                if (
+                    record.get("status") == "queued"
+                    and not record.get("cancellation_requested_at")
+                    and (
+                        not record.get("dispatch_claim_owner")
+                        or str(record.get("dispatch_lease_expires_at") or "") <= now
+                    )
+                ):
+                    records.append(record)
+                    if len(records) >= result_limit:
+                        break
+            if not cursor:
+                break
+        return records
+
+    def claim_execution(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+        lease_seconds: int = 60,
+    ) -> Optional[Dict[str, Any]]:
+        now = _utcnow()
+        claimed = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal claimed
+            claimed = False
+            if record.get("status") != "queued" or record.get("cancellation_requested_at"):
+                return False
+            current_owner = str(record.get("dispatch_claim_owner") or "")
+            expires_at = str(record.get("dispatch_lease_expires_at") or "")
+            if current_owner and current_owner != owner and expires_at > now:
+                return False
+            resumable = bool(
+                record.get("kubernetes_job_name")
+                and record.get("kubernetes_secret_name")
+                and record.get("callback_token_sha256")
+                and record.get("runner_spec_digest")
+            )
+            generation = int(record.get("dispatch_generation") or 0)
+            if not resumable:
+                generation += 1
+            suffix = str(execution_id).replace("-", "")[:20]
+            record.update(
+                {
+                    "dispatch_claim_owner": owner,
+                    "dispatch_generation": generation,
+                    "dispatch_claimed_at": now,
+                    "dispatch_lease_expires_at": _future_iso(lease_seconds),
+                    "kubernetes_job_name": record.get("kubernetes_job_name")
+                    if resumable
+                    else f"scene-exec-{suffix}-g{generation}",
+                    "kubernetes_secret_name": record.get("kubernetes_secret_name")
+                    if resumable
+                    else f"scene-exec-{suffix}-g{generation}",
+                }
+            )
+            claimed = True
+            return None
+
+        result = self._update_record("executions", execution_id, mutate)
+        return result if claimed else None
+
+    def renew_execution_claim(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+        generation: int,
+        lease_seconds: int = 60,
+    ) -> bool:
+        renewed = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal renewed
+            renewed = False
+            if (
+                record.get("dispatch_claim_owner") != owner
+                or int(record.get("dispatch_generation") or 0) != int(generation)
+                or record.get("status") in TERMINAL_EXECUTION_STATUSES
+            ):
+                return False
+            record["dispatch_lease_expires_at"] = _future_iso(lease_seconds)
+            renewed = True
+            return None
+
+        self._update_record("executions", execution_id, mutate)
+        return renewed
+
+    def configure_execution_callback(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+        generation: int,
+        token_sha256: str,
+        expires_at: str,
+        artifact_transfer: Optional[Dict[str, Any]] = None,
+        runner_spec_digest: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        configured = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal configured
+            configured = False
+            if (
+                record.get("dispatch_claim_owner") != owner
+                or int(record.get("dispatch_generation") or 0) != int(generation)
+                or record.get("status") != "queued"
+                or record.get("cancellation_requested_at")
+            ):
+                return False
+            record.update(
+                {
+                    "callback_token_sha256": token_sha256,
+                    "callback_expires_at": expires_at,
+                    "callback_state": "pending",
+                }
+            )
+            if artifact_transfer is not None:
+                record["artifact_transfer"] = artifact_transfer
+            if runner_spec_digest:
+                record["runner_spec_digest"] = runner_spec_digest
+            configured = True
+            return None
+
+        result = self._update_record("executions", execution_id, mutate)
+        return result if configured else None
+
+    def mark_execution_dispatched(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+        generation: int,
+    ) -> Optional[Dict[str, Any]]:
+        dispatched = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal dispatched
+            dispatched = False
+            if (
+                record.get("dispatch_claim_owner") != owner
+                or int(record.get("dispatch_generation") or 0) != int(generation)
+                or record.get("status") != "queued"
+                or record.get("cancellation_requested_at")
+            ):
+                return False
+            record.update(
+                {
+                    "status": "executing",
+                    "started_at": record.get("started_at") or _utcnow(),
+                    "dispatched_at": _utcnow(),
+                    "dispatch_lease_expires_at": _future_iso(120),
+                }
+            )
+            dispatched = True
+            return None
+
+        result = self._update_record("executions", execution_id, mutate)
+        return result if dispatched else None
+
+    def request_execution_cancellation(
+        self,
+        execution_id: str,
+        *,
+        reason: str,
+    ) -> Optional[Dict[str, Any]]:
+        requested = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal requested
+            requested = False
+            if (
+                record.get("status") in TERMINAL_EXECUTION_STATUSES
+                or record.get("callback_state") in {"accepted", "finalized"}
+            ):
+                return False
+            record["cancellation_requested_at"] = record.get("cancellation_requested_at") or _utcnow()
+            record["message"] = reason
+            requested = True
+            return None
+
+        result = self._update_record("executions", execution_id, mutate)
+        return result if requested else None
+
+    def finalize_execution_infrastructure_failure(
+        self,
+        execution_id: str,
+        *,
+        status: str,
+        completed_at: str,
+        message: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Terminalize an execution unless a callback was already accepted."""
+
+        if status not in {"failed", "cancelled"}:
+            raise ValueError("Infrastructure failure status must be failed or cancelled.")
+        finalized = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal finalized
+            finalized = False
+            if (
+                record.get("status") in TERMINAL_EXECUTION_STATUSES
+                or record.get("callback_state") in {"accepted", "finalized"}
+            ):
+                return False
+            record.update(
+                {
+                    "status": status,
+                    "completed_at": completed_at,
+                    "message": message,
+                    "updated_at": _utcnow(),
+                }
+            )
+            finalized = True
+            return None
+
+        result = self._update_record("executions", execution_id, mutate)
+        return result if finalized else None
+
+    def accept_execution_callback(
+        self,
+        execution_id: str,
+        *,
+        run_id: str,
+        generation: int,
+        token_sha256: str,
+        result: Dict[str, Any],
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        canonical = json.dumps(result, sort_keys=True, separators=(",", ":"), default=str)
+        result_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        outcome = "invalid"
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal outcome
+            outcome = "invalid"
+            if (
+                str(record.get("run_id")) != str(run_id)
+                or int(record.get("dispatch_generation") or 0) != int(generation)
+                or not hmac.compare_digest(
+                    str(record.get("callback_token_sha256") or ""),
+                    str(token_sha256),
+                )
+            ):
+                return False
+            existing_digest = str(record.get("callback_result_digest") or "")
+            if existing_digest:
+                outcome = "duplicate" if hmac.compare_digest(existing_digest, result_digest) else "conflict"
+                return False
+            if (
+                str(record.get("callback_expires_at") or "") < _utcnow()
+                or record.get("cancellation_requested_at")
+                or record.get("status") in TERMINAL_EXECUTION_STATUSES
+            ):
+                return False
+            record.update(
+                {
+                    "callback_state": "accepted",
+                    "callback_received_at": _utcnow(),
+                    "callback_result_digest": result_digest,
+                    "callback_result": result,
+                }
+            )
+            outcome = "accepted"
+            return None
+
+        saved = self._update_record("executions", execution_id, mutate)
+        return outcome, saved
+
+    def recover_execution_callback(
+        self,
+        execution_id: str,
+        *,
+        generation: int,
+        result: Dict[str, Any],
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        canonical = json.dumps(result, sort_keys=True, separators=(",", ":"), default=str)
+        result_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        outcome = "invalid"
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal outcome
+            outcome = "invalid"
+            if int(record.get("dispatch_generation") or 0) != int(generation):
+                return False
+            existing_digest = str(record.get("callback_result_digest") or "")
+            if existing_digest:
+                outcome = "duplicate" if hmac.compare_digest(existing_digest, result_digest) else "conflict"
+                return False
+            if (
+                record.get("cancellation_requested_at")
+                or record.get("status") in TERMINAL_EXECUTION_STATUSES
+            ):
+                return False
+            record.update(
+                {
+                    "callback_state": "accepted",
+                    "callback_received_at": _utcnow(),
+                    "callback_result_digest": result_digest,
+                    "callback_result": result,
+                    "callback_recovered_from": "s3_result",
+                }
+            )
+            outcome = "accepted"
+            return None
+
+        saved = self._update_record("executions", execution_id, mutate)
+        return outcome, saved
+
+    def reserve_execution_retry(
+        self,
+        execution_id: str,
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Atomically reserve the sole deterministic retry child for an execution."""
+
+        outcome = "invalid"
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal outcome
+            outcome = "invalid"
+            existing_id = str(record.get("superseded_by_execution_id") or "")
+            if existing_id:
+                outcome = "existing"
+                return False
+            if record.get("status") not in {"failed", "cancelled"}:
+                return False
+            if (
+                record.get("kubernetes_job_name")
+                or record.get("kubernetes_secret_name")
+            ) and not record.get("kubernetes_cleaned_at"):
+                outcome = "cleanup_pending"
+                return False
+            retry_key = f"retry:{execution_id}"
+            retry_id = str(
+                uuid.uuid5(
+                    EXECUTION_IDEMPOTENCY_NAMESPACE,
+                    f"{record['run_id']}:{retry_key}",
+                )
+            )
+            record["superseded_by_execution_id"] = retry_id
+            record["retry_reserved_at"] = _utcnow()
+            outcome = "reserved"
+            return None
+
+        saved = self._update_record("executions", execution_id, mutate)
+        if saved is None:
+            saved = self.get_execution(execution_id)
+        return outcome, saved
+
+    def claim_callback_finalization(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+        lease_seconds: int = 300,
+    ) -> Optional[Dict[str, Any]]:
+        """Claim or renew exclusive processing of an accepted callback."""
+
+        now = _utcnow()
+        claimed = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal claimed
+            claimed = False
+            if record.get("callback_state") != "accepted":
+                return False
+            current_owner = str(record.get("callback_finalizer_owner") or "")
+            expires_at = str(record.get("callback_finalizer_lease_expires_at") or "")
+            if current_owner and current_owner != owner and expires_at > now:
+                return False
+            record.update(
+                {
+                    "callback_finalizer_owner": owner,
+                    "callback_finalizer_lease_expires_at": _future_iso(lease_seconds),
+                    "callback_finalization_started_at": record.get(
+                        "callback_finalization_started_at"
+                    )
+                    or now,
+                }
+            )
+            claimed = True
+            return None
+
+        result = self._update_record("executions", execution_id, mutate)
+        return result if claimed else None
+
+    def mark_callback_finalized(
+        self,
+        execution_id: str,
+        digest: str,
+        *,
+        owner: str,
+    ) -> bool:
+        finalized = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal finalized
+            finalized = False
+            if (
+                record.get("callback_finalizer_owner") != owner
+                or not hmac.compare_digest(
+                    str(record.get("callback_result_digest") or ""),
+                    str(digest),
+                )
+                or record.get("status") not in TERMINAL_EXECUTION_STATUSES
+            ):
+                return False
+            if record.get("callback_state") == "finalized":
+                finalized = True
+                return False
+            if record.get("callback_state") != "accepted":
+                return False
+            record["callback_state"] = "finalized"
+            record["callback_finalized_at"] = _utcnow()
+            record["callback_finalizer_lease_expires_at"] = _utcnow()
+            finalized = True
+            return None
+
+        self._update_record("executions", execution_id, mutate)
+        return finalized
 
     def create_execution(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
@@ -1262,6 +2050,8 @@ class SceneRepository:
             "started_at": payload.get("started_at"),
             "completed_at": payload.get("completed_at"),
             "idempotency_key": idempotency_key,
+            "configuration_snapshot": payload.get("configuration_snapshot"),
+            "retry_of_execution_id": payload.get("retry_of_execution_id"),
         }
         if idempotency_key:
             record["idempotency_fingerprint"] = _fingerprint(
@@ -1326,21 +2116,12 @@ class SceneRepository:
             "failed": 0,
             "cancelled": 0,
         }
-        cursor: Optional[str] = None
-        while True:
-            executions, cursor = self.query_page(
-                "executions",
-                key="run_id",
-                value=run_id,
-                limit=100,
-                cursor=cursor,
-            )
-            for execution in executions:
-                status = execution.get("status", "queued")
-                if status in counts:
-                    counts[status] += 1
-            if cursor is None:
-                break
+        for execution in self.list_executions(run_id=run_id):
+            if execution.get("superseded_by_execution_id"):
+                continue
+            status = execution.get("status", "queued")
+            if status in counts:
+                counts[status] += 1
         return counts
 
 

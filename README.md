@@ -1,19 +1,20 @@
 # Scene Development Quickstart
 
 ## Prerequisites
-- Python 3.12 (a virtual environment is already provided at `venv/`).
+- Python 3.12, `uv`, and Docker.
 
 ## Install Dependencies
 ```bash
-source venv/bin/activate
-pip install -e .
+uv sync --extra dev --locked
 ```
-> The project uses `pyproject.toml`; alternatively run `pip install -r requirements.txt` if you export one later.
+
+`uv.lock` pins the local development/test environment. The staging app image
+uses the independently hash-locked Linux set in `requirements.staging.lock`;
+the Playwright runner uses `requirements.runner.lock`.
 
 ## Run the Development Server
 ```bash
-source venv/bin/activate
-uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 ```
 - App served on `http://127.0.0.1:8000/`.
 - Hot reload is enabled via `--reload`.
@@ -25,6 +26,8 @@ uvicorn app.main:app --reload
 - Production artifacts use `SCENE_ARTIFACT_STORAGE=s3`, `SCENE_S3_BUCKET`, and
   optional `SCENE_S3_PREFIX`. The bucket stays private; SCENE issues short-lived
   downloads and execution-scoped runner uploads. See `docs/artifacts.md`.
+- Operations use process-only `/healthz`, dependency-aware `/readyz`, sanitized
+  `/version`, and Prometheus `/metrics`. See `docs/operations.md`.
 
 ## Runtime Data Policy
 - `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.
@@ -46,17 +49,31 @@ uvicorn app.main:app --reload
 
 ## Run Tests
 ```bash
-source venv/bin/activate
-pytest
+uv run --extra dev python -m pytest
 ```
 
 ## Orchestration Notes
-- Docker is required; the Playwright container image is `scene-playwright-runner:latest` (built from `Dockerfile.playwright`).
+- Docker is required for local execution; k3s uses the dedicated durable
+  dispatcher and Kubernetes Jobs. `Dockerfile.playwright` builds the runner
+  image for both paths, with `/opt/scene/runner.py` baked into the image.
+- In `SCENE_RUNNER_BACKEND=k3s`, the web process persists the full execution
+  matrix and never owns Job launch state. `python -m app.services.dispatcher`
+  claims work in DynamoDB, creates or adopts deterministic Jobs, validates
+  generation-scoped callbacks, and reconciles cancellation, timeout, S3 result
+  recovery, failure logs, and terminal cleanup. See `docs/k3s-runner.md`.
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
 - Run records can carry `task_ids`; when present, the orchestrator expands only that validated subset while preserving the batch's task order. Omitting `task_ids` retains full-batch behaviour.
 - REST/SPM callers should provide `idempotency_key` when launching a run. A
   retried request returns the same run; reusing the key for different launch
   parameters returns a conflict.
+- Active k3s runs are not deleted immediately: deletion requests cancellation
+  and returns HTTP 409 until dispatcher-owned Job/Secret cleanup completes.
+- Destructive run, batch, and project operations use strongly consistent
+  ownership reads and finish artifact purges before deleting metadata. Shared
+  baselines remain until their final referencing run is removed, and S3-backed
+  runs remain undeletable until their execution-scoped upload URLs expire.
+- Page and task deletion changes only mutable configuration references; run,
+  execution, baseline, and artifact history remains intact.
 - Filesystem artifacts are stored under `.scene/artifacts/runs/<run>/<execution>/`
   by default. S3 artifacts use deterministic project/batch/run/execution keys,
   checksums, and private short-lived access through the same `/artifacts/...` URLs.

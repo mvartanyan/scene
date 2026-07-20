@@ -3,42 +3,106 @@ kind: Job
 metadata:
   name: scene-runner-readiness
   namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: runner
+    app.kubernetes.io/part-of: scene
 spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
   ttlSecondsAfterFinished: 3600
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scene
+        app.kubernetes.io/component: runner
+        app.kubernetes.io/part-of: scene
     spec:
       restartPolicy: Never
       serviceAccountName: scene-runner
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: runner-readiness
-          image: registry.example.com/scene-playwright-runner:1.47.0-jammy-20260708
+          image: scene-runner-image
           imagePullPolicy: IfNotPresent
-          command: ["/bin/sh", "-lc"]
+          command:
+            - /bin/sh
+            - -ec
           args:
-            - >
-              scene-runner-readiness
-              --callback-url "$SCENE_K3S_SERVICE_URL"
-              --artifact-dir "$SCENE_ARTIFACT_ROOT"
-              --expected-storage pvc
-              --json
+            - |
+              test -r /opt/scene/runner.py
+              python - <<'PY'
+              import time
+              import urllib.request
+
+              url = "http://scene.scene.svc.cluster.local/readyz"
+              deadline = time.monotonic() + 180
+              while time.monotonic() < deadline:
+                  try:
+                      with urllib.request.urlopen(url, timeout=3) as response:
+                          if response.status == 200:
+                              break
+                  except Exception:
+                      time.sleep(3)
+              else:
+                  raise SystemExit(f"SCENE readiness endpoint unavailable: {url}")
+              PY
+              scene-runner-readiness \
+                --callback-url http://scene.scene.svc.cluster.local \
+                --artifact-dir /workspace \
+                --expected-storage s3 \
+                --browser-smoke \
+                --runner-script /opt/scene/runner.py \
+                --json
           env:
+            - name: HOME
+              value: /tmp
             - name: SCENE_K3S_SERVICE_URL
-              value: http://scene.scene.svc.cluster.local:8000
-            - name: SCENE_ARTIFACT_ROOT
-              value: /artifacts
+              value: http://scene.scene.svc.cluster.local
             - name: SCENE_ARTIFACT_STORAGE
-              value: pvc
+              value: s3
           resources:
             requests:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: "2"
               memory: 2Gi
+              ephemeral-storage: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
           volumeMounts:
-            - name: artifacts
-              mountPath: /artifacts
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+            - name: dshm
+              mountPath: /dev/shm
       volumes:
-        - name: artifacts
-          persistentVolumeClaim:
-            claimName: scene-artifacts
+        - name: workspace
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi

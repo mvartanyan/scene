@@ -8,7 +8,7 @@ import urllib.request
 
 from app.schemas import RunPurpose
 from app.services.artifacts import ArtifactStore
-from app.services.orchestrator import RunnerResult, RunOrchestrator
+from app.services.orchestrator import RunOrchestrator
 from app.services.storage import LocalDynamoStorage, SceneRepository
 
 

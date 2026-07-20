@@ -288,6 +288,8 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     ).json()
     assert second_run["spm_ticket"] == "SCENE-999"
 
+    resp = api.patch(f"/api/runs/{run_id}", json={"status": "failed"})
+    assert resp.status_code == 200
     resp = api.delete(f"/api/runs/{run_id}")
     assert resp.status_code == 204
 
@@ -295,6 +297,158 @@ def test_run_crud(client: Tuple[TestClient, SceneRepository]) -> None:
     runs_for_project = resp.json()
     assert len(runs_for_project) == 1
     assert runs_for_project[0]["spm_ticket"] == "SCENE-999"
+
+
+def test_baseline_delete_returns_conflict_while_referenced(
+    client: Tuple[TestClient, SceneRepository],
+) -> None:
+    api, repo = client
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "status": "completed",
+            "items": [],
+        }
+    )
+    repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "baseline_id": baseline["id"],
+            "purpose": "comparison",
+            "status": "finished",
+        }
+    )
+
+    response = api.delete(f"/api/baselines/{baseline['id']}")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Cannot delete a baseline while it is referenced by a run."
+    )
+    assert repo.get_baseline(baseline["id"]) is not None
+
+
+def test_active_durable_run_delete_requests_cleanup_before_removal(
+    client: Tuple[TestClient, SceneRepository],
+) -> None:
+    api, repo = client
+    project = repo.create_project({"name": "Durable", "slug": "durable"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+        }
+    )
+
+    class _DurableOrchestrator:
+        uses_durable_dispatch = True
+
+        def __init__(self) -> None:
+            self.cancelled: list[str] = []
+
+        def cancel_run(self, run_id: str) -> None:
+            self.cancelled.append(run_id)
+
+    orchestrator = _DurableOrchestrator()
+    api_routes.get_orchestrator = lambda: orchestrator
+
+    response = api.delete(f"/api/runs/{run['id']}")
+
+    assert response.status_code == 409
+    assert orchestrator.cancelled == [run["id"]]
+    assert repo.get_run(run["id"]) is not None
+
+
+def test_terminal_run_delete_returns_conflict_until_kubernetes_cleanup(
+    client: Tuple[TestClient, SceneRepository],
+) -> None:
+    api, repo = client
+    project = repo.create_project({"name": "Durable", "slug": "durable-cleanup"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 1280, "height": 720},
+            "status": "failed",
+        }
+    )
+    repo.update_execution(
+        execution["id"],
+        {"kubernetes_job_name": "scene-exec-1", "kubernetes_secret_name": "scene-exec-1"},
+    )
+    repo.update_run(run["id"], {"status": "failed"})
+
+    response = api.delete(f"/api/runs/{run['id']}")
+
+    assert response.status_code == 409
+    assert "cleanup is pending" in response.json()["detail"]
+    assert repo.get_run(run["id"]) is not None
+
+
+@pytest.mark.parametrize("resource", ["project", "batch"])
+def test_active_parent_delete_requests_run_cleanup_before_cascade(
+    client: Tuple[TestClient, SceneRepository],
+    resource: str,
+) -> None:
+    api, repo = client
+    project = repo.create_project({"name": "Durable", "slug": f"durable-{resource}"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+        }
+    )
+
+    class _DurableOrchestrator:
+        def __init__(self) -> None:
+            self.cancelled: list[str] = []
+
+        def cancel_run(self, run_id: str) -> None:
+            self.cancelled.append(run_id)
+
+    orchestrator = _DurableOrchestrator()
+    api_routes.get_orchestrator = lambda: orchestrator
+    target = (
+        f"/api/projects/{project['id']}"
+        if resource == "project"
+        else f"/api/batches/{batch['id']}"
+    )
+
+    response = api.delete(target)
+
+    assert response.status_code == 409
+    assert orchestrator.cancelled == [run["id"]]
+    assert repo.get_project(project["id"]) is not None
+    assert repo.get_batch(batch["id"]) is not None
+    assert repo.get_run(run["id"]) is not None
 
 
 def test_run_task_subset_is_validated_and_persisted(

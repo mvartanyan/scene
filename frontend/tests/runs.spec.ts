@@ -87,7 +87,7 @@ async function waitForRunExecution(
   request: APIRequestContext,
   runId: string
 ): Promise<string> {
-  const deadline = Date.now() + 25000;
+  const deadline = Date.now() + 5000;
   let firstExecutionId = '';
   while (Date.now() < deadline) {
     const response = await request.get(`${apiBase}/runs/${runId}/executions`);
@@ -103,7 +103,7 @@ async function waitForRunExecution(
   }
   throw new Error(
     firstExecutionId
-      ? `Run ${runId} execution ${firstExecutionId} did not leave queued/executing`
+      ? `Run ${runId} execution ${firstExecutionId} did not become terminal`
       : `Run ${runId} did not create an execution`
   );
 }

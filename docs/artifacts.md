@@ -31,8 +31,13 @@ Keys are deterministic:
 ```
 
 Run and baseline deletion enumerates artifact metadata already attached to the
-records and deletes only keys in the matching run/baseline scope. Ordinary
-cleanup does not list or scan the bucket.
+records and considers only keys in the matching run/baseline scope. For each
+explicit key, SCENE lists that key's versions and delete markers and removes
+them by version ID, then re-lists in bounded sweeps to catch a concurrent late
+version. Run deletion is rejected while any execution-scoped PUT URL remains
+valid, which fences uploads before metadata is removed. It never performs an
+unscoped bucket scan. Any S3 batch-delete error or non-converging sweep aborts
+metadata deletion so cleanup can be retried safely.
 
 ## Runner Transfer
 
@@ -49,6 +54,9 @@ SCENE compares every receipt with its persisted execution scope, confirms the
 object exists and has the expected size, and streams it through SHA-256
 verification when S3 metadata does not carry the checksum. Presigned URLs and
 their query strings are removed from diagnostics and callback payloads.
+Once verification records an S3 version ID, materialization, checksum reads,
+and presigned downloads address that exact version instead of the mutable
+latest object at the key.
 
 Baseline/diff processing downloads only the object required for the current
 execution into `SCENE_ARTIFACT_TEMP_ROOT`. Final diff and heatmap files are then
@@ -56,6 +64,9 @@ uploaded through the app's S3 principal.
 
 ## Readiness
 
-Application startup performs an S3 write/read/delete probe when the S3 backend
-is selected. Runner readiness checks only callback reachability and ephemeral
-workspace access; per-execution uploads prove the presigned transport itself.
+`GET /readyz` performs an S3 write/read/delete probe when the S3 backend
+is selected. When bucket versioning returns a version ID, SCENE deletes that
+exact probe version so readiness checks do not accumulate retained delete
+markers or noncurrent probe objects. Runner readiness checks only callback
+reachability and ephemeral workspace access; per-execution uploads prove the
+presigned transport itself.

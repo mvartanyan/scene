@@ -2,9 +2,16 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict
 
+import httpx
 import pytest
 
-from scene_mcp.client import SceneAgentClient, SceneClientError
+from app.services.agent_auth import SCENE_API_TOKEN_HEADER
+from scene_mcp.client import (
+    SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV,
+    SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV,
+    SceneAgentClient,
+    SceneClientError,
+)
 from scene_mcp.server import TOOL_NAMES, register_tools
 
 
@@ -95,6 +102,8 @@ def test_mcp_tools_register_and_forward_to_rest_client() -> None:
 
 def test_scene_client_adds_bearer_token_and_surfaces_errors(monkeypatch) -> None:
     calls: list[dict[str, Any]] = []
+    monkeypatch.delenv(SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV, raising=False)
+    monkeypatch.delenv(SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV, raising=False)
 
     class _Response:
         def __init__(self, status_code: int, payload: dict) -> None:
@@ -107,8 +116,9 @@ def test_scene_client_adds_bearer_token_and_surfaces_errors(monkeypatch) -> None
             return self._payload
 
     class _HTTPClient:
-        def __init__(self, timeout: float) -> None:
+        def __init__(self, timeout: float, auth=None) -> None:
             self.timeout = timeout
+            self.auth = auth
 
         def __enter__(self):
             return self
@@ -150,3 +160,64 @@ def test_scene_client_adds_bearer_token_and_surfaces_errors(monkeypatch) -> None
 
     with pytest.raises(SceneClientError, match="GET /api/projects failed with 500"):
         client.list_projects()
+
+
+def test_scene_client_uses_separate_api_token_header_with_ingress_basic_auth(
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class _Response:
+        status_code = 200
+        content = b"{}"
+        text = "{}"
+
+        def json(self) -> dict:
+            return {"ok": True}
+
+    class _HTTPClient:
+        def __init__(self, timeout: float, auth=None) -> None:
+            calls.append({"timeout": timeout, "auth": auth})
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def request(self, method, url, headers, json=None, params=None):
+            calls[-1].update({"method": method, "url": url, "headers": headers})
+            return _Response()
+
+    monkeypatch.setattr("scene_mcp.client.httpx.Client", _HTTPClient)
+    monkeypatch.setenv(SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV, "reviewer")
+    monkeypatch.setenv(SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV, "ingress-secret")
+
+    client = SceneAgentClient(
+        base_url="https://scene.example.test",
+        api_token="scene-secret",
+        timeout_seconds=1,
+    )
+
+    assert client.get_manifest() == {"ok": True}
+    assert isinstance(calls[0]["auth"], httpx.BasicAuth)
+    assert calls[0]["headers"][SCENE_API_TOKEN_HEADER] == "scene-secret"
+    assert "Authorization" not in calls[0]["headers"]
+    assert "scene-secret" not in repr(calls[0]["auth"])
+    assert "ingress-secret" not in repr(calls[0]["auth"])
+
+
+def test_scene_client_rejects_partial_ingress_basic_auth_without_exposing_secret(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV, "reviewer")
+    monkeypatch.delenv(SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV, raising=False)
+
+    with pytest.raises(SceneClientError) as error:
+        SceneAgentClient(api_token="scene-secret")
+
+    message = str(error.value)
+    assert SCENE_INGRESS_BASIC_AUTH_USERNAME_ENV in message
+    assert SCENE_INGRESS_BASIC_AUTH_PASSWORD_ENV in message
+    assert "reviewer" not in message
+    assert "scene-secret" not in message

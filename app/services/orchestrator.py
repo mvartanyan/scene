@@ -23,6 +23,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback when SDK unavailable
     ImageNotFound = Exception  # type: ignore
     NotFound = Exception  # type: ignore
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -40,6 +41,7 @@ from app.services.runner_backend import (
     DEFAULT_RUNNER_IMAGE,
     SCENE_RUNNER_IMAGE_ENV,
     RunnerReadinessReport,
+    RunnerRuntimeConfig,
     load_runner_runtime_config,
     validate_runner_runtime_config,
 )
@@ -599,9 +601,19 @@ class RunOrchestrator:
         self._watchdog_stop = threading.Event()
         self._watchdog: Optional[threading.Thread] = None
         self._worker: Optional[threading.Thread] = None
-        if auto_start:
+        if auto_start and self._runner_runtime.backend == "docker":
             self._ensure_worker()
             self._ensure_watchdog()
+
+    @property
+    def runner_runtime(self) -> RunnerRuntimeConfig:
+        """Expose immutable runtime configuration without leaking local worker state."""
+
+        return self._runner_runtime
+
+    @property
+    def uses_durable_dispatch(self) -> bool:
+        return self._runner_runtime.backend == "k3s"
 
     def _log_path(self, run_id: str, execution_id: str) -> Path:
         return self._artifacts.execution_dir(run_id, execution_id) / "runner.log"
@@ -612,6 +624,14 @@ class RunOrchestrator:
             return self._repo.get_baseline(baseline_id)
         if run["purpose"] == RunPurpose.comparison.value:
             return self._repo.get_latest_baseline(run["batch_id"])
+        return None
+
+    def _recording_baseline(self, run: Dict[str, object]) -> Optional[Dict[str, object]]:
+        if run.get("purpose") != RunPurpose.baseline_recording.value:
+            return None
+        baseline = self._resolve_baseline_record(run)
+        if baseline and str(baseline.get("run_id") or "") == str(run.get("id") or ""):
+            return baseline
         return None
 
     def _find_video(self, execution_dir: Path) -> Optional[Path]:
@@ -694,6 +714,91 @@ class RunOrchestrator:
         queue_ref = self._completion_queue(run_id)
         queue_ref.put((execution_id, payload))
 
+    def _run_task_records(
+        self,
+        run: Dict[str, object],
+    ) -> tuple[Optional[Dict[str, object]], List[Tuple[Dict[str, object], Dict[str, object]]]]:
+        batch = self._repo.get_batch(str(run["batch_id"]))
+        if not batch:
+            return None, []
+        task_records: List[Tuple[Dict[str, object], Dict[str, object]]] = []
+        scoped_task_ids = run.get("task_ids")
+        if scoped_task_ids is None:
+            scoped_task_ids = batch.get("task_ids", [])
+        for task_id in scoped_task_ids:
+            task = self._repo.get_task(str(task_id))
+            if not task:
+                LOGGER.warning("Task %s missing; skipping in run %s", task_id, run["id"])
+                continue
+            page = self._repo.get_page(str(task.get("page_id")))
+            if not page:
+                LOGGER.warning("Page %s missing for task %s; skipping", task.get("page_id"), task_id)
+                continue
+            task_records.append((task, page))
+        return batch, task_records
+
+    def prepare_durable_run(self, run_id: str) -> List[Dict[str, object]]:
+        """Persist the complete execution matrix before a k3s dispatcher sees work."""
+
+        run = self._repo.get_run(run_id)
+        if not run or run.get("status") in {
+            RunStatus.finished.value,
+            RunStatus.failed.value,
+            RunStatus.cancelled.value,
+        }:
+            return []
+        batch, task_records = self._run_task_records(run)
+        if not batch or not task_records:
+            self._repo.update_run(
+                run_id,
+                {
+                    "status": RunStatus.failed.value,
+                    "note": "Run has no valid tasks to execute.",
+                },
+            )
+            return []
+        self._create_execution_matrix(run, task_records)
+        executions = [
+            execution
+            for execution in self._repo.list_executions(run_id=run_id)
+            if execution.get("status") == ExecutionStatus.queued.value
+        ]
+        timeout_seconds = int(
+            run.get("timeout_seconds")
+            or self._repo.get_config().get("run_timeout_seconds", self._runner.timeout)
+        )
+        started_at = str(run.get("started_at") or _utcnow())
+        timeout_deadline = run.get("timeout_deadline")
+        if timeout_deadline is None:
+            timeout_deadline = time.time() + timeout_seconds
+        update_payload: Dict[str, object] = {
+            "status": RunStatus.executing.value,
+            "started_at": started_at,
+            "timeout_deadline": timeout_deadline,
+            "timeout_deadline_iso": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ",
+                time.gmtime(float(timeout_deadline)),
+            ),
+        }
+        if run["purpose"] == RunPurpose.baseline_recording.value:
+            baseline = self._repo.create_baseline(
+                {
+                    "project_id": run["project_id"],
+                    "batch_id": run["batch_id"],
+                    "run_id": run_id,
+                    "status": BaselineStatus.pending.value,
+                    "items": [],
+                }
+            )
+            update_payload["baseline_id"] = baseline["id"]
+        elif not run.get("baseline_id"):
+            baseline = self._repo.get_latest_baseline(str(run["batch_id"]))
+            if baseline:
+                update_payload["baseline_id"] = baseline["id"]
+        self._repo.update_run(run_id, update_payload)
+        self._refresh_run_summary(run_id, force_status=RunStatus.executing.value)
+        return executions
+
     def _process_run(self, run_id: str) -> None:
         run = self._repo.get_run(run_id)
         if not run:
@@ -744,29 +849,28 @@ class RunOrchestrator:
             )
             return
 
-        executions = self._create_execution_matrix(run, task_records)
+        self._create_execution_matrix(run, task_records)
+        executions = [
+            execution
+            for execution in self._repo.list_executions(run_id=run_id)
+            if execution.get("status") == ExecutionStatus.queued.value
+        ]
         config_defaults = self._repo.get_config()
         run_timeout_seconds = run.get("timeout_seconds")
         if run_timeout_seconds is None:
             run_timeout_seconds = int(config_defaults.get("run_timeout_seconds", self._runner.timeout))
         deadline = time.time() + run_timeout_seconds if run_timeout_seconds else None
 
-        summary = {
-            "executions_total": len(executions),
-            "executions_finished": 0,
-            "executions_failed": 0,
-            "executions_cancelled": 0,
-        }
         started_at = _utcnow()
         update_payload: Dict[str, Any] = {
             "status": RunStatus.executing.value,
-            "summary": summary,
             "started_at": started_at,
         }
         if deadline is not None:
             update_payload["timeout_deadline"] = deadline
             update_payload["timeout_deadline_iso"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(deadline))
         self._repo.update_run(run_id, update_payload)
+        self._refresh_run_summary(run_id, force_status=RunStatus.executing.value)
         run.update(update_payload)
 
         baseline_record = None
@@ -871,7 +975,11 @@ class RunOrchestrator:
 
         counts = self._refresh_run_summary(run_id, force_status=final_status)
 
-        if baseline_record:
+        if (
+            baseline_record
+            and run.get("purpose") == RunPurpose.baseline_recording.value
+            and str(baseline_record.get("run_id") or "") == str(run_id)
+        ):
             baseline_status = (
                 BaselineStatus.completed.value
                 if final_status == RunStatus.finished.value
@@ -1037,6 +1145,145 @@ class RunOrchestrator:
         )
         self._watchdog.start()
 
+    @staticmethod
+    def _snapshotted_configuration(
+        execution: Dict[str, object],
+    ) -> tuple[Optional[Dict[str, object]], Optional[Dict[str, object]], Optional[int]]:
+        snapshot = execution.get("configuration_snapshot")
+        if not isinstance(snapshot, dict):
+            return None, None, None
+        task = snapshot.get("task")
+        page = snapshot.get("page")
+        if not isinstance(task, dict) or not isinstance(page, dict):
+            return None, None, None
+        try:
+            post_wait_ms = int(snapshot.get("capture_post_wait_ms"))
+        except (TypeError, ValueError):
+            post_wait_ms = None
+        return task, page, post_wait_ms
+
+    def _build_runner_config(
+        self,
+        *,
+        run: Dict[str, object],
+        execution: Dict[str, object],
+        task: Dict[str, object],
+        page: Dict[str, object],
+        baseline: Optional[Dict[str, object]],
+        post_wait_ms: Optional[int] = None,
+    ) -> tuple[Dict[str, object], Optional[Dict[str, object]]]:
+        capture_wait = self._post_wait_ms if post_wait_ms is None else max(0, int(post_wait_ms))
+        config: Dict[str, object] = {
+            "url": page["url"],
+            "browser": execution["browser"],
+            "viewport": execution["viewport"],
+            "preparatory_js": _clean_js(page.get("preparatory_js")),
+            "preparatory_actions": _clean_actions(page.get("preparatory_actions")),
+            "task_js": _clean_js(task.get("task_js")),
+            "task_actions": _clean_actions(task.get("task_actions")),
+            "post_wait_ms": capture_wait,
+            "goto_timeout_ms": 60000,
+        }
+        if page.get("basic_auth_username"):
+            config["http_credentials"] = {
+                "username": page.get("basic_auth_username"),
+                "password": page.get("basic_auth_password") or "",
+            }
+        if page.get("reference_url"):
+            config["reference"] = {
+                "url": page.get("reference_url"),
+                "post_wait_ms": config.get("post_wait_ms", capture_wait),
+            }
+        transfer_descriptor: Optional[Dict[str, object]] = None
+        if self._artifacts.backend == "s3" and hasattr(self._artifacts, "create_execution_transfer"):
+            baseline_artifact = self._baseline_artifact_for_execution(baseline, execution)
+            transfer = self._artifacts.create_execution_transfer(
+                project_id=str(execution["project_id"]),
+                batch_id=str(execution["batch_id"]),
+                run_id=str(run["id"]),
+                execution_id=str(execution["id"]),
+                baseline_artifact=baseline_artifact,
+            )
+            config["artifact_transfer"] = transfer
+            transfer_descriptor = self._transfer_descriptor(transfer)
+        return config, transfer_descriptor
+
+    def prepare_k3s_dispatch(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+    ) -> Dict[str, object]:
+        execution = self._repo.get_execution(execution_id)
+        if not execution:
+            raise ValueError("Execution not found")
+        generation = int(execution.get("dispatch_generation") or 0)
+        if execution.get("dispatch_claim_owner") != owner or generation <= 0:
+            raise ValueError("Execution is not claimed by this dispatcher")
+        run = self._repo.get_run(str(execution["run_id"]))
+        task, page, post_wait_ms = self._snapshotted_configuration(execution)
+        if task is None:
+            task = self._repo.get_task(str(execution["task_id"]))
+        if page is None:
+            page = self._repo.get_page(str(execution.get("page_id") or ""))
+        if not run or not task or not page:
+            raise ValueError("Execution run/task/page configuration is incomplete")
+        baseline = self._resolve_baseline_record(run)
+        runner_config, transfer_descriptor = self._build_runner_config(
+            run=run,
+            execution=execution,
+            task=task,
+            page=page,
+            baseline=baseline,
+            post_wait_ms=post_wait_ms,
+        )
+        callback_token = secrets.token_urlsafe(32)
+        callback_url = self._scene_host_url.rstrip("/") + f"/api/executions/{execution_id}/complete"
+        timeout_seconds = int(
+            run.get("timeout_seconds")
+            or self._repo.get_config().get("run_timeout_seconds", self._runner.timeout)
+        )
+        if run.get("timeout_deadline") is not None:
+            remaining = int(float(run["timeout_deadline"]) - time.time())
+            if remaining <= 0:
+                raise RuntimeError("Run timeout expired before Kubernetes dispatch")
+            timeout_seconds = min(timeout_seconds, remaining)
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=max(timeout_seconds + 300, 600))
+        ).isoformat()
+        digest_payload = {
+            "execution_id": execution_id,
+            "run_id": run["id"],
+            "generation": generation,
+            "callback_url": callback_url,
+            "runner_config": runner_config,
+        }
+        spec_digest = hashlib.sha256(
+            json.dumps(digest_payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        configured = self._repo.configure_execution_callback(
+            execution_id,
+            owner=owner,
+            generation=generation,
+            token_sha256=hashlib.sha256(callback_token.encode("utf-8")).hexdigest(),
+            expires_at=expires_at,
+            artifact_transfer=transfer_descriptor,
+            runner_spec_digest=spec_digest,
+        )
+        if not configured:
+            raise RuntimeError("Execution claim changed before callback configuration was saved")
+        return {
+            "execution": configured,
+            "run": run,
+            "runner_config": runner_config,
+            "callback_url": callback_url,
+            "callback_token": callback_token,
+            "timeout_seconds": timeout_seconds,
+            "spec_digest": spec_digest,
+        }
+
     def _launch_execution(
         self,
         *,
@@ -1086,40 +1333,20 @@ class RunOrchestrator:
             return None
 
         execution_dir = self._artifacts.execution_dir(run_id, execution_id)
-        config = {
-            "url": page["url"],
-            "browser": execution["browser"],
-            "viewport": execution["viewport"],
-            "preparatory_js": _clean_js(page.get("preparatory_js")),
-            "preparatory_actions": _clean_actions(page.get("preparatory_actions")),
-            "task_js": _clean_js(task.get("task_js")),
-            "task_actions": _clean_actions(task.get("task_actions")),
-            "post_wait_ms": self._post_wait_ms,
-            "goto_timeout_ms": 60000,
-        }
-        if page.get("basic_auth_username"):
-            config["http_credentials"] = {
-                "username": page.get("basic_auth_username"),
-                "password": page.get("basic_auth_password") or "",
-            }
-        if page.get("reference_url"):
-            config["reference"] = {
-                "url": page.get("reference_url"),
-                "post_wait_ms": config.get("post_wait_ms", self._post_wait_ms),
-            }
-
-        transfer_descriptor: Optional[Dict[str, object]] = None
-        if self._artifacts.backend == "s3" and hasattr(self._artifacts, "create_execution_transfer"):
-            baseline_artifact = self._baseline_artifact_for_execution(baseline, execution)
-            transfer = self._artifacts.create_execution_transfer(
-                project_id=str(execution["project_id"]),
-                batch_id=str(execution["batch_id"]),
-                run_id=str(run_id),
-                execution_id=str(execution_id),
-                baseline_artifact=baseline_artifact,
-            )
-            config["artifact_transfer"] = transfer
-            transfer_descriptor = self._transfer_descriptor(transfer)
+        snapshotted_task, snapshotted_page, post_wait_ms = self._snapshotted_configuration(
+            execution
+        )
+        if snapshotted_task is not None and snapshotted_page is not None:
+            task = snapshotted_task
+            page = snapshotted_page
+        config, transfer_descriptor = self._build_runner_config(
+            run=run,
+            execution=execution,
+            task=task,
+            page=page,
+            baseline=baseline,
+            post_wait_ms=post_wait_ms,
+        )
 
         self._runner.prepare_workspace(config, execution_dir)
 
@@ -1328,6 +1555,9 @@ class RunOrchestrator:
                 self._append_log(run_id, execution_id, "Runner image build complete")
 
     def enqueue(self, run_id: str) -> None:
+        if self._runner_runtime.backend == "k3s":
+            self.prepare_durable_run(run_id)
+            return
         with self._lock:
             if run_id in self._inflight:
                 return
@@ -1349,6 +1579,21 @@ class RunOrchestrator:
     def cancel_run(self, run_id: str) -> None:
         run = self._repo.get_run(run_id)
         if not run:
+            return
+        if self._runner_runtime.backend == "k3s":
+            self._repo.update_run(
+                run_id,
+                {
+                    "cancellation_requested_at": _utcnow(),
+                    "note": "Run cancellation requested; waiting for dispatcher cleanup.",
+                },
+            )
+            for execution in self._repo.list_executions(run_id=run_id):
+                self._repo.request_execution_cancellation(
+                    str(execution["id"]),
+                    reason="Run cancelled manually",
+                )
+            self._refresh_run_summary(run_id, force_status=None)
             return
         with self._lock:
             self._cancelled_runs.add(run_id)
@@ -1378,6 +1623,12 @@ class RunOrchestrator:
         if status not in {ExecutionStatus.queued.value, ExecutionStatus.executing.value}:
             return
         run_id = execution["run_id"]
+        if self._runner_runtime.backend == "k3s":
+            self._repo.request_execution_cancellation(
+                execution_id,
+                reason=reason or "Cancellation requested",
+            )
+            return
         with self._lock:
             self._cancelled_executions.add(execution_id)
         log_message = reason or "Cancellation requested"
@@ -1411,37 +1662,131 @@ class RunOrchestrator:
         run = self._repo.get_run(execution["run_id"])
         if not run:
             raise ValueError("Run not found")
-        if run.get("status") == RunStatus.finished.value:
-            raise ValueError("Cannot retry executions on a finished run.")
-        task = self._repo.get_task(execution["task_id"])
-        if not task:
-            raise ValueError("Task not found")
-        page = self._repo.get_page(task.get("page_id"))
-        if not page:
-            raise ValueError("Page not found")
+        if execution.get("status") not in {
+            ExecutionStatus.failed.value,
+            ExecutionStatus.cancelled.value,
+        }:
+            raise ValueError("Only failed or cancelled executions can be retried.")
+        if (
+            execution.get("kubernetes_job_name")
+            or execution.get("kubernetes_secret_name")
+        ) and not execution.get("kubernetes_cleaned_at"):
+            raise ValueError("Cannot retry until the previous Kubernetes Job has been cleaned up.")
 
-        existing = self._repo.list_executions(run_id=run["id"])
-        max_sequence = max((item.get("sequence") or 0 for item in existing), default=0)
+        retry_id = str(execution.get("superseded_by_execution_id") or "")
+        retry_execution = self._repo.get_execution(retry_id) if retry_id else None
+        if retry_execution and retry_execution.get("status") in {
+            ExecutionStatus.finished.value,
+            ExecutionStatus.failed.value,
+            ExecutionStatus.cancelled.value,
+        }:
+            return retry_execution
+        if retry_execution and run.get("status") == RunStatus.executing.value:
+            return retry_execution
+        if run.get("status") not in {
+            RunStatus.failed.value,
+            RunStatus.cancelled.value,
+        }:
+            raise ValueError("Only executions on failed or cancelled runs can be retried.")
 
-        new_execution = self._repo.create_execution(
-            {
-                "run_id": run["id"],
-                "project_id": run["project_id"],
-                "batch_id": run["batch_id"],
-                "task_id": execution["task_id"],
-                "task_name": execution["task_name"],
-                "page_id": execution.get("page_id"),
-                "browser": execution["browser"],
-                "viewport": execution["viewport"],
-                "status": ExecutionStatus.queued.value,
-                "sequence": max_sequence + 1,
-                "idempotency_key": f"retry:{execution_id}:{max_sequence + 1}",
-            }
-        )
+        if not retry_id:
+            reservation, source = self._repo.reserve_execution_retry(execution_id)
+            if reservation == "cleanup_pending":
+                raise ValueError(
+                    "Cannot retry until the previous Kubernetes Job has been cleaned up."
+                )
+            if reservation not in {"reserved", "existing"} or not source:
+                raise ValueError("Only failed or cancelled executions can be retried.")
+            retry_id = str(source.get("superseded_by_execution_id") or "")
+            if not retry_id:
+                raise RuntimeError("Retry reservation did not produce a child execution identity.")
+            retry_execution = self._repo.get_execution(retry_id)
+            if retry_execution and retry_execution.get("status") in {
+                ExecutionStatus.finished.value,
+                ExecutionStatus.failed.value,
+                ExecutionStatus.cancelled.value,
+            }:
+                return retry_execution
+
+        if not retry_execution:
+            configuration_snapshot = execution.get("configuration_snapshot")
+            if not isinstance(configuration_snapshot, dict):
+                task = self._repo.get_task(execution["task_id"])
+                if not task:
+                    raise ValueError("Task not found")
+                page = self._repo.get_page(task.get("page_id"))
+                if not page:
+                    raise ValueError("Page not found")
+
+            existing = self._repo.list_executions(run_id=run["id"])
+            max_sequence = max((item.get("sequence") or 0 for item in existing), default=0)
+            retry_execution = self._repo.get_execution(retry_id)
+            if not retry_execution:
+                retry_execution = self._repo.create_execution(
+                    {
+                        "run_id": run["id"],
+                        "project_id": run["project_id"],
+                        "batch_id": run["batch_id"],
+                        "task_id": execution["task_id"],
+                        "task_name": execution["task_name"],
+                        "page_id": execution.get("page_id"),
+                        "browser": execution["browser"],
+                        "viewport": execution["viewport"],
+                        "status": ExecutionStatus.queued.value,
+                        "sequence": max_sequence + 1,
+                        "idempotency_key": f"retry:{execution_id}",
+                        "configuration_snapshot": configuration_snapshot,
+                        "retry_of_execution_id": execution_id,
+                    }
+                )
+
+        if retry_execution.get("status") in {
+            ExecutionStatus.finished.value,
+            ExecutionStatus.failed.value,
+            ExecutionStatus.cancelled.value,
+        }:
+            return retry_execution
+
+        reopened = self._repo.reopen_run_for_retry(str(run["id"]))
+        if not reopened:
+            current_retry = self._repo.get_execution(retry_id) or retry_execution
+            if current_retry.get("status") in {
+                ExecutionStatus.finished.value,
+                ExecutionStatus.failed.value,
+                ExecutionStatus.cancelled.value,
+            }:
+                return current_retry
+            current_run = self._repo.get_run(str(run["id"]))
+            if current_run and current_run.get("status") == RunStatus.executing.value:
+                return current_retry
+            raise ValueError("Only failed or cancelled runs can be reopened for retry.")
+        recording_baseline = self._recording_baseline(run)
+        if recording_baseline:
+            self._repo.update_baseline(
+                str(recording_baseline["id"]),
+                {"status": BaselineStatus.pending.value},
+            )
+        if self.uses_durable_dispatch:
+            timeout_seconds = int(
+                run.get("timeout_seconds")
+                or self._repo.get_config().get("run_timeout_seconds", self._runner.timeout)
+            )
+            deadline = time.time() + timeout_seconds
+            self._repo.update_run(
+                str(run["id"]),
+                {
+                    "timeout_deadline": deadline,
+                    "timeout_deadline_iso": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ",
+                        time.gmtime(deadline),
+                    ),
+                },
+            )
 
         self._refresh_run_summary(run["id"], force_status=RunStatus.executing.value)
-        self.enqueue(run["id"])
-        return new_execution
+        if not self.uses_durable_dispatch:
+            self.enqueue(run["id"])
+        return retry_execution
 
     def _run_loop(self) -> None:
         while True:
@@ -1855,6 +2200,8 @@ class RunOrchestrator:
             "executions_cancelled": 0,
             "timed_out_runs": [],
         }
+        if self.uses_durable_dispatch:
+            return result
         timed_out_runs: set[str] = set()
         for execution_id, context in self._snapshot_execution_contexts():
             if context.result_payload is not None or context.watchdog_marked:
@@ -1875,6 +2222,28 @@ class RunOrchestrator:
         return result
 
     # ------------------------------------------------------------------ processing
+    def _configuration_snapshot(
+        self,
+        task: Dict[str, object],
+        page: Dict[str, object],
+    ) -> Dict[str, object]:
+        return {
+            "version": 1,
+            "capture_post_wait_ms": self._post_wait_ms,
+            "page": {
+                "url": page.get("url"),
+                "reference_url": page.get("reference_url"),
+                "preparatory_js": page.get("preparatory_js"),
+                "preparatory_actions": page.get("preparatory_actions") or [],
+                "basic_auth_username": page.get("basic_auth_username"),
+                "basic_auth_password": page.get("basic_auth_password"),
+            },
+            "task": {
+                "task_js": task.get("task_js"),
+                "task_actions": task.get("task_actions") or [],
+            },
+        }
+
     def _create_execution_matrix(
         self,
         run: Dict[str, object],
@@ -1882,7 +2251,7 @@ class RunOrchestrator:
     ) -> List[Dict[str, object]]:
         executions: List[Dict[str, object]] = []
         sequence = 0
-        for task_meta, _page_meta in task_records:
+        for task_meta, page_meta in task_records:
             browsers = task_meta.get("browsers") or []
             if not browsers:
                 config = self._repo.get_config()
@@ -1911,6 +2280,10 @@ class RunOrchestrator:
                             "status": ExecutionStatus.queued.value,
                             "sequence": sequence,
                             "idempotency_key": f"matrix:{sequence}",
+                            "configuration_snapshot": self._configuration_snapshot(
+                                task_meta,
+                                page_meta,
+                            ),
                         }
                     )
                     self._append_log(run["id"], execution["id"], "Execution queued")
@@ -1937,6 +2310,8 @@ class RunOrchestrator:
         counts = self._repo.execution_status_counts(run_id)
         diff_levels: List[float] = []
         for execution in self._repo.list_executions(run_id=run_id):
+            if execution.get("superseded_by_execution_id"):
+                continue
             level = execution.get("diff_level")
             if level is None:
                 diff_info = execution.get("diff") or {}
@@ -2403,6 +2778,218 @@ class RunOrchestrator:
             self._diff_pixel_tolerance = normalized
             self._diffs = DiffEngine(pixel_tolerance=normalized)
         LOGGER.info("Updated diff pixel tolerance to %s", normalized)
+
+    def finalize_durable_callback(
+        self,
+        execution_id: str,
+        *,
+        owner: str,
+        lease_seconds: int = 300,
+    ) -> bool:
+        execution = self._repo.get_execution(execution_id)
+        if not execution:
+            return False
+        if execution.get("callback_state") == "finalized":
+            return True
+        claimed = self._repo.claim_callback_finalization(
+            execution_id,
+            owner=owner,
+            lease_seconds=lease_seconds,
+        )
+        if not claimed:
+            return False
+        result_data = claimed.get("callback_result")
+        result_digest = str(claimed.get("callback_result_digest") or "")
+        if not isinstance(result_data, dict) or not result_digest:
+            return False
+        if claimed.get("status") not in {
+            ExecutionStatus.finished.value,
+            ExecutionStatus.failed.value,
+            ExecutionStatus.cancelled.value,
+        }:
+            run = self._repo.get_run(str(claimed["run_id"]))
+            if not run:
+                return False
+            baseline = self._resolve_baseline_record(run)
+            self._finalize_from_callback(run, execution_id, result_data, baseline)
+        claimed = self._repo.claim_callback_finalization(
+            execution_id,
+            owner=owner,
+            lease_seconds=lease_seconds,
+        )
+        if not claimed or claimed.get("status") not in {
+            ExecutionStatus.finished.value,
+            ExecutionStatus.failed.value,
+            ExecutionStatus.cancelled.value,
+        }:
+            return False
+        refreshed_run = self.refresh_durable_run(str(claimed["run_id"]))
+        if not refreshed_run:
+            return False
+        claimed = self._repo.claim_callback_finalization(
+            execution_id,
+            owner=owner,
+            lease_seconds=lease_seconds,
+        )
+        if not claimed:
+            return False
+        return self._repo.mark_callback_finalized(
+            execution_id,
+            result_digest,
+            owner=owner,
+        )
+
+    def recover_durable_result(self, execution_id: str) -> bool:
+        execution = self._repo.get_execution(execution_id)
+        if not execution or self._artifacts.backend != "s3":
+            return False
+        transfer = execution.get("artifact_transfer")
+        outputs = transfer.get("outputs") if isinstance(transfer, dict) else None
+        result_output = outputs.get("result") if isinstance(outputs, dict) else None
+        if not isinstance(result_output, dict):
+            return False
+        key = str(result_output.get("key") or "")
+        if not key:
+            return False
+        destination = self._artifacts.execution_dir(
+            str(execution["run_id"]),
+            execution_id,
+        ) / "recovered-result.json"
+        try:
+            self._artifacts.materialize(
+                {"storage": "s3", "key": key, "path": key},
+                destination,
+            )
+            result = json.loads(destination.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.info("Execution %s has no recoverable S3 result yet: %s", execution_id, exc)
+            return False
+        if not isinstance(result, dict):
+            return False
+        outcome, _record = self._repo.recover_execution_callback(
+            execution_id,
+            generation=int(execution.get("dispatch_generation") or 0),
+            result=result,
+        )
+        return outcome in {"accepted", "duplicate"}
+
+    def finalize_k3s_failure(
+        self,
+        execution_id: str,
+        *,
+        message: str,
+        cancelled: bool = False,
+        runner_log: Optional[str] = None,
+    ) -> bool:
+        execution = self._repo.get_execution(execution_id)
+        if not execution or execution.get("status") in {
+            ExecutionStatus.finished.value,
+            ExecutionStatus.failed.value,
+            ExecutionStatus.cancelled.value,
+        }:
+            return False
+        status = (
+            ExecutionStatus.cancelled.value
+            if cancelled
+            else ExecutionStatus.failed.value
+        )
+        finalized = self._repo.finalize_execution_infrastructure_failure(
+            execution_id,
+            status=status,
+            completed_at=_utcnow(),
+            message=message,
+        )
+        if not finalized:
+            return False
+        run_id = str(finalized["run_id"])
+        if runner_log:
+            log_path = self._log_path(run_id, execution_id)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(runner_log[-200_000:], encoding="utf-8", errors="replace")
+        self._append_log(run_id, execution_id, message)
+        log_path = self._log_path(run_id, execution_id)
+        artifacts: Dict[str, Dict[str, object]] = {}
+        if log_path.exists():
+            artifacts = self._artifact_payload(
+                RunnerResult(success=False, log=log_path, message=message),
+                finalized,
+            )
+        if artifacts:
+            self._repo.update_execution(execution_id, {"artifacts": artifacts})
+        self.refresh_durable_run(run_id)
+        return True
+
+    def attach_k3s_log(self, execution_id: str, runner_log: str) -> bool:
+        execution = self._repo.get_execution(execution_id)
+        if not execution or not runner_log:
+            return False
+        log_path = self._log_path(str(execution["run_id"]), execution_id)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(runner_log[-200_000:], encoding="utf-8", errors="replace")
+        artifact = self._build_artifact(
+            log_path,
+            ArtifactKind.log,
+            "Execution Log",
+            "text/plain",
+            execution=execution,
+        )
+        self._repo.update_execution(
+            execution_id,
+            {"artifacts": {ArtifactKind.log.value: artifact}},
+        )
+        return True
+
+    def refresh_durable_run(self, run_id: str) -> Optional[Dict[str, object]]:
+        self._refresh_run_summary(run_id, force_status=None)
+        run = self._repo.get_run(run_id)
+        if not run:
+            return None
+        recording_baseline = self._recording_baseline(run)
+        if recording_baseline and run.get("status") in {
+            RunStatus.finished.value,
+            RunStatus.failed.value,
+            RunStatus.cancelled.value,
+        }:
+            baseline_status = (
+                BaselineStatus.completed.value
+                if run.get("status") == RunStatus.finished.value
+                else BaselineStatus.failed.value
+            )
+            self._repo.update_baseline(str(recording_baseline["id"]), {"status": baseline_status})
+        return run
+
+    def handle_durable_execution_callback(
+        self,
+        execution_id: str,
+        payload: Dict[str, object],
+    ) -> str:
+        execution = self._repo.get_execution(execution_id)
+        if not execution:
+            return "missing"
+        token = payload.get("token")
+        result_data = payload.get("result")
+        run_id = payload.get("run_id")
+        callback_execution_id = payload.get("execution_id")
+        generation = payload.get("dispatch_generation")
+        if (
+            not isinstance(token, str)
+            or not isinstance(result_data, dict)
+            or str(callback_execution_id or "") != str(execution_id)
+            or str(run_id or "") != str(execution.get("run_id") or "")
+        ):
+            return "invalid"
+        try:
+            generation_value = int(generation)
+        except (TypeError, ValueError):
+            return "invalid"
+        outcome, _record = self._repo.accept_execution_callback(
+            execution_id,
+            run_id=str(run_id),
+            generation=generation_value,
+            token_sha256=hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            result=result_data,
+        )
+        return outcome
 
     def handle_execution_callback(self, execution_id: str, payload: Dict[str, object]) -> bool:
         token = payload.get("token") if isinstance(payload, dict) else None

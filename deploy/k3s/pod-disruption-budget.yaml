@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: scene-app
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scene
+      app.kubernetes.io/component: app

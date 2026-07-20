@@ -1,7 +1,11 @@
-FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy@sha256:f3a3d2e0332df4c7b6992db0ad0687df1653efd4671612b8ca1be6ae5fc06448
+
+COPY requirements.runner.lock /tmp/requirements.runner.lock
+RUN python -m pip install --no-cache-dir --require-hashes \
+    -r /tmp/requirements.runner.lock \
+    && rm /tmp/requirements.runner.lock
 
 COPY scripts/runner_readiness.py /usr/local/bin/scene-runner-readiness
+COPY app/services/runner_script.py /opt/scene/runner.py
 
-RUN python -m pip install --no-cache-dir playwright==1.47.0 && \
-    python -m playwright install --with-deps && \
-    chmod +x /usr/local/bin/scene-runner-readiness
+RUN chmod +x /usr/local/bin/scene-runner-readiness /opt/scene/runner.py

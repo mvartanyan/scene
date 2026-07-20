@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from PIL import Image
 
 from app.pagination import DEFAULT_PAGE_SIZE, paginate
-from app.schemas import BaselineStatus, ExecutionStatus, RunPurpose, RunStatus, TaskExecution
+from app.schemas import BaselineStatus, ExecutionStatus, RunPurpose, RunStatus
 from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import get_orchestrator
 from app.services.run_scope import batch_task_details, validate_task_subset
@@ -487,7 +487,11 @@ def _render_run_detail(
         counts=context["counts"],
     )
     context["overlay_hash"] = overlay_hash
-    response = templates.TemplateResponse("runs/_run_detail.html", context)
+    response = templates.TemplateResponse(
+        request=request,
+        name="runs/_run_detail.html",
+        context=context,
+    )
     response.headers["X-Scene-Run-Hash"] = overlay_hash
     response.headers["X-Scene-Run-Id"] = str(context["run"]["id"])
     return response
@@ -509,7 +513,7 @@ async def runs_home(
         run_page=run_page,
     )
     context["request"] = request
-    return templates.TemplateResponse("runs/index.html", context)
+    return templates.TemplateResponse(request=request, name="runs/index.html", context=context)
 
 
 @router.get("/runs/fragment", response_class=HTMLResponse)
@@ -529,7 +533,11 @@ async def runs_fragment(
         run_page=run_page,
     )
     context["request"] = request
-    return templates.TemplateResponse("runs/_dashboard.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="runs/_dashboard.html",
+        context=context,
+    )
 
 
 @router.get("/runs/log", response_class=HTMLResponse)
@@ -541,8 +549,6 @@ async def runs_log(
     run_page: int = 1,
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
-    orchestrator = get_orchestrator()
-    orchestrator.reconcile()
     projects = repo.list_projects()
     project_lookup = {proj["id"]: proj for proj in projects}
     runs, run_pagination = _collect_runs(
@@ -573,7 +579,11 @@ async def runs_log(
     }
     snapshot_hash = _runs_log_signature(runs)
     context["snapshot_hash"] = snapshot_hash
-    response = templates.TemplateResponse("runs/_run_list.html", context)
+    response = templates.TemplateResponse(
+        request=request,
+        name="runs/_run_list.html",
+        context=context,
+    )
     response.headers["X-Scene-Run-Hash"] = snapshot_hash
     return response
 
@@ -674,7 +684,11 @@ async def launch_run(
         launch_defaults=launch_defaults,
     )
     context["request"] = request
-    return templates.TemplateResponse("runs/_dashboard.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="runs/_dashboard.html",
+        context=context,
+    )
 
 
 @router.get("/runs/{run_id}/overlay", response_class=HTMLResponse)
@@ -744,8 +758,20 @@ async def delete_run_entry(
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     orchestrator = get_orchestrator()
+    if (
+        getattr(orchestrator, "uses_durable_dispatch", False)
+        and run.get("status") in {RunStatus.queued.value, RunStatus.executing.value}
+    ):
+        orchestrator.cancel_run(run_id)
+        raise HTTPException(
+            status_code=409,
+            detail="Run cancellation was requested; delete it after dispatcher cleanup completes.",
+        )
     orchestrator.cancel_run(run_id)
-    repo.delete_run(run_id, cascade_baseline=True)
+    try:
+        repo.delete_run(run_id, cascade_baseline=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     context = _build_runs_dashboard_context(
         repo,
         filter_project_id=filter_project_id,
@@ -754,7 +780,11 @@ async def delete_run_entry(
         run_page=run_page,
     )
     context["request"] = request
-    return templates.TemplateResponse("runs/_dashboard.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="runs/_dashboard.html",
+        context=context,
+    )
 
 
 @router.get("/runs/{run_id}/executions/{execution_id}/viewer", response_class=HTMLResponse)
@@ -803,7 +833,11 @@ async def execution_viewer(
         "run_diff_threshold": run_context.get("run_diff_threshold"),
         "artifact_dimensions": artifact_dimensions,
     }
-    return templates.TemplateResponse("runs/_execution_viewer.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="runs/_execution_viewer.html",
+        context=context,
+    )
 
 
 @router.get("/runs/{run_id}/executions/{execution_id}/log", response_class=HTMLResponse)
@@ -823,10 +857,8 @@ async def execution_log(
     log_artifact = artifacts.get("log")
     log_text = "Log not available."
     log_length = 0
-    artifact_path = None
     if log_artifact:
         store = get_artifact_store()
-        artifact_path = log_artifact.get("path", "")
         try:
             log_text = store.read_text(log_artifact)
             log_length = int(log_artifact.get("size_bytes") or len(log_text.encode("utf-8")))
@@ -839,7 +871,11 @@ async def execution_log(
         "execution_id": execution_id,
         "log_length": log_length,
     }
-    return templates.TemplateResponse("runs/_execution_log.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="runs/_execution_log.html",
+        context=context,
+    )
 
 
 @router.get("/runs/{run_id}/executions/{execution_id}/log/stream")

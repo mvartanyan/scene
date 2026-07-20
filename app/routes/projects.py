@@ -7,8 +7,9 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from app.constants import DEFAULT_BROWSERS, DEFAULT_VIEWPORTS
-from app.pagination import DEFAULT_PAGE_SIZE, paginate
+from app.pagination import DEFAULT_PAGE_SIZE
 from app.schemas import RunStatus
+from app.services.orchestrator import get_orchestrator
 from app.services.storage import RepositoryDep, SceneRepository
 from app.templating import templates
 
@@ -17,6 +18,27 @@ router = APIRouter(tags=["projects"])
 
 class ProjectFormError(ValueError):
     pass
+
+
+def _request_active_run_cancellation(
+    repo: SceneRepository,
+    *,
+    project_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+) -> None:
+    active_runs = repo.list_active_runs(project_id=project_id, batch_id=batch_id)
+    if not active_runs:
+        return
+    orchestrator = get_orchestrator()
+    for run in active_runs:
+        orchestrator.cancel_run(str(run["id"]))
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Active run cancellation was requested; retry deletion after run cleanup "
+            "completes."
+        ),
+    )
 
 
 def _parse_viewport_tokens(tokens: List[str]) -> Tuple[List[dict], List[str]]:
@@ -201,7 +223,11 @@ def _render_project_detail(
     )
     context["request"] = request
     context["flash_message"] = flash_message or (("danger", error_message) if error_message else None)
-    return templates.TemplateResponse("projects/_project_detail.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="projects/_project_detail.html",
+        context=context,
+    )
 
 
 @router.get("/projects", response_class=HTMLResponse)
@@ -231,7 +257,11 @@ async def projects_home(
     }
     if detail_context:
         context.update(detail_context)
-    return templates.TemplateResponse("projects/index.html", context)
+    return templates.TemplateResponse(
+        request=request,
+        name="projects/index.html",
+        context=context,
+    )
 
 
 @router.post("/projects")
@@ -253,7 +283,11 @@ async def create_project(
 async def delete_project(
     project_id: str, request: Request, repo: SceneRepository = RepositoryDep
 ):
-    repo.delete_project(project_id)
+    _request_active_run_cancellation(repo, project_id=project_id)
+    try:
+        repo.delete_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     response = HTMLResponse("")
     response.headers["HX-Redirect"] = "/projects"
     response.status_code = 204
@@ -675,7 +709,11 @@ async def remove_batch(
     batch = repo.get_batch(batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    repo.delete_batch(batch_id)
+    _request_active_run_cancellation(repo, batch_id=batch_id)
+    try:
+        repo.delete_batch(batch_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _render_project_detail(
         request,
         repo,

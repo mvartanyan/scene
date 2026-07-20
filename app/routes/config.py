@@ -77,7 +77,7 @@ async def config_modal(
     repo: SceneRepository = RepositoryDep,
 ) -> HTMLResponse:
     context = _build_config_context(request, repo)
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/run-concurrency", response_class=HTMLResponse)
@@ -92,7 +92,7 @@ async def update_run_concurrency(
         context = _build_config_context(request, repo, message="Run concurrency updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/run-timeout", response_class=HTMLResponse)
@@ -106,7 +106,7 @@ async def update_run_timeout(
         context = _build_config_context(request, repo, message="Run timeout updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/capture-delay", response_class=HTMLResponse)
@@ -122,7 +122,7 @@ async def update_capture_delay(
         context = _build_config_context(request, repo, message="Capture stabilization delay updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/diff-pixel-tolerance", response_class=HTMLResponse)
@@ -138,7 +138,7 @@ async def update_diff_pixel_tolerance(
         context = _build_config_context(request, repo, message="Diff pixel tolerance updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/host-url", response_class=HTMLResponse)
@@ -160,7 +160,7 @@ async def update_scene_host_url(
             context = _build_config_context(request, repo, error=error_message)
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/browsers", response_class=HTMLResponse)
@@ -178,7 +178,7 @@ async def update_browsers(
         context = _build_config_context(request, repo, message="Browser availability updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/viewports/add", response_class=HTMLResponse)
@@ -190,7 +190,11 @@ async def add_viewport(
 ) -> HTMLResponse:
     if width <= 0 or height <= 0:
         context = _build_config_context(request, repo, error="Viewport dimensions must be positive integers.")
-        return templates.TemplateResponse("config/modal.html", context)
+        return templates.TemplateResponse(
+            request=request,
+            name="config/modal.html",
+            context=context,
+        )
 
     token = f"{width}x{height}"
     config = repo.get_config()
@@ -202,7 +206,7 @@ async def add_viewport(
         context = _build_config_context(request, repo, message="Viewport added.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/viewports/remove", response_class=HTMLResponse)
@@ -218,7 +222,7 @@ async def remove_viewport(
         context = _build_config_context(request, repo, message="Viewport removed.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)
 
 
 @router.post("/config/display-timezone", response_class=HTMLResponse)
@@ -232,4 +236,4 @@ async def update_display_timezone(
         context = _build_config_context(request, repo, message="Timestamp display updated.")
     except ValueError as exc:
         context = _build_config_context(request, repo, error=str(exc))
-    return templates.TemplateResponse("config/modal.html", context)
+    return templates.TemplateResponse(request=request, name="config/modal.html", context=context)

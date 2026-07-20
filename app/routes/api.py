@@ -55,7 +55,11 @@ from app.schemas import (
     TaskUpdate,
     TaskExecution,
 )
-from app.services.agent_auth import SCENE_API_TOKEN_ENV, require_agent_api_token
+from app.services.agent_auth import (
+    SCENE_API_TOKEN_ENV,
+    SCENE_API_TOKEN_HEADER,
+    require_agent_api_token,
+)
 from app.services.artifacts import get_artifact_store
 from app.services.orchestrator import get_orchestrator
 from app.services.run_scope import validate_task_subset
@@ -82,6 +86,27 @@ AgentAuthDep = Depends(require_agent_api_token)
 def _ensure_project(repo: SceneRepository, project_id: str) -> None:
     if not repo.get_project(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+
+
+def _request_active_run_cancellation(
+    repo: SceneRepository,
+    *,
+    project_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+) -> None:
+    active_runs = repo.list_active_runs(project_id=project_id, batch_id=batch_id)
+    if not active_runs:
+        return
+    orchestrator = get_orchestrator()
+    for run in active_runs:
+        orchestrator.cancel_run(str(run["id"]))
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Active run cancellation was requested; retry deletion after run cleanup "
+            "completes."
+        ),
+    )
 
 
 def _coerce_float(value: Optional[object]) -> float:
@@ -487,6 +512,11 @@ def _build_integration_run_result(
 ) -> IntegrationRunResult:
     batch = repo.get_batch(str(run["batch_id"]))
     executions = [dict(item) for item in repo.list_executions(run_id=str(run["id"]))]
+    outcome_executions = [
+        execution
+        for execution in executions
+        if not execution.get("superseded_by_execution_id")
+    ]
     counts = repo.execution_status_counts(str(run["id"]))
     summary = dict(run.get("summary") or {})
     actual_total = sum(counts.values())
@@ -509,7 +539,7 @@ def _build_integration_run_result(
 
     threshold_passed, threshold_failures = _threshold_result(
         run,
-        executions,
+        outcome_executions,
         run_threshold=run_threshold,
         execution_threshold=execution_threshold,
     )
@@ -530,9 +560,9 @@ def _build_integration_run_result(
         execution_diff_threshold=execution_threshold,
         threshold_passed=threshold_passed,
         threshold_failures=threshold_failures,
-        artifact_url=_result_artifact_url(request, executions),
-        viewer_url=_result_viewer_url(request, str(run["id"]), executions),
-        failure_statuses=_failure_statuses(run, executions),
+        artifact_url=_result_artifact_url(request, outcome_executions),
+        viewer_url=_result_viewer_url(request, str(run["id"]), outcome_executions),
+        failure_statuses=_failure_statuses(run, outcome_executions),
     )
 
 
@@ -603,6 +633,7 @@ async def get_agent_manifest() -> AgentManifest:
         auth={
             "type": "bearer",
             "env_var": SCENE_API_TOKEN_ENV,
+            "alternate_header": SCENE_API_TOKEN_HEADER,
             "required_when_configured": True,
             "currently_configured": protected,
         },
@@ -629,6 +660,8 @@ async def get_agent_manifest() -> AgentManifest:
             "env": {
                 "SCENE_BASE_URL": "http://127.0.0.1:8000",
                 "SCENE_API_TOKEN": "<same token configured on the SCENE app>",
+                "SCENE_INGRESS_BASIC_AUTH_USERNAME": "<optional staging username>",
+                "SCENE_INGRESS_BASIC_AUTH_PASSWORD": "<optional staging password>",
             },
             "tools": [
                 "scene_get_manifest",
@@ -857,7 +890,11 @@ async def delete_project(
     repo: SceneRepository = RepositoryDep,
     _auth: None = AgentAuthDep,
 ) -> None:
-    repo.delete_project(project_id)
+    _request_active_run_cancellation(repo, project_id=project_id)
+    try:
+        repo.delete_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # Pages ---------------------------------------------------------------------------
@@ -1069,7 +1106,11 @@ async def delete_batch(
     repo: SceneRepository = RepositoryDep,
     _auth: None = AgentAuthDep,
 ) -> None:
-    repo.delete_batch(batch_id)
+    _request_active_run_cancellation(repo, batch_id=batch_id)
+    try:
+        repo.delete_batch(batch_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/check-candidates", response_model=List[CheckCandidate])
@@ -1316,11 +1357,27 @@ async def delete_run(
     repo: SceneRepository = RepositoryDep,
     _auth: None = AgentAuthDep,
 ) -> None:
-    if repo.get_run(run_id):
+    run = repo.get_run(run_id)
+    if run:
         orchestrator = get_orchestrator()
+        if (
+            getattr(orchestrator, "uses_durable_dispatch", False)
+            and run.get("status") in {RunStatus.queued.value, RunStatus.executing.value}
+        ):
+            orchestrator.cancel_run(run_id)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Run cancellation was requested; delete it after dispatcher cleanup "
+                    "completes."
+                ),
+            )
         if hasattr(orchestrator, "cancel_run"):
             orchestrator.cancel_run(run_id)
-    repo.delete_run(run_id)
+    try:
+        repo.delete_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/runs/{run_id}/cancel", response_model=Run)
@@ -1485,6 +1542,17 @@ async def complete_execution_callback(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
     orchestrator = get_orchestrator()
+    if execution.get("dispatch_generation") is not None:
+        outcome = await run_in_threadpool(
+            orchestrator.handle_durable_execution_callback,
+            execution_id,
+            payload.model_dump(),
+        )
+        if outcome == "conflict":
+            raise HTTPException(status_code=409, detail="Conflicting completion callback")
+        if outcome not in {"accepted", "duplicate"}:
+            raise HTTPException(status_code=403, detail="Invalid completion identity or token")
+        return {"status": "ok", "duplicate": outcome == "duplicate"}
     if not orchestrator.handle_execution_callback(execution_id, payload.model_dump()):
         raise HTTPException(status_code=403, detail="Invalid completion token or execution not pending")
     return {"status": "ok"}
@@ -1529,7 +1597,10 @@ async def delete_baseline(
 ) -> None:
     if not repo.get_baseline(baseline_id):
         raise HTTPException(status_code=404, detail="Baseline not found")
-    repo.delete_baseline(baseline_id)
+    try:
+        repo.delete_baseline(baseline_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/batches/{batch_id}/baselines", response_model=List[BaselineOption])

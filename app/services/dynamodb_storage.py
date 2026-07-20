@@ -289,7 +289,8 @@ class DynamoDBStorage:
 
     def list(self, collection: str) -> List[Dict[str, Any]]:
         return self._query_all(
-            KeyConditionExpression=Key(PK).eq(self._collection_pk(collection))
+            KeyConditionExpression=Key(PK).eq(self._collection_pk(collection)),
+            ConsistentRead=True,
         )
 
     @staticmethod

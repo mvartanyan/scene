@@ -3,13 +3,14 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from copy import deepcopy
 from pathlib import Path
-from threading import Barrier, Lock, Thread
+from threading import Barrier, Event, Lock, Thread, current_thread
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import pytest
 from botocore.exceptions import ClientError
 
+from app.services import storage as storage_module
 from app.services.dynamodb_storage import DynamoDBStorage
 from app.services.storage import LocalDynamoStorage, SceneRepository, _build_storage_backend
 from app.services.storage_types import InvalidStorageCursorError, StorageConflictError
@@ -244,6 +245,761 @@ def test_repository_idempotency_keys_replay_same_creation_and_reject_reuse(
         repo.create_run({**payload, "purpose": "baseline_recording"})
 
 
+def test_accepted_callback_wins_stale_infrastructure_failure_race(
+    tmp_path: Path,
+) -> None:
+    failure_read = Event()
+    callback_saved = Event()
+
+    class RacingStorage(LocalDynamoStorage):
+        synchronize = False
+
+        def get(self, collection: str, item_id: str) -> Optional[Dict[str, Any]]:
+            record = super().get(collection, item_id)
+            if (
+                self.synchronize
+                and collection == "executions"
+                and current_thread().name == "failure-finalizer"
+                and not failure_read.is_set()
+            ):
+                failure_read.set()
+                assert callback_saved.wait(timeout=2)
+            return record
+
+    storage = RacingStorage(tmp_path / "state.json")
+    repo = SceneRepository(storage)
+    execution = repo.create_execution(
+        {
+            "run_id": "run-1",
+            "project_id": "project-1",
+            "batch_id": "batch-1",
+            "task_id": "task-1",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 1280, "height": 720},
+            "status": "executing",
+        }
+    )
+    token_sha256 = "a" * 64
+    repo.update_execution(
+        execution["id"],
+        {
+            "dispatch_generation": 1,
+            "callback_token_sha256": token_sha256,
+            "callback_expires_at": "2999-01-01T00:00:00+00:00",
+            "callback_state": "pending",
+        },
+    )
+    storage.synchronize = True
+    failures: list[Optional[Dict[str, Any]]] = []
+
+    thread = Thread(
+        name="failure-finalizer",
+        target=lambda: failures.append(
+            repo.finalize_execution_infrastructure_failure(
+                execution["id"],
+                status="failed",
+                completed_at="2026-07-20T12:00:00+00:00",
+                message="Kubernetes Job failed",
+            )
+        ),
+    )
+    thread.start()
+    assert failure_read.wait(timeout=2)
+    try:
+        outcome, accepted = repo.accept_execution_callback(
+            execution["id"],
+            run_id="run-1",
+            generation=1,
+            token_sha256=token_sha256,
+            result={"status": "ok"},
+        )
+    finally:
+        callback_saved.set()
+    thread.join(timeout=3)
+
+    assert not thread.is_alive()
+    assert outcome == "accepted"
+    assert accepted is not None
+    assert failures == [None]
+    final = repo.get_execution(execution["id"])
+    assert final is not None
+    assert final["status"] == "executing"
+    assert final["callback_state"] == "accepted"
+    assert final.get("message") != "Kubernetes Job failed"
+
+
+def test_task_delete_preserves_run_execution_baseline_and_artifact_history(
+    tmp_path: Path,
+) -> None:
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    page = repo.create_page(
+        {"project_id": project["id"], "name": "Page", "url": "https://example.test"}
+    )
+    task = repo.create_task(
+        {
+            "project_id": project["id"],
+            "page_id": page["id"],
+            "name": "Task",
+            "browsers": ["chromium"],
+            "viewports": [{"width": 1280, "height": 720}],
+        }
+    )
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": [task["id"]]}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+            "status": "executing",
+            "task_ids": [task["id"]],
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": task["id"],
+            "task_name": task["name"],
+            "page_id": page["id"],
+            "browser": "chromium",
+            "viewport": {"width": 1280, "height": 720},
+            "status": "executing",
+            "artifacts": {
+                "observed": {"kind": "observed", "key": "runs/observed.png"}
+            },
+        }
+    )
+    repo.update_execution(
+        execution["id"],
+        {"artifact_transfer": {"outputs": {"result": {"key": "runs/result.json"}}}},
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "status": "completed",
+            "items": [
+                {
+                    "task_id": task["id"],
+                    "artifact": {
+                        "kind": "baseline",
+                        "key": "baselines/reference.png",
+                    },
+                }
+            ],
+        }
+    )
+
+    repo.delete_task(task["id"])
+
+    assert repo.get_task(task["id"]) is None
+    assert repo.get_batch(batch["id"])["task_ids"] == []
+    assert repo.get_run(run["id"])["task_ids"] == [task["id"]]
+    preserved_execution = repo.get_execution(execution["id"])
+    assert preserved_execution is not None
+    assert preserved_execution["status"] == "executing"
+    assert preserved_execution["artifacts"]["observed"]["key"] == "runs/observed.png"
+    assert preserved_execution["artifact_transfer"]["outputs"]["result"]["key"] == "runs/result.json"
+    assert repo.get_baseline(baseline["id"])["items"][0]["task_id"] == task["id"]
+
+
+def test_latest_baseline_uses_strong_read_and_skips_incomplete_records(
+    tmp_path: Path,
+) -> None:
+    class StaleBaselineIndexStorage(LocalDynamoStorage):
+        def filter(self, collection: str, *, key: str, value: Any) -> list[Dict[str, Any]]:
+            if collection == "baselines":
+                raise AssertionError("baseline selection must not use the batch GSI")
+            return super().filter(collection, key=key, value=value)
+
+    repo = SceneRepository(StaleBaselineIndexStorage(tmp_path / "state.json"))
+    completed_old = repo.create_baseline(
+        {
+            "project_id": "project-1",
+            "batch_id": "batch-1",
+            "status": "completed",
+        }
+    )
+    completed_new = repo.create_baseline(
+        {
+            "project_id": "project-1",
+            "batch_id": "batch-1",
+            "status": "completed",
+        }
+    )
+    pending = repo.create_baseline(
+        {
+            "project_id": "project-1",
+            "batch_id": "batch-1",
+            "status": "pending",
+        }
+    )
+    failed = repo.create_baseline(
+        {
+            "project_id": "project-1",
+            "batch_id": "batch-1",
+            "status": "failed",
+        }
+    )
+    repo.update_baseline(completed_old["id"], {"created_at": "2026-01-01T00:00:00+00:00"})
+    repo.update_baseline(completed_new["id"], {"created_at": "2026-01-02T00:00:00+00:00"})
+    repo.update_baseline(pending["id"], {"created_at": "2026-01-04T00:00:00+00:00"})
+    repo.update_baseline(failed["id"], {"created_at": "2026-01-03T00:00:00+00:00"})
+
+    latest = repo.get_latest_baseline("batch-1")
+
+    assert latest is not None
+    assert latest["id"] == completed_new["id"]
+
+
+def test_project_delete_purges_terminal_run_and_baseline_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeArtifactStore:
+        def __init__(self) -> None:
+            self.runs: list[tuple[str, list[Dict[str, Any]]]] = []
+            self.baselines: list[tuple[str, list[Dict[str, Any]]]] = []
+
+        def purge_run(
+            self,
+            run_id: str,
+            artifacts: list[Dict[str, Any]],
+        ) -> None:
+            self.runs.append((run_id, artifacts))
+
+        def purge_baseline(
+            self,
+            baseline_id: str,
+            artifacts: list[Dict[str, Any]],
+        ) -> None:
+            self.baselines.append((baseline_id, artifacts))
+
+    artifact_store = FakeArtifactStore()
+    monkeypatch.setattr(storage_module, "get_artifact_store", lambda: artifact_store)
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task-1",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 1280, "height": 720},
+            "status": "finished",
+            "artifacts": {
+                "observed": {"kind": "observed", "key": "run/observed.png"}
+            },
+        }
+    )
+    repo.update_execution(
+        execution["id"],
+        {
+            "artifact_transfer": {
+                "outputs": {
+                    "result": {
+                        "key": "run/result.json",
+                        "content_type": "application/json",
+                    }
+                }
+            }
+        },
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "run_id": run["id"],
+            "status": "completed",
+            "items": [
+                {
+                    "artifact": {
+                        "kind": "baseline",
+                        "key": "baseline/reference.png",
+                    }
+                }
+            ],
+        }
+    )
+    repo.update_run(run["id"], {"status": "finished", "baseline_id": baseline["id"]})
+
+    repo.delete_project(project["id"])
+
+    assert artifact_store.runs == [
+        (
+            run["id"],
+            [
+                {"kind": "observed", "key": "run/observed.png"},
+                {"key": "run/result.json", "content_type": "application/json"},
+            ],
+        )
+    ]
+    assert artifact_store.baselines == [
+        (
+            baseline["id"],
+            [{"kind": "baseline", "key": "baseline/reference.png"}],
+        )
+    ]
+    assert repo.get_project(project["id"]) is None
+    assert repo.get_batch(batch["id"]) is None
+    assert repo.get_run(run["id"]) is None
+    assert repo.get_execution(execution["id"]) is None
+    assert repo.get_baseline(baseline["id"]) is None
+
+
+def test_run_delete_waits_for_kubernetes_cleanup(tmp_path: Path) -> None:
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task-1",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 1280, "height": 720},
+            "status": "failed",
+        }
+    )
+    repo.update_execution(
+        execution["id"],
+        {
+            "kubernetes_job_name": "scene-exec-1",
+            "kubernetes_secret_name": "scene-exec-1",
+        },
+    )
+    repo.update_run(run["id"], {"status": "failed"})
+
+    with pytest.raises(ValueError, match="Kubernetes cleanup is pending"):
+        repo.delete_run(run["id"])
+    assert repo.get_run(run["id"]) is not None
+
+    repo.update_execution(execution["id"], {"kubernetes_cleaned_at": "2026-01-01T00:00:00Z"})
+    repo.delete_run(run["id"])
+    assert repo.get_run(run["id"]) is None
+
+
+def test_run_delete_waits_for_presigned_upload_expiry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RecordingStore:
+        def __init__(self) -> None:
+            self.purged: list[str] = []
+
+        def purge_run(self, run_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            self.purged.append(run_id)
+
+        def purge_baseline(self, baseline_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            return None
+
+    store = RecordingStore()
+    monkeypatch.setattr(storage_module, "get_artifact_store", lambda: store)
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "comparison",
+            "status": "failed",
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task-1",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 1280, "height": 720},
+            "status": "failed",
+        }
+    )
+    repo.update_execution(
+        execution["id"],
+        {
+            "artifact_transfer": {
+                "expires_at": "2999-01-01T00:00:00Z",
+                "outputs": {"result": {"key": "runs/result.json"}},
+            }
+        },
+    )
+
+    with pytest.raises(ValueError, match=r"upload URL is still valid; retry after"):
+        repo.delete_run(run["id"])
+
+    assert store.purged == []
+    assert repo.get_run(run["id"]) is not None
+    assert repo.get_execution(execution["id"]) is not None
+
+    repo.update_execution(
+        execution["id"],
+        {
+            "artifact_transfer": {
+                "expires_at": "2000-01-01T00:00:00Z",
+                "outputs": {"result": {"key": "runs/result.json"}},
+            }
+        },
+    )
+    repo.delete_run(run["id"])
+
+    assert store.purged == [run["id"]]
+    assert repo.get_run(run["id"]) is None
+    assert repo.get_execution(execution["id"]) is None
+
+
+def test_project_delete_uses_consistent_collection_reads_when_indexes_are_stale(
+    tmp_path: Path,
+) -> None:
+    class StaleIndexStorage(LocalDynamoStorage):
+        def filter(self, collection: str, *, key: str, value: Any) -> list[Dict[str, Any]]:
+            return []
+
+    repo = SceneRepository(StaleIndexStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    page = repo.create_page(
+        {"project_id": project["id"], "name": "Page", "url": "https://example.test"}
+    )
+    task = repo.create_task(
+        {
+            "project_id": project["id"],
+            "page_id": page["id"],
+            "name": "Task",
+            "browsers": ["chromium"],
+            "viewports": [{"width": 800, "height": 600}],
+        }
+    )
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": [task["id"]]}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "baseline_recording",
+            "status": "finished",
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": task["id"],
+            "task_name": task["name"],
+            "browser": "chromium",
+            "viewport": {"width": 800, "height": 600},
+            "status": "finished",
+        }
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "run_id": run["id"],
+            "status": "completed",
+            "items": [],
+        }
+    )
+    repo.update_run(run["id"], {"baseline_id": baseline["id"]})
+
+    repo.delete_project(project["id"])
+
+    assert repo.get_project(project["id"]) is None
+    assert repo.get_page(page["id"]) is None
+    assert repo.get_task(task["id"]) is None
+    assert repo.get_batch(batch["id"]) is None
+    assert repo.get_run(run["id"]) is None
+    assert repo.get_execution(execution["id"]) is None
+    assert repo.get_baseline(baseline["id"]) is None
+
+
+def test_parent_delete_preflights_every_run_before_purging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RecordingStore:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        def purge_run(self, run_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            self.calls.append(("run", run_id))
+
+        def purge_baseline(self, baseline_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            self.calls.append(("baseline", baseline_id))
+
+    store = RecordingStore()
+    monkeypatch.setattr(storage_module, "get_artifact_store", lambda: store)
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    runs = [
+        repo.create_run(
+            {
+                "project_id": project["id"],
+                "batch_id": batch["id"],
+                "purpose": "comparison",
+                "status": "failed",
+            }
+        )
+        for _ in range(2)
+    ]
+    first = repo.create_execution(
+        {
+            "run_id": runs[0]["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task-1",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 800, "height": 600},
+            "status": "failed",
+        }
+    )
+    second = repo.create_execution(
+        {
+            "run_id": runs[1]["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task-2",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 800, "height": 600},
+            "status": "failed",
+        }
+    )
+    repo.update_execution(
+        second["id"],
+        {"kubernetes_job_name": "scene-exec-pending"},
+    )
+
+    with pytest.raises(ValueError, match="cleanup is pending"):
+        repo.delete_project(project["id"])
+
+    assert store.calls == []
+    assert repo.get_project(project["id"]) is not None
+    assert repo.get_run(runs[0]["id"]) is not None
+    assert repo.get_execution(first["id"]) is not None
+
+
+def test_batch_delete_uses_consistent_baseline_reads_when_index_is_stale(
+    tmp_path: Path,
+) -> None:
+    class StaleIndexStorage(LocalDynamoStorage):
+        def filter(self, collection: str, *, key: str, value: Any) -> list[Dict[str, Any]]:
+            return []
+
+    repo = SceneRepository(StaleIndexStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "baseline_recording",
+            "status": "finished",
+        }
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "run_id": run["id"],
+            "status": "completed",
+            "items": [],
+        }
+    )
+
+    repo.delete_batch(batch["id"])
+
+    assert repo.get_batch(batch["id"]) is None
+    assert repo.get_run(run["id"]) is None
+    assert repo.get_baseline(baseline["id"]) is None
+
+
+def test_deleting_recording_run_preserves_baseline_used_by_comparison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RecordingStore:
+        def __init__(self) -> None:
+            self.baselines: list[str] = []
+
+        def purge_run(self, run_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            return None
+
+        def purge_baseline(self, baseline_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            self.baselines.append(baseline_id)
+
+    store = RecordingStore()
+    monkeypatch.setattr(storage_module, "get_artifact_store", lambda: store)
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    recording = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "baseline_recording",
+            "status": "finished",
+        }
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "run_id": recording["id"],
+            "status": "completed",
+            "items": [],
+        }
+    )
+    repo.update_run(recording["id"], {"baseline_id": baseline["id"]})
+    comparison = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "baseline_id": baseline["id"],
+            "purpose": "comparison",
+            "status": "finished",
+        }
+    )
+
+    repo.delete_run(recording["id"], cascade_baseline=True)
+
+    assert repo.get_run(recording["id"]) is None
+    assert repo.get_run(comparison["id"]) is not None
+    assert repo.get_baseline(baseline["id"]) is not None
+    assert store.baselines == []
+
+
+def test_direct_baseline_delete_rejects_run_references(
+    tmp_path: Path,
+) -> None:
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "status": "completed",
+            "items": [],
+        }
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "baseline_id": baseline["id"],
+            "purpose": "comparison",
+            "status": "finished",
+        }
+    )
+
+    with pytest.raises(ValueError, match="referenced by a run"):
+        repo.delete_baseline(baseline["id"])
+
+    assert repo.get_baseline(baseline["id"]) is not None
+    assert repo.get_run(run["id"]) is not None
+
+
+def test_baseline_purge_failure_preserves_run_and_execution_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingStore:
+        def purge_run(self, run_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            return None
+
+        def purge_baseline(self, baseline_id: str, artifacts: list[Dict[str, Any]]) -> None:
+            raise RuntimeError("S3 artifact deletion failed: AccessDenied")
+
+    monkeypatch.setattr(storage_module, "get_artifact_store", lambda: FailingStore())
+    repo = SceneRepository(LocalDynamoStorage(tmp_path / "state.json"))
+    project = repo.create_project({"name": "Project", "slug": "project"})
+    batch = repo.create_batch(
+        {"project_id": project["id"], "name": "Batch", "task_ids": []}
+    )
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "purpose": "baseline_recording",
+            "status": "failed",
+        }
+    )
+    execution = repo.create_execution(
+        {
+            "run_id": run["id"],
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "task_id": "task",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 800, "height": 600},
+            "status": "failed",
+        }
+    )
+    baseline = repo.create_baseline(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "run_id": run["id"],
+            "status": "failed",
+            "items": [],
+        }
+    )
+    repo.update_run(run["id"], {"baseline_id": baseline["id"]})
+
+    with pytest.raises(RuntimeError, match="AccessDenied"):
+        repo.delete_run(run["id"], cascade_baseline=True)
+
+    assert repo.get_run(run["id"]) is not None
+    assert repo.get_execution(execution["id"]) is not None
+    assert repo.get_baseline(baseline["id"]) is not None
+
+
 def test_cancel_and_complete_race_converges_on_one_terminal_execution_state(
     tmp_path: Path,
 ) -> None:
@@ -337,6 +1093,10 @@ def test_dynamodb_backend_uses_indexes_conditional_versions_and_opaque_pages() -
     storage.upsert("runs", "run-1", first)
     with pytest.raises(StorageConflictError):
         storage.upsert("runs", "run-1", stale)
+
+    assert {run["id"] for run in storage.list("runs")} == {"run-1", "run-2"}
+    assert table.queries[-1]["ConsistentRead"] is True
+    assert "IndexName" not in table.queries[-1]
 
     by_project = storage.filter("runs", key="project_id", value="project-1")
     assert {run["id"] for run in by_project} == {"run-1", "run-2"}

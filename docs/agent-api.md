@@ -9,16 +9,21 @@ agents should use the API contract below instead of HTML or HTMX routes.
 - Manifest: `GET /api/agent/manifest`
 - Markdown docs: `GET /api/agent/docs`
 - OpenAPI: `GET /openapi.json`
-- Readiness: `GET /api/orchestrator/readiness`
+- Deployment readiness: `GET /readyz`
+- Legacy runner/state readiness: `GET /api/orchestrator/readiness`
 
 The manifest includes the current auth mode, OpenAPI URL, MCP command, and
 supported tool names.
 
 ## Authentication
 
-Set `SCENE_API_TOKEN` on the SCENE app to require bearer-token auth for mutation
-and control endpoints. Read-only endpoints remain available so agents can
-discover projects, batches, and run results.
+Set `SCENE_API_TOKEN` on the SCENE app to require token auth for mutation and
+control endpoints. Direct clients should use a Bearer token. The same token is
+also accepted in `X-SCENE-API-Token` so a staging client can use HTTP Basic in
+`Authorization` at the Traefik ingress without losing SCENE application auth.
+Read-only endpoints remain unauthenticated at the application layer so agents
+can discover projects, batches, and run results; the staging ingress still
+requires HTTP Basic for every path, including those reads.
 
 ```bash
 export SCENE_API_TOKEN="replace-with-staging-token"
@@ -26,8 +31,23 @@ curl -H "Authorization: Bearer $SCENE_API_TOKEN" \
   http://127.0.0.1:8000/api/config
 ```
 
-Protected endpoints return `401` when the bearer token is missing and `403` when
-it is invalid.
+Protected endpoints return `401` when neither token form is present and `403`
+when the supplied SCENE token is invalid. Traefik removes the staging BasicAuth
+header before proxying. Do not put ingress credentials in the URL or command
+arguments; use an interactive password prompt for `curl`, or inject the MCP
+environment from a protected secret source with shell tracing disabled.
+
+For staging requests, keep the two authentication layers separate:
+
+```bash
+export SCENE_INGRESS_BASIC_AUTH_USERNAME="scene-reviewer"
+curl --user "$SCENE_INGRESS_BASIC_AUTH_USERNAME" \
+  -H "X-SCENE-API-Token: $SCENE_API_TOKEN" \
+  https://scene.135.181.140.68.sslip.io/api/config
+```
+
+`curl` prompts for the ingress password. Bearer auth remains supported when
+calling SCENE directly or through an ingress that does not require BasicAuth.
 
 ## Configure SCENE
 
@@ -200,6 +220,24 @@ export SCENE_API_TOKEN="replace-with-staging-token"
 python -m scene_mcp.server
 ```
 
+For the temporary staging ingress, provide both BasicAuth variables in the MCP
+process environment as secrets:
+
+```bash
+export SCENE_BASE_URL="https://scene.135.181.140.68.sslip.io"
+export SCENE_API_TOKEN="replace-with-app-token"
+export SCENE_INGRESS_BASIC_AUTH_USERNAME="scene-reviewer"
+export SCENE_INGRESS_BASIC_AUTH_PASSWORD="replace-with-ingress-password"
+python -m scene_mcp.server
+```
+
+When both ingress variables are present, the client uses HTTP Basic for the
+ingress and sends `SCENE_API_TOKEN` as `X-SCENE-API-Token`. Both ingress
+variables are mandatory as a pair. They are passed through `httpx.BasicAuth`,
+never embedded in the request URL, tool arguments, or client error messages.
+Inject real values from a mode-0600 environment file or secret manager rather
+than storing them in MCP configuration committed to source control.
+
 Available MCP tools:
 
 - `scene_get_manifest`
@@ -215,4 +253,5 @@ Available MCP tools:
 - `scene_retry_execution`
 
 The MCP server does not contain SCENE business logic. It forwards tool calls to
-the REST API using `SCENE_BASE_URL` and `SCENE_API_TOKEN`.
+the REST API using `SCENE_BASE_URL`, `SCENE_API_TOKEN`, and the optional paired
+`SCENE_INGRESS_BASIC_AUTH_USERNAME`/`SCENE_INGRESS_BASIC_AUTH_PASSWORD` values.

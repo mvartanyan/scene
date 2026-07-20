@@ -1,7 +1,7 @@
 # Scene Walkthrough
 
 ## Overview
-Scene is a FastAPI + HTMX application that manages visual regression "projects", orchestrates Playwright-based screenshot runs inside Docker, and records artifacts (screenshots, diffs, traces, logs) to the local filesystem under `.scene/artifacts/` by default.
+Scene is a FastAPI + HTMX application that manages visual regression "projects", orchestrates Playwright screenshot runs through local Docker or durable Kubernetes Jobs, and records artifacts (screenshots, diffs, traces, logs) to the local filesystem under `.scene/artifacts/` by default.
 
 The UI is organised into three primary areas:
 
@@ -11,7 +11,9 @@ The UI is organised into three primary areas:
 - **Agent API/MCP** — expose the same configuration and run-control workflows through JSON endpoints and a thin MCP server for unattended agent use.
 
 ## Environment
-- Python 3.12 (virtualenv provided at `venv/`).
+- Python 3.12 with the local development/test environment pinned by `uv.lock`;
+  install it with `uv sync --extra dev --locked`. Staging app and runner images
+  use separate hash-locked Linux requirements files.
 - `Dockerfile.playwright` produces the `scene-playwright-runner:latest` image used for orchestration.
 - HTMX is vendored locally at `app/static/htmx.min.js` to avoid CDN hiccups.
 - Pillow is bundled into the runner image so reference screenshots can be resized to match observed dimensions before slider display.
@@ -35,13 +37,15 @@ The UI is organised into three primary areas:
 5. **Reconcile configuration**: update browsers/viewports or the default timeout in the Config modal as requirements evolve.
 
 ## Files & Directories
-- `app/services/orchestrator.py` — queue-backed orchestrator, Docker runner integration, diffing, and runtime loading of the Playwright runner script.
-- `app/services/runner_script.py` — the executable Playwright runner injected into containers (auto-scrolls the detected scrollable element and waits for lazy content).
+- `app/services/orchestrator.py` — local Docker orchestration, durable k3s run preparation/callback finalization, and diffing.
+- `app/services/dispatcher.py` — leader-elected durable dispatcher that claims executions and reconciles Kubernetes Jobs.
+- `app/services/kubernetes_runner.py` — deterministic, restricted Job/Secret construction, adoption, status classification, logs, and deletion.
+- `app/services/runner_script.py` — the executable Playwright runner baked into the runner image (auto-scrolls the detected scrollable element and waits for lazy content).
 - `app/services/storage.py` — JSON-backed local persistence, including config defaults, run timeout, and transactional agent setup writes.
 - `app/services/dynamodb_storage.py` — production single-table DynamoDB adapter
+  with conditional versions, GSIs, and continuation cursors.
 - `app/services/s3_artifacts.py` — private S3 persistence, deterministic object
   keys, checksums, presigned transfer manifests, and explicit-key deletion.
-  with conditional versions, GSIs, and continuation cursors.
 - `app/services/config_transfer.py` and `scripts/scene_config.py` — validated,
   idempotent config-only export/import without run or artifact history.
 - `app/services/run_scope.py` — task-subset validation and execution-count helpers shared by UI/API launch paths.
@@ -53,6 +57,8 @@ The UI is organised into three primary areas:
 - `docs/agent-api.md` — agent-readable REST/MCP contract, served at `/api/agent/docs`.
 - `docs/storage.md` — state backend, table key, bounded-read, and migration contract.
 - `docs/artifacts.md` — filesystem/S3 artifact contract and runner transfer protocol.
+- `docs/k3s-runner.md` — durable dispatch, permissions, callback, recovery, and restart acceptance contract.
+- `docs/operations.md` — liveness, readiness, build identity, metrics, and probe exposure contract.
 - `scene_mcp/` — MCP server wrapper that forwards tools to SCENE REST APIs.
 
 Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding issues, and next steps.
@@ -63,3 +69,9 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
 - The run detail modal refreshes only while open; occasional flicker remains while polling. Debounce or SSE-based updates are possible future improvements.
 - Project page/task tabs are lazy and paginated, but batch membership editors intentionally render the full task set inside a bounded scroll area so operators can review and edit membership in one form.
 - Auto-scroll relies on detecting the active scroll container; pages that inject bespoke scroll hosts after load may still need bespoke preparatory actions.
+- Temporary staging uses ingress BasicAuth plus a separate SCENE API token
+  header; customer-ready OIDC and run grants remain in SCENE-21.
+- Chromium uses the memory-backed `/dev/shm`, but remains unsandboxed because
+  the pinned image cannot start its browser sandbox under the restricted pod
+  profile. Runner Jobs compensate with one-execution pods, no AWS/Kubernetes
+  credentials, read-only roots, bounded writable volumes, and restricted RBAC.

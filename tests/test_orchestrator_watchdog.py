@@ -418,6 +418,7 @@ def test_retry_execution_creates_new_queued_execution_without_touching_artifacts
             "sequence": 3,
         }
     )
+    repo.update_run(run["id"], {"status": RunStatus.failed.value})
     enqueued: List[str] = []
     orchestrator.enqueue = enqueued.append  # type: ignore[method-assign]
 

@@ -10,6 +10,7 @@ from app.main import app
 from app.routes import api as api_routes
 from app.routes import runs as runs_routes
 from app.schemas import ExecutionStatus, RunPurpose, RunStatus
+from app.services.agent_auth import SCENE_API_TOKEN_HEADER
 from app.services import artifacts as artifact_module
 from app.services.storage import LocalDynamoStorage, SceneRepository, get_repository
 
@@ -111,6 +112,9 @@ def test_agent_manifest_docs_and_openapi(client: Tuple[TestClient, SceneReposito
     manifest = manifest_resp.json()
     assert manifest["openapi_url"] == "/openapi.json"
     assert manifest["docs_url"] == "/api/agent/docs"
+    assert manifest["auth"]["alternate_header"] == SCENE_API_TOKEN_HEADER
+    assert "SCENE_INGRESS_BASIC_AUTH_USERNAME" in manifest["mcp_server"]["env"]
+    assert "SCENE_INGRESS_BASIC_AUTH_PASSWORD" in manifest["mcp_server"]["env"]
     assert "scene_apply_setup" in manifest["mcp_server"]["tools"]
 
     docs_resp = api.get("/api/agent/docs")
@@ -121,6 +125,11 @@ def test_agent_manifest_docs_and_openapi(client: Tuple[TestClient, SceneReposito
     assert "/api/agent/setup" in openapi["paths"]
     assert openapi["paths"]["/api/agent/setup"]["post"]["operationId"] == "apply_agent_setup"
     assert "HTTPBearer" in openapi["components"]["securitySchemes"]
+    setup_parameters = openapi["paths"]["/api/agent/setup"]["post"]["parameters"]
+    assert any(
+        parameter["in"] == "header" and parameter["name"] == SCENE_API_TOKEN_HEADER
+        for parameter in setup_parameters
+    )
 
     readiness = api.get("/api/orchestrator/readiness")
     assert readiness.status_code == 200
@@ -150,6 +159,24 @@ def test_agent_token_auth_guards_mutation_routes(
     created = api.post("/api/projects", json=payload, headers=_auth_headers())
     assert created.status_code == 201
     assert created.json()["slug"] == "acme"
+
+    custom_header_created = api.post(
+        "/api/projects",
+        json={"name": "Staging", "slug": "staging"},
+        headers={
+            "Authorization": "Basic c2NlbmUtcmV2aWV3ZXI6c2VjcmV0",
+            SCENE_API_TOKEN_HEADER: "secret",
+        },
+    )
+    assert custom_header_created.status_code == 201
+    assert custom_header_created.json()["slug"] == "staging"
+
+    invalid_custom_header = api.post(
+        "/api/projects",
+        json={"name": "Denied", "slug": "denied"},
+        headers={SCENE_API_TOKEN_HEADER: "wrong"},
+    )
+    assert invalid_custom_header.status_code == 403
 
 
 def test_agent_setup_is_idempotent_and_updates_config(

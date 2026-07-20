@@ -16,6 +16,8 @@ from playwright.sync_api import sync_playwright
 CALLBACK_URL = os.environ.get("SCENE_CALLBACK_URL")
 CALLBACK_TOKEN = os.environ.get("SCENE_CALLBACK_TOKEN")
 EXECUTION_ID = os.environ.get("SCENE_EXECUTION_ID")
+RUN_ID = os.environ.get("SCENE_RUN_ID")
+DISPATCH_GENERATION = os.environ.get("SCENE_DISPATCH_GENERATION")
 
 _URL_QUERY_RE = re.compile(r"(https?://[^\s\"'<>?]+)\?[^\s\"'<>]*", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
@@ -37,6 +39,25 @@ _ARTIFACT_RESULT_FIELDS = {
     "trace": "trace",
     "video": "video",
 }
+
+
+def browser_launch_kwargs(browser_name: str) -> dict:
+    launch_kwargs = {"headless": True}
+    if browser_name == "chromium":
+        # The pinned image cannot provide a usable Chromium sandbox under the
+        # restricted pod profile. Keep that limitation explicit, but allow
+        # Chromium to use the pod's mounted /dev/shm instead of /tmp.
+        launch_kwargs.update(
+            {
+                "chromium_sandbox": False,
+                "ignore_default_args": ["--disable-dev-shm-usage"],
+            }
+        )
+    return launch_kwargs
+
+
+def launch_browser(browser_type, browser_name: str):
+    return browser_type.launch(**browser_launch_kwargs(browser_name))
 
 
 def _redact_sensitive_text(value: object) -> str:
@@ -80,7 +101,20 @@ def _post_result(payload: dict) -> bool:
         return False
     try:
         callback_payload = _strip_urls(payload)
-        data = json.dumps({"token": CALLBACK_TOKEN, "result": callback_payload}).encode("utf-8")
+        envelope = {
+            "token": CALLBACK_TOKEN,
+            "result": callback_payload,
+        }
+        if RUN_ID:
+            envelope["run_id"] = RUN_ID
+        if EXECUTION_ID:
+            envelope["execution_id"] = EXECUTION_ID
+        if DISPATCH_GENERATION:
+            try:
+                envelope["dispatch_generation"] = int(DISPATCH_GENERATION)
+            except ValueError:
+                envelope["dispatch_generation"] = DISPATCH_GENERATION
+        data = json.dumps(envelope).encode("utf-8")
         req = urllib.request.Request(
             CALLBACK_URL,
             data=data,
@@ -801,10 +835,7 @@ def main(config_path: str) -> None:
             if not hasattr(playwright, browser_name):
                 raise RuntimeError(f"Unsupported browser '{browser_name}'")
             browser_type = getattr(playwright, browser_name)
-            launch_kwargs = {"headless": True}
-            if browser_name == "chromium":
-                launch_kwargs["args"] = ["--disable-dev-shm-usage", "--no-sandbox"]
-            browser = browser_type.launch(**launch_kwargs)
+            browser = launch_browser(browser_type, browser_name)
             _log(f"Launched {browser_name} browser")
 
             viewport = config.get("viewport") or {"width": 1280, "height": 720}
@@ -869,7 +900,7 @@ def main(config_path: str) -> None:
                         browser.close()
                     except Exception:
                         pass
-                browser = browser_type.launch(**launch_kwargs)
+                browser = launch_browser(browser_type, browser_name)
                 _log(f"Launched {browser_name} browser (attempt {attempt_no})")
 
                 context_kwargs_local = dict(context_kwargs)

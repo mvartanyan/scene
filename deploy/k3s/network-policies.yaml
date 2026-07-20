@@ -1,0 +1,181 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-http01-ingress
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: ingress
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 8089
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scene-app
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: app
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: scene
+      app.kubernetes.io/component: app
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: scene
+              app.kubernetes.io/component: runner
+      ports:
+        - port: 8000
+          protocol: TCP
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scene-dispatcher
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: dispatcher
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: scene
+      app.kubernetes.io/component: dispatcher
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    # The dispatcher needs both public AWS HTTPS endpoints and the in-cluster
+    # Kubernetes API. Standard NetworkPolicy cannot select either by service or
+    # DNS name, so port 443 remains the narrowest portable destination rule.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scene-runner
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: runner
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: scene
+      app.kubernetes.io/component: runner
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: scene
+              app.kubernetes.io/component: app
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 8000
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP

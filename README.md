@@ -71,6 +71,8 @@ uv run --extra dev python -m pytest
   baseline and observed images can be finalized without interrupting its lease.
 - Diff generation uses bounded Pillow channel operations rather than per-pixel
   Python lists, keeping tall-page comparison callbacks responsive.
+- Runner sessions retain Playwright's video handle through context close and
+  upload the resulting WebM alongside screenshots, traces, and logs.
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
 - Run records can carry `task_ids`; when present, the orchestrator expands only that validated subset while preserving the batch's task order. Omitting `task_ids` retains full-batch behaviour.
 - REST/SPM callers should provide `idempotency_key` when launching a run. A

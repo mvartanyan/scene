@@ -314,6 +314,11 @@ def _default_content_type(kind: str, path: Path) -> str:
     return "application/octet-stream"
 
 
+def _page_video_handle(page):
+    handle = getattr(page, "video", None)
+    return handle() if callable(handle) else handle
+
+
 def _response_etag(response: object):
     headers = getattr(response, "headers", None)
     etag = headers.get("ETag") if headers is not None and hasattr(headers, "get") else None
@@ -1182,7 +1187,7 @@ def main(config_path: str) -> None:
             video_relative = None
             video_handle = None
             try:
-                video_handle = page.video()
+                video_handle = _page_video_handle(page)
             except Exception:  # noqa: BLE001
                 video_handle = None
 

@@ -50,6 +50,19 @@ def _output(kind: str, filename: str, content_type: str) -> dict[str, object]:
 
 
 @pytest.mark.unit
+def test_page_video_handle_supports_playwright_property_and_legacy_callable(
+    runner_script,
+) -> None:
+    property_handle = object()
+    property_page = types.SimpleNamespace(video=property_handle)
+    callable_handle = object()
+    callable_page = types.SimpleNamespace(video=lambda: callable_handle)
+
+    assert runner_script._page_video_handle(property_page) is property_handle
+    assert runner_script._page_video_handle(callable_page) is callable_handle
+
+
+@pytest.mark.unit
 def test_presigned_outputs_upload_before_result_and_receipts_reach_callback(
     runner_script,
     monkeypatch: pytest.MonkeyPatch,

@@ -228,6 +228,9 @@
   integer per pixel. This preserves tolerance and heatmap semantics while
   bounding memory and keeping tall-page callback finalization below the
   dispatcher heartbeat window.
+- The Playwright runner now reads `page.video` as the current sync API property
+  while retaining callable compatibility. This preserves the generated video
+  handle through context close so S3 transfer includes the optional WebM.
 - Repository updates retry optimistic conflicts without dropping concurrent
   fields. Stable run/execution creation keys make dispatcher replay idempotent,
   and terminal cancel/completion races now converge on the first successful

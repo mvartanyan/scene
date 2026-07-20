@@ -83,3 +83,5 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
   the pinned image cannot start its browser sandbox under the restricted pod
   profile. Runner Jobs compensate with one-execution pods, no AWS/Kubernetes
   credentials, read-only roots, bounded writable volumes, and restricted RBAC.
+- Each runner context records a WebM and uploads it only after context close,
+  when Playwright has finalized the video file.

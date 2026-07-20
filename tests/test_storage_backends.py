@@ -67,6 +67,7 @@ class _FakeDynamoTable:
     def __init__(self, *, invalid_index: Optional[str] = None) -> None:
         self.items: Dict[tuple[str, str], Dict[str, Any]] = {}
         self.meta = SimpleNamespace(client=_FakeDynamoClient(invalid_index=invalid_index))
+        self.put_requests: list[Dict[str, Any]] = []
         self.queries: list[Dict[str, Any]] = []
 
     @staticmethod
@@ -86,6 +87,7 @@ class _FakeDynamoTable:
         )
 
     def put_item(self, **request: Any) -> Dict[str, Any]:
+        self.put_requests.append(deepcopy(request))
         item = deepcopy(request["Item"])
         key = self._key(item)
         current = self.items.get(key)
@@ -1076,6 +1078,10 @@ def test_dynamodb_backend_uses_indexes_conditional_versions_and_opaque_pages() -
             "score": 1.25,
         },
     )
+    assert table.put_requests[-1]["ExpressionAttributeNames"] == {
+        "#pk": "pk",
+        "#sk": "sk",
+    }
     second = storage.upsert(
         "runs",
         "run-2",
@@ -1091,6 +1097,11 @@ def test_dynamodb_backend_uses_indexes_conditional_versions_and_opaque_pages() -
     stale = dict(first)
     first["status"] = "executing"
     storage.upsert("runs", "run-1", first)
+    assert table.put_requests[-1]["ExpressionAttributeNames"] == {
+        "#pk": "pk",
+        "#sk": "sk",
+        "#version": "version",
+    }
     with pytest.raises(StorageConflictError):
         storage.upsert("runs", "run-1", stale)
 

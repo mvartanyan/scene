@@ -233,17 +233,19 @@ class DynamoDBStorage:
         expected_version = payload.get("_version")
         next_version = int(expected_version or 0) + 1
         item = self._item(collection, item_id, payload, next_version)
-        names = {"#pk": PK, "#sk": SK, "#version": VERSION}
+        names = {"#pk": PK, "#sk": SK}
         values: Dict[str, Any] = {}
         if expected_version is None:
             condition = "attribute_not_exists(#pk) AND attribute_not_exists(#sk)"
         elif int(expected_version) == 0:
+            names["#version"] = VERSION
             condition = (
                 "attribute_exists(#pk) AND "
                 "(attribute_not_exists(#version) OR #version = :expected)"
             )
             values[":expected"] = 0
         else:
+            names["#version"] = VERSION
             condition = "attribute_exists(#pk) AND #version = :expected"
             values[":expected"] = int(expected_version)
         request: Dict[str, Any] = {

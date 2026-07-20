@@ -207,6 +207,9 @@
   adapter validates `pk`/`sk` plus three GSIs at startup, performs a
   write/read/delete readiness probe, converts floats safely for DynamoDB, and
   uses conditional integer versions for every entity mutation.
+- DynamoDB create writes include only expression aliases used by the create
+  condition; optimistic-version aliases are added only for updates, matching
+  real AWS request validation while preserving stale-write protection.
 - Repository updates retry optimistic conflicts without dropping concurrent
   fields. Stable run/execution creation keys make dispatcher replay idempotent,
   and terminal cancel/completion races now converge on the first successful

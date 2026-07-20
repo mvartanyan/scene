@@ -72,6 +72,17 @@ ephemeral storage requests/limits to generated runner containers through a
 kube-system Traefik pods can reach pods labeled as HTTP-01 solvers, and only on
 the solver's TCP port 8089.
 
+Horse evaluates the dispatcher's in-cluster `kubernetes.default:443` connection
+after service DNAT. The dispatcher policy therefore allows the exact horse API
+endpoint `135.181.140.68/32` on translated TCP port `6443`, in addition to
+public HTTPS for AWS. Update that `/32` together with this host-specific layout
+if the horse control-plane address changes.
+
+Only Traefik and SCENE runner pods can reach the app under these policies. The
+app therefore sets `FORWARDED_ALLOW_IPS=*` so Uvicorn preserves Traefik's HTTPS
+scheme in generated viewer and artifact links; do not broaden app ingress
+without narrowing that trust setting at the same time.
+
 ## Cluster preflight
 
 All cluster commands use the operator-local kubeconfig, which must never enter

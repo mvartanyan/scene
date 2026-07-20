@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Iterable, Mapping, Optional
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.services.artifacts import ArtifactStore, SCENE_ARTIFACT_TEMP_ROOT_ENV
@@ -31,6 +32,18 @@ DEFAULT_GET_TTL_SECONDS = 300
 DEFAULT_PUT_TTL_SECONDS = 900
 MAX_PRESIGN_TTL_SECONDS = 3600
 MAX_DELETE_SWEEPS = 5
+
+
+def _s3_client(*, region: str, endpoint_url: Optional[str] = None) -> object:
+    options: Dict[str, object] = {"region_name": region}
+    if endpoint_url:
+        options["endpoint_url"] = endpoint_url
+    else:
+        options["config"] = Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "virtual"},
+        )
+    return boto3.client("s3", **options)
 
 
 def _positive_ttl(name: str, default: int) -> int:
@@ -77,13 +90,13 @@ class S3ArtifactStore(ArtifactStore):
         self.region = region.strip() or "eu-central-1"
         self.get_ttl_seconds = max(30, min(int(get_ttl_seconds), MAX_PRESIGN_TTL_SECONDS))
         self.put_ttl_seconds = max(30, min(int(put_ttl_seconds), MAX_PRESIGN_TTL_SECONDS))
-        self._client = client or boto3.client("s3", region_name=self.region)
+        self._client = client or _s3_client(region=self.region)
 
     @classmethod
     def from_environment(cls, *, base_url: str = "/artifacts") -> "S3ArtifactStore":
         region = os.environ.get(AWS_REGION_ENV, "eu-central-1")
         endpoint_url = os.environ.get(SCENE_S3_ENDPOINT_URL_ENV) or None
-        client = boto3.client("s3", region_name=region, endpoint_url=endpoint_url)
+        client = _s3_client(region=region, endpoint_url=endpoint_url)
         temp_root = Path(
             os.environ.get(
                 SCENE_ARTIFACT_TEMP_ROOT_ENV,

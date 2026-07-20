@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -176,6 +177,24 @@ def _store(tmp_path: Path, client: FakeS3Client) -> S3ArtifactStore:
         get_ttl_seconds=120,
         put_ttl_seconds=300,
     )
+
+
+@pytest.mark.unit
+def test_s3_environment_uses_regional_virtual_host_for_aws(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test-access-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret-key")
+    monkeypatch.setenv("AWS_REGION", "eu-central-1")
+    monkeypatch.setenv("SCENE_S3_BUCKET", "scene-private")
+    monkeypatch.setenv("SCENE_ARTIFACT_TEMP_ROOT", str(tmp_path / "workspace"))
+    monkeypatch.delenv("SCENE_S3_ENDPOINT_URL", raising=False)
+
+    store = S3ArtifactStore.from_environment()
+    url = store.presign_upload(key="diagnostic/no-upload", content_type="text/plain")
+
+    assert urlsplit(url).hostname == "scene-private.s3.eu-central-1.amazonaws.com"
 
 
 @pytest.mark.unit

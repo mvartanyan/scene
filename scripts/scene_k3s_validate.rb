@@ -243,6 +243,8 @@ check.call(runner_env_names.none? { |name| name.to_s.start_with?("AWS_") }, "run
 app_container = Array(app_spec["containers"]).find { |container| container["name"] == "scene" } || {}
 dispatcher_container = Array(dispatcher_spec["containers"]).find { |container| container["name"] == "dispatcher" } || {}
 runner_container = Array(runner_spec["containers"]).find { |container| container["name"] == "runner-readiness" } || {}
+app_env = Array(app_container["env"]).to_h { |entry| [entry["name"], entry["value"]] }
+check.call(app_env["FORWARDED_ALLOW_IPS"] == "*", "scene-app must trust forwarded headers inside its bounded ingress policy")
 check.call(app_container.dig("livenessProbe", "httpGet", "path") == "/healthz", "scene-app liveness probe must use /healthz")
 check.call(app_container.dig("readinessProbe", "httpGet", "path") == "/readyz", "scene-app readiness probe must use /readyz")
 check.call(app_container.dig("readinessProbe", "timeoutSeconds").to_i >= 9, "scene-app readiness timeout must cover both bounded readiness phases")
@@ -342,8 +344,11 @@ check.call(Array(app_external["ports"]) == [{ "port" => 443, "protocol" => "TCP"
 dispatcher_policy = policy_for.call("scene-dispatcher")
 check.call(dispatcher_policy.dig("spec", "ingress") == [], "dispatcher must accept no ingress")
 dispatcher_egress = Array(dispatcher_policy.dig("spec", "egress"))
-check.call(dispatcher_egress.length == 1 && dispatcher_egress.dig(0, "to", 0, "ipBlock", "cidr") == "0.0.0.0/0", "dispatcher must have one HTTPS egress rule for AWS and the Kubernetes API")
-check.call(Array(dispatcher_egress.dig(0, "ports")) == [{ "port" => 443, "protocol" => "TCP" }], "dispatcher egress must be port 443 only")
+dispatcher_https = dispatcher_egress.find { |entry| entry.dig("to", 0, "ipBlock", "cidr") == "0.0.0.0/0" } || {}
+dispatcher_api = dispatcher_egress.find { |entry| entry.dig("to", 0, "ipBlock", "cidr") == "135.181.140.68/32" } || {}
+check.call(dispatcher_egress.length == 2, "dispatcher must have only public HTTPS and horse API egress rules")
+check.call(Array(dispatcher_https["ports"]) == [{ "port" => 443, "protocol" => "TCP" }], "dispatcher public egress must be HTTPS only")
+check.call(Array(dispatcher_api["ports"]) == [{ "port" => 6443, "protocol" => "TCP" }], "dispatcher horse API egress must target TCP port 6443")
 
 runner_policy = policy_for.call("scene-runner")
 check.call(runner_policy.dig("spec", "ingress") == [], "runner must accept no ingress")

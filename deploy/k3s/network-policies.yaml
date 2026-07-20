@@ -127,13 +127,19 @@ spec:
   ingress: []
   egress:
     # The dispatcher needs both public AWS HTTPS endpoints and the in-cluster
-    # Kubernetes API. Standard NetworkPolicy cannot select either by service or
-    # DNS name, so port 443 remains the narrowest portable destination rule.
+    # Kubernetes API. Horse evaluates service traffic after DNAT, so the API's
+    # exact node endpoint and translated port must also be allowed.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
         - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 135.181.140.68/32
+      ports:
+        - port: 6443
           protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1

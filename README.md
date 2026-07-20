@@ -61,6 +61,12 @@ uv run --extra dev python -m pytest
   claims work in DynamoDB, creates or adopts deterministic Jobs, validates
   generation-scoped callbacks, and reconciles cancellation, timeout, S3 result
   recovery, failure logs, and terminal cleanup. See `docs/k3s-runner.md`.
+- The horse dispatcher NetworkPolicy includes the exact control-plane `/32` on
+  TCP 6443 because that cluster evaluates `kubernetes.default:443` after service
+  DNAT. Keep that host-specific rule aligned with the horse API endpoint.
+- AWS presigned transfers use regional virtual-hosted S3 endpoints, and the
+  ingress-isolated app trusts Traefik's forwarded scheme so stable viewer and
+  artifact links remain HTTPS.
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
 - Run records can carry `task_ids`; when present, the orchestrator expands only that validated subset while preserving the batch's task order. Omitting `task_ids` retains full-batch behaviour.
 - REST/SPM callers should provide `idempotency_key` when launching a run. A

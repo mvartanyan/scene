@@ -207,9 +207,19 @@
   adapter validates `pk`/`sk` plus three GSIs at startup, performs a
   write/read/delete readiness probe, converts floats safely for DynamoDB, and
   uses conditional integer versions for every entity mutation.
-- DynamoDB create writes include only expression aliases used by the create
-  condition; optimistic-version aliases are added only for updates, matching
-  real AWS request validation while preserving stale-write protection.
+- DynamoDB writes build expression aliases per conditional-write branch, so
+  create, legacy version-zero, and normal versioned updates pass real AWS's
+  unused-alias validation while preserving stale-write protection.
+- Horse evaluates the dispatcher's Kubernetes Service traffic after DNAT. Its
+  NetworkPolicy now allows only the exact control-plane `/32` on translated
+  port 6443 alongside public HTTPS, and the strict manifest validator enforces
+  both rules.
+- AWS S3 clients force SigV4 regional virtual-hosted endpoints for presigned
+  transfers, avoiding the global endpoint's 307 redirect that credential-free
+  runner PUTs cannot follow. Custom S3 endpoints retain their supplied routing.
+- The network-isolated staging app trusts Traefik forwarded headers so public
+  artifact and viewer links retain HTTPS; strict manifest validation prevents
+  that proxy setting from silently disappearing.
 - Repository updates retry optimistic conflicts without dropping concurrent
   fields. Stable run/execution creation keys make dispatcher replay idempotent,
   and terminal cancel/completion races now converge on the first successful

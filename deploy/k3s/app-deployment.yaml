@@ -59,6 +59,10 @@ spec:
           env:
             - name: SCENE_PROCESS_ROLE
               value: web
+            # Only Traefik and runner pods can reach this container under the
+            # namespace NetworkPolicies, so their forwarded scheme is trusted.
+            - name: FORWARDED_ALLOW_IPS
+              value: "*"
           startupProbe:
             httpGet:
               path: /healthz

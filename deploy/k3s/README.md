@@ -157,6 +157,9 @@ kubectl -n scene logs job/scene-runner-readiness
 
 The dispatcher Deployment intentionally has one replica while SCENE-7's durable
 claim loop serializes work. The app has two replicas and a PodDisruptionBudget.
+The dispatcher reserves `512Mi` and is capped at `1Gi` because callback
+finalization can hold baseline and observed full-page RGBA images concurrently;
+the horse node must retain that headroom.
 The readiness Job uses the same runner ServiceAccount/image-pull path as generated
 Jobs, waits up to three minutes for aggregate `/readyz`, reaches
 `/api/orchestrator/ping` through cluster DNS, verifies a writable ephemeral

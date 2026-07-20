@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from app.schemas import (
     ArtifactKind,
@@ -420,17 +420,18 @@ class DiffEngine:
     @staticmethod
     def _sanitize_transparent_pixels(image: Image.Image) -> Tuple[Image.Image, bool]:
         rgba = image.convert("RGBA")
-        changed = False
-        sanitized = []
-        for red, green, blue, alpha in rgba.getdata():
-            if alpha == 0 and (red or green or blue):
-                sanitized.append((0, 0, 0, 0))
-                changed = True
-            else:
-                sanitized.append((red, green, blue, alpha))
-        if changed:
-            rgba.putdata(sanitized)
-        return rgba, changed
+        red, green, blue, alpha = rgba.split()
+        hidden_color = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+        transparent = alpha.point([255] + [0] * 255)
+        changed = ImageChops.multiply(hidden_color, transparent).getbbox() is not None
+        if not changed:
+            return rgba, False
+        sanitized = Image.composite(
+            Image.new("RGBA", rgba.size, (0, 0, 0, 0)),
+            rgba,
+            transparent,
+        )
+        return sanitized, True
 
     def _normalize_image(
         self,
@@ -505,23 +506,21 @@ class DiffEngine:
         )
         with Image.open(baseline_path) as base_img, Image.open(observed_path) as obs_img:
             base_norm, obs_norm, stats = self._normalize_pair(base_img, obs_img)
-            delta_values: List[int] = []
-            diff_pixels = 0
-            for base_pixel, obs_pixel in zip(base_norm.getdata(), obs_norm.getdata()):
-                delta = max(abs(int(base_pixel[index]) - int(obs_pixel[index])) for index in range(4))
-                if delta <= tolerance:
-                    delta_values.append(0)
-                    continue
-                adjusted = delta - tolerance
-                delta_values.append(adjusted)
-                diff_pixels += 1
-
+            delta_channels = ImageChops.difference(base_norm, obs_norm).split()
+            max_delta = delta_channels[0]
+            for channel in delta_channels[1:]:
+                max_delta = ImageChops.lighter(max_delta, channel)
+            adjusted_delta = max_delta
+            if tolerance:
+                adjusted_delta = ImageChops.subtract(
+                    max_delta,
+                    Image.new("L", base_norm.size, tolerance),
+                )
             total_pixels = base_norm.width * base_norm.height
+            diff_pixels = total_pixels - adjusted_delta.histogram()[0]
             percentage = (diff_pixels / total_pixels * 100.0) if total_pixels else 0.0
 
-            alpha_values = [min(255, value * 4) for value in delta_values]
-            diff_alpha = Image.new("L", base_norm.size)
-            diff_alpha.putdata(alpha_values)
+            diff_alpha = adjusted_delta.point([min(255, value * 4) for value in range(256)])
             diff_canvas = Image.new("RGBA", base_norm.size, (0, 0, 0, 255))
             diff_overlay = Image.new("RGBA", base_norm.size, (255, 193, 7, 0))
             diff_overlay.putalpha(diff_alpha)

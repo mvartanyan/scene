@@ -220,6 +220,14 @@
 - The network-isolated staging app trusts Traefik forwarded headers so public
   artifact and viewer links retain HTTPS; strict manifest validation prevents
   that proxy setting from silently disappearing.
+- Dispatcher memory is requested at 512Mi and capped at 1Gi. Real horse
+  comparison callbacks can materialize two tall RGBA screenshots during diff
+  finalization, which exceeded the original 512Mi cap despite small PNG files.
+- Transparent-pixel sanitization and per-channel diff calculation now use
+  Pillow image operations instead of Python lists containing one tuple or
+  integer per pixel. This preserves tolerance and heatmap semantics while
+  bounding memory and keeping tall-page callback finalization below the
+  dispatcher heartbeat window.
 - Repository updates retry optimistic conflicts without dropping concurrent
   fields. Stable run/execution creation keys make dispatcher replay idempotent,
   and terminal cancel/completion races now converge on the first successful

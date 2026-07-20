@@ -67,6 +67,10 @@ uv run --extra dev python -m pytest
 - AWS presigned transfers use regional virtual-hosted S3 endpoints, and the
   ingress-isolated app trusts Traefik's forwarded scheme so stable viewer and
   artifact links remain HTTPS.
+- The durable dispatcher reserves `512Mi` and has a `1Gi` limit so full-page
+  baseline and observed images can be finalized without interrupting its lease.
+- Diff generation uses bounded Pillow channel operations rather than per-pixel
+  Python lists, keeping tall-page comparison callbacks responsive.
 - Run launches send `timeout_seconds`; the orchestrator enforces that value and will cancel lingering executions.
 - Run records can carry `task_ids`; when present, the orchestrator expands only that validated subset while preserving the batch's task order. Omitting `task_ids` retains full-batch behaviour.
 - REST/SPM callers should provide `idempotency_key` when launching a run. A

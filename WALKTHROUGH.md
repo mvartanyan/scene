@@ -20,6 +20,10 @@ The UI is organised into three primary areas:
 - Mutable runtime state defaults to `.scene/dev.dynamodb.json`; set `SCENE_STATE_PATH` to point at a different JSON state file. Production selects DynamoDB with `SCENE_STATE_BACKEND=dynamodb`, `AWS_REGION`, and `SCENE_DYNAMODB_TABLE`.
 - On horse k3s, the dispatcher alone can reach the control plane: its default-deny
   exception targets the exact API endpoint `/32` and translated TCP port 6443.
+- Dispatcher callback finalization can decode two tall screenshots at once; the
+  horse Deployment reserves 512Mi and permits up to 1Gi for that bounded work.
+  Pixel sanitization, tolerance, diff, and heatmap masks run through Pillow's
+  bounded channel operations so long pages do not stall the dispatcher lease.
 - Mutable artifacts default to `.scene/artifacts/`; set `SCENE_ARTIFACT_ROOT` to
   point at another local directory. Production uses
   `SCENE_ARTIFACT_STORAGE=s3` and a private `SCENE_S3_BUCKET`; app pods retain

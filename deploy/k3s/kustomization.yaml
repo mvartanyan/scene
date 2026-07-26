@@ -10,6 +10,7 @@ resources:
   - configmap.yaml
   - app-deployment.yaml
   - dispatcher-deployment.yaml
+  - webhook-worker-deployment.yaml
   - service.yaml
   - ingress.yaml
   - network-policies.yaml
@@ -32,6 +33,11 @@ replacements:
           name: scene-dispatcher
         fieldPaths:
           - spec.template.spec.containers.[name=dispatcher].image
+      - select:
+          kind: Deployment
+          name: scene-webhook-worker
+        fieldPaths:
+          - spec.template.spec.containers.[name=webhook-worker].image
   - source:
       kind: ConfigMap
       name: scene-runtime

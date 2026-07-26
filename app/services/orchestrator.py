@@ -1661,6 +1661,14 @@ class RunOrchestrator:
         run = self._repo.get_run(execution["run_id"])
         if not run:
             raise ValueError("Run not found")
+        if (
+            run.get("spm_ticket")
+            and run.get("spm_criterion_id")
+            and run.get("spm_invocation_id")
+        ):
+            raise ValueError(
+                "SPM-correlated runs cannot be retried in place; launch a new invocation."
+            )
         if execution.get("status") not in {
             ExecutionStatus.failed.value,
             ExecutionStatus.cancelled.value,

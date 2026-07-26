@@ -46,6 +46,13 @@ Required staging variables:
 - `SCENE_RUN_TIMEOUT_SECONDS`: run timeout. Start with `900`.
 - `SCENE_CAPTURE_DELAY_MS`: post-load capture delay. Start with `7000`.
 - `SCENE_DIFF_PIXEL_TOLERANCE`: per-channel pixel tolerance for diff/heatmap metrics. Start with `0`.
+- `SCENE_WEBHOOK_ENABLED`: enable only when a separate DynamoDB-backed webhook
+  worker and receiver secret are provisioned.
+- `SCENE_WEBHOOK_ENDPOINT_ID`, `SCENE_WEBHOOK_URL`, and
+  `SCENE_WEBHOOK_SECRET`: stable endpoint identity, HTTPS receiver URL, and
+  secret-backed HMAC value for the worker.
+- `SCENE_WEBHOOK_ALLOWED_HOSTS`: comma-separated exact receiver hostnames;
+  production k3s uses `pm.spherical.horse`. See `docs/webhooks.md`.
 
 k3s uses different settings: `SCENE_RUNNER_BACKEND=k3s`,
 `SCENE_K3S_SERVICE_URL=http://scene.<namespace>.svc.cluster.local`, and
@@ -151,6 +158,9 @@ configuration in SCENE; SPM should reference SCENE batches and consume
 plus `X-SCENE-API-Token`. SPM uses the public staging base URL with its dedicated
 Bearer service token; a bounded Traefik route forwards that header only for
 health, candidate discovery, comparison launch, and canonical result fetch.
+SCENE sends lifecycle webhooks separately through the dedicated worker. The
+webhook body is only a signed correlation signal; SPM still fetches `/result`
+for counts, diffs, thresholds, and links.
 
 The script prints JSON with the staging URL, project/batch IDs, run IDs,
 baseline ID, execution count, diff percentages, and artifact readback URL.

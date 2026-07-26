@@ -5,9 +5,10 @@ SCENE exposes four process-level endpoints outside the agent API:
 - `GET /healthz` returns HTTP 200 when the web process can serve requests. It
   does not initialize or probe DynamoDB, S3, the runner, or Kubernetes.
 - `GET /readyz` returns HTTP 200 only when state, artifacts, runner
-  configuration, and any required k3s dispatcher are ready. It returns a
-  sanitized HTTP 503 report for initialization errors, failed probes, stale
-  dispatcher leases, or denied Kubernetes capabilities.
+  configuration, and any required k3s dispatcher are ready. It also reports an
+  enabled outbound webhook worker as a non-blocking dependency. It returns a
+  sanitized HTTP 503 report for primary dependency initialization errors,
+  failed probes, stale dispatcher leases, or denied Kubernetes capabilities.
 - `GET /version` returns `SCENE_VERSION`, `SCENE_GIT_SHA`, `SCENE_BUILD_TIME`,
   `SCENE_ENV`, app/runner image references, configured backend names, and the
   persisted-state schema version, using `unknown`/`development` defaults. It
@@ -36,6 +37,15 @@ SelfSubjectAccessReview covering:
 
 The dispatcher republishes the capability result periodically and stops
 dispatching while the required permissions are unavailable.
+
+When `SCENE_WEBHOOK_ENABLED=true`, app readiness reports the durable
+webhook-worker heartbeat and whether its configuration was validated, but does
+not fail primary app readiness when SPM or the worker is unavailable. Runner
+callbacks and canonical result polling must remain available during a
+downstream outage. The dedicated webhook-worker Deployment has its own required
+lease/configuration readiness probe. The app does not receive or inspect the
+signing secret; only the dedicated worker does. Disabled environments report
+the webhook check as healthy and not required.
 
 ## Metrics Collection
 
@@ -75,9 +85,9 @@ Prometheus; scraping only the Service can alternate between replicas and is not
 a reliable per-process time series. Dispatcher Kubernetes totals are also
 available through the durable lease-backed dispatcher metrics.
 
-SCENE-14 owns the webhook worker and delivery queue. Until it is implemented,
-the fixed webhook metrics report a disabled worker and zero queue/delivery
-values rather than implying that webhook delivery is active.
+The webhook worker publishes enabled state, queue depth, oldest pending age,
+and durable attempt/success/failure counters without endpoint or event labels.
+See `docs/webhooks.md` for delivery and retry semantics.
 
 ## Kubernetes Wiring
 

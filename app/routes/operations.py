@@ -38,6 +38,7 @@ _METRICS_COLLECTION_TIMEOUT_SECONDS = 2.0
 _METRICS_CACHE_SECONDS = 5.0
 _DISPATCHER_HEARTBEAT_MAX_AGE = timedelta(seconds=15)
 _DISPATCHER_CAPABILITY_MAX_AGE = timedelta(seconds=45)
+_WEBHOOK_HEARTBEAT_MAX_AGE = timedelta(seconds=15)
 
 _readiness_loop: Optional[asyncio.AbstractEventLoop] = None
 _readiness_refresh_task: Optional[asyncio.Task[Dict[str, object]]] = None
@@ -240,6 +241,87 @@ async def _dispatcher_check(
     )
 
 
+def _webhook_enabled() -> bool:
+    return os.environ.get("SCENE_WEBHOOK_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+async def _webhook_check(
+    repo: Optional[SceneRepository],
+) -> Dict[str, object]:
+    if not _webhook_enabled():
+        return _check_result(
+            True,
+            required=False,
+            configured=True,
+            lease_seconds_remaining=0.0,
+        )
+    if repo is None:
+        return _check_result(
+            False,
+            required=False,
+            configured=False,
+            reason="state_backend_unavailable",
+            lease_seconds_remaining=0.0,
+        )
+    try:
+        status = await run_in_threadpool(repo.webhook_worker_status)
+    except Exception:  # noqa: BLE001 - readiness must remain available.
+        return _check_result(
+            False,
+            required=False,
+            configured=False,
+            reason="probe_failed",
+            lease_seconds_remaining=0.0,
+        )
+    if not isinstance(status, Mapping):
+        return _check_result(
+            False,
+            required=False,
+            configured=False,
+            reason="heartbeat_missing",
+            lease_seconds_remaining=0.0,
+        )
+    heartbeat_at = _parse_timestamp(status.get("heartbeat_at"))
+    expires_at = _parse_timestamp(status.get("expires_at"))
+    now = datetime.now(timezone.utc)
+    heartbeat_valid = bool(
+        status.get("owner")
+        and heartbeat_at
+        and expires_at
+        and heartbeat_at <= expires_at
+        and heartbeat_at <= now
+        and heartbeat_at > now - _WEBHOOK_HEARTBEAT_MAX_AGE
+        and expires_at > now
+    )
+    configured = bool(
+        status.get("enabled") is True and status.get("configured_ok") is True
+    )
+    remaining = 0.0
+    if expires_at:
+        remaining = max(
+            0.0,
+            min((expires_at - now).total_seconds(), _MAX_LEASE_SECONDS_METRIC),
+        )
+    return _check_result(
+        heartbeat_valid and configured,
+        required=False,
+        configured=configured,
+        reason=(
+            None
+            if heartbeat_valid and configured
+            else "configuration_invalid"
+            if heartbeat_valid
+            else "heartbeat_stale"
+        ),
+        lease_seconds_remaining=round(remaining, 3),
+    )
+
+
 def _configured_backends() -> Tuple[str, str, str]:
     state_backend = os.environ.get("SCENE_STATE_BACKEND", "json").strip().lower()
     artifact_backend = os.environ.get("SCENE_ARTIFACT_STORAGE", "filesystem").strip().lower()
@@ -262,6 +344,13 @@ def _unavailable_readiness(reason: str) -> Dict[str, object]:
                 not dispatcher_required,
                 required=dispatcher_required,
                 reason=reason if dispatcher_required else None,
+                lease_seconds_remaining=0.0,
+            ),
+            "webhook": _check_result(
+                not _webhook_enabled(),
+                required=False,
+                configured=not _webhook_enabled(),
+                reason=reason if _webhook_enabled() else None,
                 lease_seconds_remaining=0.0,
             ),
         },
@@ -304,13 +393,19 @@ async def _collect_readiness_uncached(
         resolved_repo,
         runner_backend=str(runner_check.get("backend") or ""),
     )
+    webhook_check = await _webhook_check(resolved_repo)
     checks = {
         "state": state_check,
         "artifacts": artifact_check,
         "runner": runner_check,
         "dispatcher": dispatcher_check,
+        "webhook": webhook_check,
     }
-    ready = all(bool(check["ok"]) for check in checks.values())
+    ready = all(
+        bool(check["ok"])
+        for check in checks.values()
+        if check.get("required", True) is not False
+    )
     return {
         "status": "ready" if ready else "not_ready",
         "checks": checks,
@@ -452,6 +547,7 @@ def _unavailable_metrics(reason: str) -> Dict[str, object]:
         "artifacts": {"count": 0, "size_bytes": 0, "truncated": False},
         "counters": {},
         "dispatcher": {},
+        "webhook": {},
     }
 
 
@@ -798,7 +894,7 @@ def _render_metrics(
         "# HELP scene_dependency_ready Whether a bounded SCENE dependency is ready.",
         "# TYPE scene_dependency_ready gauge",
     ]
-    for dependency in ("state", "artifacts", "runner", "dispatcher"):
+    for dependency in ("state", "artifacts", "runner", "dispatcher", "webhook"):
         check = check_map.get(dependency)
         ok = isinstance(check, Mapping) and check.get("ok") is True
         lines.append(
@@ -1001,6 +1097,7 @@ def _render_metrics(
                 _metric(name, _number(dispatcher_counters.get(source))),
             ]
         )
+    webhook_metrics = _mapping(operational.get("webhook"))
     lines.extend(
         [
             "# HELP scene_runner_jobs_total Runner Job lifecycle transitions.",
@@ -1051,13 +1148,22 @@ def _render_metrics(
             ),
             "# HELP scene_webhook_worker_enabled Whether the SCENE-14 webhook worker is enabled.",
             "# TYPE scene_webhook_worker_enabled gauge",
-            _metric("scene_webhook_worker_enabled", 0.0),
+            _metric(
+                "scene_webhook_worker_enabled",
+                1.0 if webhook_metrics.get("enabled") is True else 0.0,
+            ),
             "# HELP scene_webhook_delivery_queue_depth Pending durable webhook deliveries.",
             "# TYPE scene_webhook_delivery_queue_depth gauge",
-            _metric("scene_webhook_delivery_queue_depth", 0.0),
+            _metric(
+                "scene_webhook_delivery_queue_depth",
+                _number(webhook_metrics.get("queue_depth")),
+            ),
             "# HELP scene_webhook_delivery_oldest_age_seconds Age of the oldest pending webhook delivery.",
             "# TYPE scene_webhook_delivery_oldest_age_seconds gauge",
-            _metric("scene_webhook_delivery_oldest_age_seconds", 0.0),
+            _metric(
+                "scene_webhook_delivery_oldest_age_seconds",
+                _number(webhook_metrics.get("oldest_pending_age_seconds")),
+            ),
             "# HELP scene_webhook_deliveries_total Durable webhook delivery outcomes.",
             "# TYPE scene_webhook_deliveries_total counter",
             _metric(

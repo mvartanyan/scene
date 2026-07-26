@@ -142,7 +142,7 @@ curl -X POST http://127.0.0.1:8000/api/runs \
     "batch_id": "<batch-id>",
     "purpose": "baseline_recording",
     "requested_by": "agent",
-    "spm_ticket": "SCENE-123",
+    "spm_ticket": "SPM-193",
     "idempotency_key": "spm-invocation-456",
     "task_ids": ["<optional-task-id>"]
   }'
@@ -156,8 +156,10 @@ curl -X POST http://127.0.0.1:8000/api/batches/<batch-id>/comparison-runs \
   -H "Content-Type: application/json" \
   -d '{
     "requested_by": "spm",
-    "spm_ticket": "SCENE-123",
-    "note": "ticket success criteria",
+    "spm_ticket": "SPM-193",
+    "note": "SPM criterion <criterion-uuid>; invocation <invocation-uuid>",
+    "spm_criterion_id": "<criterion-uuid>",
+    "spm_invocation_id": "<invocation-uuid>",
     "idempotency_key": "spm-invocation-456",
     "task_ids": ["<optional-task-id>"]
   }'
@@ -198,6 +200,29 @@ run status, execution counts, diff average/maximum, thresholds, threshold pass
 state, the associated `spm_ticket`, failure details, and top artifact/viewer
 links.
 
+## Inspect Webhook Delivery
+
+Webhook delivery is an outbound SCENE worker concern. SPM uses the event as a
+completion signal and fetches `/result` for canonical state.
+
+```bash
+curl -H "Authorization: Bearer $SCENE_API_TOKEN" \
+  "http://127.0.0.1:8000/api/webhook-events?run_id=<run-id>"
+
+curl -H "Authorization: Bearer $SCENE_API_TOKEN" \
+  "http://127.0.0.1:8000/api/webhook-deliveries?run_id=<run-id>&status=permanent_failure"
+
+curl -X POST \
+  -H "Authorization: Bearer $SCENE_API_TOKEN" \
+  "http://127.0.0.1:8000/api/webhook-deliveries/<delivery-id>/redeliver"
+```
+
+Inspection responses are redacted: they omit event bodies, endpoint URLs,
+headers, secrets, and response bodies. Only terminal deliveries can be queued
+for manual redelivery; a redelivery starts a fresh retry generation while total
+attempt history remains visible. See `docs/webhooks.md` for signing, retry, and
+rotation semantics.
+
 ## Control Runs
 
 ```bash
@@ -210,6 +235,9 @@ curl -X POST http://127.0.0.1:8000/api/executions/<execution-id>/retry \
 curl -X DELETE http://127.0.0.1:8000/api/runs/<run-id> \
   -H "Authorization: Bearer $SCENE_API_TOKEN"
 ```
+
+SPM-correlated runs cannot be deleted or retried in place after terminal state.
+Create a new SPM invocation so both systems receive a new logical run identity.
 
 Execution callbacks continue to use their per-execution callback token and are
 not authenticated with `SCENE_API_TOKEN`.

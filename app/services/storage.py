@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 import uuid
 from contextlib import contextmanager
@@ -78,6 +79,12 @@ DISPATCHER_JOB_TERMINAL_KEYS = {
 RUN_IDEMPOTENCY_NAMESPACE = uuid.UUID("6740667e-e6d2-4f80-bbe8-8c73742f38d2")
 BASELINE_IDEMPOTENCY_NAMESPACE = uuid.UUID("a2c250c5-8a92-4d83-bc94-34f167285f62")
 EXECUTION_IDEMPOTENCY_NAMESPACE = uuid.UUID("7aaef15c-3e65-49f4-b122-49883d68d85e")
+WEBHOOK_EVENT_NAMESPACE = uuid.UUID("f3b4fd3f-ce15-4b93-8ee7-0e38eedf5d78")
+WEBHOOK_DELIVERY_NAMESPACE = uuid.UUID("0c1d66d4-6d62-4e64-bb8e-3f35ddf2468a")
+SPM_CORRELATION_NOTE_RE = re.compile(
+    r"\ASPM criterion (?P<criterion>[0-9a-fA-F-]{36}); "
+    r"invocation (?P<invocation>[0-9a-fA-F-]{36})\Z"
+)
 
 
 def resolve_state_path() -> Path:
@@ -227,6 +234,97 @@ def _with_spm_ticket(record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any
     normalized = dict(record)
     normalized["spm_ticket"] = _spm_ticket_value(normalized)
     return normalized
+
+
+def _spm_correlation(payload: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    criterion_id = str(payload.get("spm_criterion_id") or "").strip()
+    invocation_id = str(payload.get("spm_invocation_id") or "").strip()
+    if not criterion_id or not invocation_id:
+        note = str(payload.get("note") or "").strip()
+        match = SPM_CORRELATION_NOTE_RE.fullmatch(note)
+        if match:
+            criterion_id = match.group("criterion")
+            invocation_id = match.group("invocation")
+    try:
+        criterion_id = str(uuid.UUID(criterion_id))
+        invocation_id = str(uuid.UUID(invocation_id))
+    except (ValueError, AttributeError):
+        return None
+    ticket = _spm_ticket_value(payload)
+    if not ticket:
+        return None
+    return {
+        "ticket": ticket,
+        "criterion_id": criterion_id,
+        "invocation_id": invocation_id,
+    }
+
+
+def _append_run_webhook_marker(
+    record: Dict[str, Any],
+    event_type: str,
+    occurred_at: object,
+) -> None:
+    correlation = _spm_correlation(record)
+    run_id = str(record.get("id") or "")
+    batch_id = str(record.get("batch_id") or "")
+    if not correlation or not run_id or not batch_id:
+        return
+    markers = record.get("webhook_outbox")
+    if not isinstance(markers, list):
+        markers = []
+    if any(
+        isinstance(marker, dict) and marker.get("event_type") == event_type
+        for marker in markers
+    ):
+        record["webhook_outbox"] = markers
+        return
+    timestamp = str(occurred_at or _utcnow())
+    markers.append(
+        {
+            "event_id": str(
+                uuid.uuid5(WEBHOOK_EVENT_NAMESPACE, f"{run_id}:{event_type}")
+            ),
+            "event_type": event_type,
+            "occurred_at": timestamp,
+            "environment": os.environ.get("SCENE_ENV", "development").strip().lower()
+            or "development",
+            "run_id": run_id,
+            "batch_id": batch_id,
+            **correlation,
+        }
+    )
+    record["webhook_outbox"] = markers
+    record["spm_criterion_id"] = correlation["criterion_id"]
+    record["spm_invocation_id"] = correlation["invocation_id"]
+
+
+def _ensure_run_webhook_markers(record: Dict[str, Any]) -> None:
+    if not _spm_correlation(record):
+        return
+    _append_run_webhook_marker(
+        record,
+        "run.queued",
+        record.get("created_at"),
+    )
+    status = str(record.get("status") or "queued")
+    if status == "executing" or record.get("started_at"):
+        _append_run_webhook_marker(
+            record,
+            "run.started",
+            record.get("started_at") or record.get("updated_at"),
+        )
+    terminal_event = {
+        "finished": "run.completed",
+        "failed": "run.failed",
+        "cancelled": "run.cancelled",
+    }.get(status)
+    if not terminal_event:
+        return
+    terminal_at = record.get("completed_at") or record.get("updated_at")
+    _append_run_webhook_marker(record, terminal_event, terminal_at)
+    if str(record.get("purpose") or "") == "comparison":
+        _append_run_webhook_marker(record, "run.threshold_evaluated", terminal_at)
 
 
 def _apply_spm_ticket_update(record: Dict[str, Any], payload: Dict[str, Any]) -> None:
@@ -499,6 +597,93 @@ class SceneRepository:
 
     def dispatcher_status(self) -> Optional[Dict[str, Any]]:
         return self._storage.get("leases", "k3s-dispatcher")
+
+    def webhook_worker_status(self) -> Optional[Dict[str, Any]]:
+        return self._storage.get("leases", "webhook-worker")
+
+    def acquire_webhook_worker_lease(
+        self,
+        owner: str,
+        *,
+        lease_seconds: int = 30,
+    ) -> bool:
+        now = _utcnow()
+        for attempt in range(MAX_CONFLICT_RETRIES):
+            record = self._storage.get("leases", "webhook-worker")
+            if record:
+                current_owner = str(record.get("owner") or "")
+                if (
+                    current_owner != owner
+                    and str(record.get("expires_at") or "") > now
+                ):
+                    return False
+                record.update(
+                    {
+                        "owner": owner,
+                        "heartbeat_at": now,
+                        "expires_at": _future_iso(lease_seconds),
+                    }
+                )
+            else:
+                record = {
+                    "id": "webhook-worker",
+                    "owner": owner,
+                    "created_at": now,
+                    "heartbeat_at": now,
+                    "expires_at": _future_iso(lease_seconds),
+                }
+            try:
+                self._storage.upsert("leases", "webhook-worker", record)
+                return True
+            except StorageConflictError:
+                if attempt + 1 == MAX_CONFLICT_RETRIES:
+                    return False
+        return False
+
+    def report_webhook_worker_status(
+        self,
+        owner: str,
+        *,
+        enabled: bool,
+        configured_ok: bool,
+        error_code: Optional[str] = None,
+    ) -> bool:
+        reported = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal reported
+            reported = False
+            if record.get("owner") != owner:
+                return False
+            deliveries = self.list_webhook_deliveries()
+            pending = [
+                item
+                for item in deliveries
+                if item.get("status") in {"pending", "retry"}
+            ]
+            now = datetime.now(timezone.utc)
+            ages = []
+            for item in pending:
+                created = _parse_utc_timestamp(item.get("created_at"))
+                if created and created <= now:
+                    ages.append((now - created).total_seconds())
+            record.update(
+                {
+                    "heartbeat_at": _utcnow(),
+                    "expires_at": _future_iso(30),
+                    "enabled": bool(enabled),
+                    "configured_ok": bool(configured_ok),
+                    "error_code": error_code,
+                    "queue_depth": len(pending),
+                    "oldest_pending_age_seconds": max(ages, default=0.0),
+                    "updated_at": _utcnow(),
+                }
+            )
+            reported = True
+            return None
+
+        self._update_record("leases", "webhook-worker", mutate)
+        return reported
 
     def acquire_dispatcher_lease(
         self,
@@ -993,6 +1178,10 @@ class SceneRepository:
         executions: Iterable[Dict[str, Any]],
     ) -> None:
         execution_records = list(executions)
+        if _spm_correlation(run):
+            raise ValueError(
+                "Cannot delete an SPM-correlated run; retain it for canonical reconciliation."
+            )
         if run.get("status") in {"queued", "executing"} or any(
             execution.get("status") in {"queued", "executing"}
             for execution in execution_records
@@ -1526,6 +1715,11 @@ class SceneRepository:
             "task_ids": list(payload["task_ids"]) if payload.get("task_ids") is not None else None,
             "idempotency_key": idempotency_key,
         }
+        if payload.get("spm_criterion_id"):
+            record["spm_criterion_id"] = payload.get("spm_criterion_id")
+        if payload.get("spm_invocation_id"):
+            record["spm_invocation_id"] = payload.get("spm_invocation_id")
+        _ensure_run_webhook_markers(record)
         if idempotency_key:
             record["idempotency_fingerprint"] = _fingerprint(
                 record,
@@ -1537,6 +1731,8 @@ class SceneRepository:
                     "requested_by",
                     "note",
                     "spm_ticket",
+                    "spm_criterion_id",
+                    "spm_invocation_id",
                     "timeout_seconds",
                     "task_ids",
                 ),
@@ -1557,6 +1753,17 @@ class SceneRepository:
 
     def update_run(self, run_id: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         def mutate(record: Dict[str, Any]) -> None:
+            if (
+                ("spm_ticket" in payload or "jira_issue" in payload)
+                and _spm_correlation(record)
+                and _spm_ticket_value(payload) != _spm_ticket_value(record)
+            ):
+                raise ValueError("SPM run correlation is immutable")
+            for key in ("spm_criterion_id", "spm_invocation_id"):
+                requested = payload.get(key)
+                current = record.get(key)
+                if requested is not None and current is not None and requested != current:
+                    raise ValueError("SPM run correlation is immutable")
             requested_status = payload.get("status")
             current_status = record.get("status")
             status_conflict = (
@@ -1575,8 +1782,273 @@ class SceneRepository:
             )
             _apply_spm_ticket_update(record, payload)
             record["updated_at"] = _utcnow()
+            _ensure_run_webhook_markers(record)
 
         return self._update_record("runs", run_id, mutate)
+
+    def ensure_run_webhook_markers(self, run_id: str) -> Optional[Dict[str, Any]]:
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            before = (
+                deepcopy(record.get("webhook_outbox")),
+                record.get("spm_criterion_id"),
+                record.get("spm_invocation_id"),
+            )
+            _ensure_run_webhook_markers(record)
+            after = (
+                record.get("webhook_outbox"),
+                record.get("spm_criterion_id"),
+                record.get("spm_invocation_id"),
+            )
+            return None if before != after else False
+
+        return self._update_record("runs", run_id, mutate)
+
+    def list_runs_with_webhook_outbox(self) -> List[Dict[str, Any]]:
+        runs: List[Dict[str, Any]] = []
+        for item in self._storage.list("runs"):
+            normalized = _with_spm_ticket(item)
+            if normalized and _spm_correlation(normalized):
+                runs.append(normalized)
+        return sorted(runs, key=lambda item: str(item.get("created_at") or ""))
+
+    def get_webhook_event(self, event_id: str) -> Optional[Dict[str, Any]]:
+        return self._storage.get("webhook_events", event_id)
+
+    def ensure_webhook_event(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        event_id = str(payload["id"])
+        existing = self.get_webhook_event(event_id)
+        if existing:
+            if existing.get("body_sha256") != payload.get("body_sha256"):
+                raise StorageConflictError(
+                    f"webhook event {event_id} cannot change immutable body"
+                )
+            return existing
+        try:
+            return self._storage.upsert("webhook_events", event_id, payload)
+        except StorageConflictError:
+            existing = self.get_webhook_event(event_id)
+            if existing and existing.get("body_sha256") == payload.get("body_sha256"):
+                return existing
+            raise
+
+    def list_webhook_events(
+        self,
+        *,
+        run_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        records = self._storage.list("webhook_events")
+        if run_id:
+            records = [record for record in records if record.get("run_id") == run_id]
+        return sorted(
+            records,
+            key=lambda item: str(item.get("occurred_at") or ""),
+            reverse=True,
+        )
+
+    def get_webhook_delivery(self, delivery_id: str) -> Optional[Dict[str, Any]]:
+        return self._storage.get("webhook_deliveries", delivery_id)
+
+    def ensure_webhook_delivery(
+        self,
+        event: Dict[str, Any],
+        *,
+        endpoint_id: str,
+        endpoint_url: str,
+    ) -> Dict[str, Any]:
+        event_id = str(event["id"])
+        delivery_id = str(
+            uuid.uuid5(
+                WEBHOOK_DELIVERY_NAMESPACE,
+                f"{endpoint_id}:{event_id}",
+            )
+        )
+        existing = self.get_webhook_delivery(delivery_id)
+        if existing:
+            if (
+                existing.get("event_id") != event_id
+                or existing.get("endpoint_id") != endpoint_id
+            ):
+                raise StorageConflictError(
+                    f"webhook delivery {delivery_id} cannot change destination"
+                )
+            return existing
+        now = _utcnow()
+        record = {
+            "id": delivery_id,
+            "event_id": event_id,
+            "run_id": event.get("run_id"),
+            "endpoint_id": endpoint_id,
+            "endpoint_url": endpoint_url,
+            "status": "pending",
+            "attempt_count": 0,
+            "redelivery_generation": 0,
+            "generation_attempt_count": 0,
+            "generation_started_at": now,
+            "attempts": [],
+            "next_attempt_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+        try:
+            return self._storage.upsert("webhook_deliveries", delivery_id, record)
+        except StorageConflictError:
+            existing = self.get_webhook_delivery(delivery_id)
+            if (
+                existing
+                and existing.get("event_id") == event_id
+                and existing.get("endpoint_id") == endpoint_id
+            ):
+                return existing
+            raise
+
+    def list_webhook_deliveries(
+        self,
+        *,
+        run_id: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        records = self._storage.list("webhook_deliveries")
+        if run_id:
+            records = [record for record in records if record.get("run_id") == run_id]
+        if status:
+            records = [record for record in records if record.get("status") == status]
+        return sorted(
+            records,
+            key=lambda item: str(item.get("created_at") or ""),
+            reverse=True,
+        )
+
+    def list_due_webhook_deliveries(
+        self,
+        *,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        due = [
+            record
+            for record in self._storage.list("webhook_deliveries")
+            if record.get("status") in {"pending", "retry"}
+            and (
+                not record.get("next_attempt_at")
+                or (
+                    _parse_utc_timestamp(record.get("next_attempt_at")) is not None
+                    and _parse_utc_timestamp(record.get("next_attempt_at")) <= now
+                )
+            )
+            and (
+                not record.get("lease_expires_at")
+                or (
+                    _parse_utc_timestamp(record.get("lease_expires_at")) is not None
+                    and _parse_utc_timestamp(record.get("lease_expires_at")) <= now
+                )
+            )
+        ]
+        due.sort(key=lambda item: str(item.get("next_attempt_at") or ""))
+        return due[: max(1, min(int(limit), 100))]
+
+    def claim_webhook_delivery(
+        self,
+        delivery_id: str,
+        *,
+        owner: str,
+        lease_seconds: int = 60,
+    ) -> Optional[Dict[str, Any]]:
+        claimed = False
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal claimed
+            claimed = False
+            now_at = datetime.now(timezone.utc)
+            now = now_at.isoformat()
+            if record.get("status") not in {"pending", "retry"}:
+                return False
+            if record.get("next_attempt_at"):
+                next_attempt_at = _parse_utc_timestamp(record.get("next_attempt_at"))
+                if next_attempt_at is None or next_attempt_at > now_at:
+                    return False
+            lease_expires_at = _parse_utc_timestamp(record.get("lease_expires_at"))
+            if (
+                record.get("lease_owner")
+                and lease_expires_at is not None
+                and lease_expires_at > now_at
+                and record.get("lease_owner") != owner
+            ):
+                return False
+            record["lease_owner"] = owner
+            record["lease_expires_at"] = _future_iso(lease_seconds)
+            record["updated_at"] = now
+            claimed = True
+            return None
+
+        result = self._update_record("webhook_deliveries", delivery_id, mutate)
+        return result if claimed else None
+
+    def complete_webhook_delivery_attempt(
+        self,
+        delivery_id: str,
+        *,
+        owner: str,
+        outcome: str,
+        response_status: Optional[int],
+        duration_seconds: float,
+        error: Optional[str],
+        next_attempt_at: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            if record.get("lease_owner") != owner:
+                return False
+            attempt_count = int(record.get("attempt_count") or 0) + 1
+            generation = int(record.get("redelivery_generation") or 0)
+            generation_attempt_count = (
+                int(record.get("generation_attempt_count") or 0) + 1
+            )
+            attempts = list(record.get("attempts") or [])
+            attempts.append(
+                {
+                    "number": attempt_count,
+                    "generation": generation,
+                    "generation_number": generation_attempt_count,
+                    "attempted_at": _utcnow(),
+                    "outcome": outcome,
+                    "response_status": response_status,
+                    "duration_seconds": max(0.0, round(float(duration_seconds), 3)),
+                    "error": error,
+                }
+            )
+            record["attempt_count"] = attempt_count
+            record["generation_attempt_count"] = generation_attempt_count
+            record["attempts"] = attempts[-20:]
+            record["status"] = outcome
+            record["last_response_status"] = response_status
+            record["last_error"] = error
+            record["next_attempt_at"] = next_attempt_at
+            record["updated_at"] = _utcnow()
+            record.pop("lease_owner", None)
+            record.pop("lease_expires_at", None)
+            if outcome in {"succeeded", "permanent_failure"}:
+                record["completed_at"] = _utcnow()
+            return None
+
+        return self._update_record("webhook_deliveries", delivery_id, mutate)
+
+    def redeliver_webhook(self, delivery_id: str) -> Optional[Dict[str, Any]]:
+        def mutate(record: Dict[str, Any]) -> None:
+            if record.get("status") not in {"succeeded", "permanent_failure"}:
+                raise ValueError("Webhook delivery is not terminal")
+            now = _utcnow()
+            record["status"] = "pending"
+            record["redelivery_generation"] = (
+                int(record.get("redelivery_generation") or 0) + 1
+            )
+            record["generation_attempt_count"] = 0
+            record["generation_started_at"] = now
+            record["next_attempt_at"] = now
+            record["updated_at"] = now
+            record.pop("completed_at", None)
+            record.pop("lease_owner", None)
+            record.pop("lease_expires_at", None)
+
+        return self._update_record("webhook_deliveries", delivery_id, mutate)
 
     def reopen_run_for_retry(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Explicitly reopen a failed or cancelled run before adding retry work."""
@@ -1586,6 +2058,10 @@ class SceneRepository:
         def mutate(record: Dict[str, Any]) -> Optional[bool]:
             nonlocal reopened
             reopened = False
+            if _spm_correlation(record):
+                raise ValueError(
+                    "SPM-correlated runs cannot be reopened; launch a new invocation."
+                )
             if record.get("status") not in {"failed", "cancelled"}:
                 return False
             record["status"] = "executing"

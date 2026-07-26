@@ -63,6 +63,7 @@ def _frontend_env(env: dict[str, str]) -> dict[str, str]:
     frontend_env.setdefault("SCENE_ARTIFACT_STORAGE", "pvc")
     frontend_env.setdefault("SCENE_ARTIFACT_PVC_CLAIM", "scene-quality-gate")
     frontend_env.setdefault("PW_REUSE_EXISTING_SERVER", "false")
+    frontend_env.setdefault("PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW", "1")
     return frontend_env
 
 

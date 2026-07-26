@@ -71,15 +71,18 @@ end
 
 app_account = resource.call("ServiceAccount", "scene-app")
 dispatcher_account = resource.call("ServiceAccount", "scene-dispatcher")
+webhook_account = resource.call("ServiceAccount", "scene-webhook-worker")
 runner_account = resource.call("ServiceAccount", "scene-runner")
 check.call(app_account["automountServiceAccountToken"] == false, "scene-app must not mount a Kubernetes API token")
 check.call(dispatcher_account["automountServiceAccountToken"] == true, "scene-dispatcher must mount its Kubernetes API token")
+check.call(webhook_account["automountServiceAccountToken"] == false, "scene-webhook-worker must not mount a Kubernetes API token")
 check.call(runner_account["automountServiceAccountToken"] == false, "scene-runner must not mount a Kubernetes API token")
 pull_secret_names = lambda do |subject|
   Array(subject["imagePullSecrets"]).map { |entry| entry["name"] }.compact.sort
 end
 check.call(pull_secret_names.call(app_account).empty?, "scene-app ServiceAccount must not carry runtime credentials")
 check.call(pull_secret_names.call(dispatcher_account).empty?, "scene-dispatcher ServiceAccount must not carry runtime credentials")
+check.call(pull_secret_names.call(webhook_account).empty?, "scene-webhook-worker ServiceAccount must not carry runtime credentials")
 check.call(pull_secret_names.call(runner_account) == ["scene-registry"], "scene-runner must inherit only the registry pull Secret for generated Jobs")
 
 role = resource.call("Role", "scene-job-dispatcher")
@@ -121,14 +124,34 @@ expected_runtime = {
   "SCENE_RUNNER_CALLBACK_BASE_URL" => "http://scene.scene.svc.cluster.local",
   "SCENE_RUNNER_IMAGE_AUTOBUILD" => "false",
   "SCENE_S3_PREFIX" => "scene",
-  "SCENE_STATE_BACKEND" => "dynamodb"
+  "SCENE_STATE_BACKEND" => "dynamodb",
+  "SCENE_WEBHOOK_ALLOW_PRIVATE_URLS" => "false",
+  "SCENE_WEBHOOK_ALLOWED_HOSTS" => "pm.spherical.horse",
+  "SCENE_WEBHOOK_ENABLED" => "true",
+  "SCENE_WEBHOOK_ENDPOINT_ID" => "spm-1",
+  "SCENE_WEBHOOK_MAX_AGE_SECONDS" => "86400",
+  "SCENE_WEBHOOK_MAX_ATTEMPTS" => "8",
+  "SCENE_WEBHOOK_POLL_SECONDS" => "2",
+  "SCENE_WEBHOOK_TIMEOUT_SECONDS" => "10"
 }
 expected_runtime.each do |name, value|
   check.call(runtime_data[name] == value, "scene-runtime #{name} must be #{value}")
 end
 check.call(runtime_data.values.none? { |value| value.to_s.include?("host.docker.internal") }, "k3s runtime must not reference host.docker.internal")
-credential_key_pattern = /(ACCESS_KEY|SECRET_ACCESS|SESSION_TOKEN|API_TOKEN|PASSWORD)/
+credential_key_pattern = /(ACCESS_KEY|SECRET_ACCESS|SESSION_TOKEN|API_TOKEN|PASSWORD|WEBHOOK_SECRET)/
 check.call(runtime_data.keys.none? { |name| name.match?(credential_key_pattern) }, "scene-runtime must not contain credential-shaped keys")
+
+webhook_url = runtime_data["SCENE_WEBHOOK_URL"].to_s
+webhook_url_placeholder = webhook_url == "REPLACE_WITH_SPM_WEBHOOK_URL"
+if webhook_url_placeholder
+  message = "scene-runtime still uses the non-runnable SCENE_WEBHOOK_URL placeholder"
+  options[:strict] ? errors << message : warnings << message
+else
+  check.call(
+    webhook_url.match?(%r{\Ahttps://pm\.spherical\.horse/integrations/scene/[1-9][0-9]*/webhooks\z}),
+    "SCENE_WEBHOOK_URL must be the concrete HTTPS SPM integration webhook URL"
+  )
+end
 
 bucket_name = runtime_data["SCENE_S3_BUCKET"].to_s
 bucket_placeholder = bucket_name == "REPLACE_WITH_CLOUDFORMATION_ARTIFACT_BUCKET_NAME"
@@ -167,6 +190,7 @@ end
 
 app = resource.call("Deployment", "scene-app")
 dispatcher = resource.call("Deployment", "scene-dispatcher")
+webhook_worker = resource.call("Deployment", "scene-webhook-worker")
 runner_job = resource.call("Job", "scene-runner-readiness")
 
 pod_spec_for = lambda do |workload|
@@ -178,7 +202,7 @@ containers_for = lambda do |workload|
   Array(pod_spec["initContainers"]) + Array(pod_spec["containers"])
 end
 
-[app, dispatcher, runner_job].each do |workload|
+[app, dispatcher, webhook_worker, runner_job].each do |workload|
   kind = workload["kind"] || "Workload"
   name = workload.dig("metadata", "name") || "unknown"
   pod_spec = pod_spec_for.call(workload)
@@ -208,15 +232,19 @@ end
 
 app_spec = pod_spec_for.call(app)
 dispatcher_spec = pod_spec_for.call(dispatcher)
+webhook_spec = pod_spec_for.call(webhook_worker)
 runner_spec = pod_spec_for.call(runner_job)
 check.call(app_spec["serviceAccountName"] == "scene-app", "scene-app Deployment must use scene-app ServiceAccount")
 check.call(dispatcher_spec["serviceAccountName"] == "scene-dispatcher", "scene-dispatcher Deployment must use scene-dispatcher ServiceAccount")
+check.call(webhook_spec["serviceAccountName"] == "scene-webhook-worker", "scene-webhook-worker Deployment must use scene-webhook-worker ServiceAccount")
 check.call(runner_spec["serviceAccountName"] == "scene-runner", "runner Job must use scene-runner ServiceAccount")
 check.call(app_spec["automountServiceAccountToken"] == false, "scene-app Deployment must disable API token mounting")
 check.call(dispatcher_spec["automountServiceAccountToken"] == true, "scene-dispatcher Deployment must mount its bounded API token")
+check.call(webhook_spec["automountServiceAccountToken"] == false, "scene-webhook-worker Deployment must disable API token mounting")
 check.call(runner_spec["automountServiceAccountToken"] == false, "runner Job must not mount a Kubernetes API token")
 check.call(pull_secret_names.call(app_spec) == ["scene-registry"], "scene-app pod must use only scene-registry for image pulls")
 check.call(pull_secret_names.call(dispatcher_spec) == ["scene-registry"], "scene-dispatcher pod must use only scene-registry for image pulls")
+check.call(pull_secret_names.call(webhook_spec) == ["scene-registry"], "scene-webhook-worker pod must use only scene-registry for image pulls")
 check.call(pull_secret_names.call(runner_spec).empty?, "runner readiness must prove image pull inheritance through scene-runner")
 
 secret_refs_for = lambda do |workload|
@@ -227,6 +255,7 @@ end
 expected_app_secrets = %w[scene-app-auth scene-app-aws]
 check.call(secret_refs_for.call(app) == expected_app_secrets, "scene-app must reference only the auth and AWS Secrets")
 check.call(secret_refs_for.call(dispatcher) == ["scene-app-aws"], "scene-dispatcher must reference only the AWS Secret")
+check.call(secret_refs_for.call(webhook_worker) == %w[scene-app-aws scene-webhook-auth], "scene-webhook-worker must reference only the AWS and webhook Secrets")
 check.call(secret_refs_for.call(runner_job).empty?, "runner Job must not receive Secrets through envFrom")
 secret_env_refs_for = lambda do |workload|
   containers_for.call(workload).flat_map do |container|
@@ -243,6 +272,7 @@ check.call(runner_env_names.none? { |name| name.to_s.start_with?("AWS_") }, "run
 
 app_container = Array(app_spec["containers"]).find { |container| container["name"] == "scene" } || {}
 dispatcher_container = Array(dispatcher_spec["containers"]).find { |container| container["name"] == "dispatcher" } || {}
+webhook_container = Array(webhook_spec["containers"]).find { |container| container["name"] == "webhook-worker" } || {}
 runner_container = Array(runner_spec["containers"]).find { |container| container["name"] == "runner-readiness" } || {}
 app_env = Array(app_container["env"]).to_h { |entry| [entry["name"], entry["value"]] }
 check.call(app_env["FORWARDED_ALLOW_IPS"] == "*", "scene-app must trust forwarded headers inside its bounded ingress policy")
@@ -269,8 +299,30 @@ if dispatcher_readiness_command[0, 2] == ["python", "-c"]
 else
   errors << "dispatcher readiness must execute Python directly"
 end
+check.call(webhook_worker.dig("spec", "replicas") == 1, "scene-webhook-worker must start with one replica")
+check.call(webhook_worker.dig("spec", "strategy", "type") == "Recreate", "scene-webhook-worker must use Recreate rollout semantics")
+check.call(webhook_container["command"] == ["python", "-m", "app.services.webhook_worker"], "webhook worker command must use the SCENE webhook worker module")
+webhook_liveness = Array(webhook_container.dig("livenessProbe", "exec", "command")).join(" ")
+webhook_readiness_command = Array(webhook_container.dig("readinessProbe", "exec", "command"))
+webhook_readiness = webhook_readiness_command.join(" ")
+check.call(webhook_liveness.include?("kill -0 1"), "webhook worker liveness must check only the long-running process")
+%w[webhook_worker_status heartbeat_at expires_at configured_ok enabled].each do |contract|
+  check.call(webhook_readiness.include?(contract), "webhook worker readiness must verify #{contract}")
+end
+if webhook_readiness_command[0, 2] == ["python", "-c"]
+  _stdout, syntax_error, syntax_status = Open3.capture3(
+    "python3",
+    "-c",
+    "import sys; compile(sys.argv[1], '<webhook-readiness>', 'exec')",
+    webhook_readiness_command[2].to_s
+  )
+  check.call(syntax_status.success?, "webhook worker readiness Python is invalid: #{syntax_error.strip}")
+else
+  errors << "webhook worker readiness must execute Python directly"
+end
 check.call(app_container["image"] == runtime_data["SCENE_APP_IMAGE"], "rendered app image must match SCENE_APP_IMAGE")
 check.call(dispatcher_container["image"] == runtime_data["SCENE_APP_IMAGE"], "rendered dispatcher image must match SCENE_APP_IMAGE")
+check.call(webhook_container["image"] == runtime_data["SCENE_APP_IMAGE"], "rendered webhook worker image must match SCENE_APP_IMAGE")
 check.call(runner_container["image"] == runtime_data["SCENE_RUNNER_IMAGE"], "rendered readiness image must match SCENE_RUNNER_IMAGE")
 
 check.call(runner_job.dig("spec", "backoffLimit") == 0, "runner readiness must fail on its first deterministic error")
@@ -370,6 +422,14 @@ dispatcher_api = dispatcher_egress.find { |entry| entry.dig("to", 0, "ipBlock", 
 check.call(dispatcher_egress.length == 2, "dispatcher must have only public HTTPS and horse API egress rules")
 check.call(Array(dispatcher_https["ports"]) == [{ "port" => 443, "protocol" => "TCP" }], "dispatcher public egress must be HTTPS only")
 check.call(Array(dispatcher_api["ports"]) == [{ "port" => 6443, "protocol" => "TCP" }], "dispatcher horse API egress must target TCP port 6443")
+
+webhook_policy = policy_for.call("scene-webhook-worker")
+check.call(webhook_policy.dig("spec", "ingress") == [], "webhook worker must accept no ingress")
+webhook_egress = Array(webhook_policy.dig("spec", "egress"))
+webhook_https = webhook_egress.find { |entry| entry.dig("to", 0, "ipBlock", "cidr") == "0.0.0.0/0" } || {}
+check.call(webhook_egress.length == 1, "webhook worker must have only public HTTPS egress")
+check.call(Array(webhook_https["ports"]) == [{ "port" => 443, "protocol" => "TCP" }], "webhook worker public egress must be HTTPS only")
+check.call(Array(webhook_https.dig("to", 0, "ipBlock", "except")).sort == private_ranges.sort, "webhook worker egress must exclude private and link-local ranges")
 
 runner_policy = policy_for.call("scene-runner")
 check.call(runner_policy.dig("spec", "ingress") == [], "runner must accept no ingress")

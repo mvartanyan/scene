@@ -19,6 +19,7 @@ class FakeRepository:
         self.probe_error: Optional[Exception] = None
         self.probe_result: Dict[str, object] = {"ok": True, "backend": "json"}
         self.dispatcher: Optional[Dict[str, object]] = None
+        self.webhook: Optional[Dict[str, object]] = None
         self.records: Dict[str, list[Dict[str, object]]] = {
             "runs": [],
             "executions": [],
@@ -27,6 +28,7 @@ class FakeRepository:
         self.operational: Dict[str, object] = {"counters": {}}
         self.probe_calls = 0
         self.dispatcher_calls = 0
+        self.webhook_calls = 0
         self.query_calls = 0
 
     def probe(self) -> Dict[str, object]:
@@ -38,6 +40,10 @@ class FakeRepository:
     def dispatcher_status(self) -> Optional[Dict[str, object]]:
         self.dispatcher_calls += 1
         return self.dispatcher
+
+    def webhook_worker_status(self) -> Optional[Dict[str, object]]:
+        self.webhook_calls += 1
+        return self.webhook
 
     def count(self, collection: str) -> int:
         return len(self.records.get(collection, []))
@@ -116,6 +122,7 @@ def operations_client(
     monkeypatch.setenv("SCENE_RUNNER_BACKEND", "docker")
     monkeypatch.setenv("SCENE_STATE_BACKEND", "json")
     monkeypatch.setenv("SCENE_ARTIFACT_STORAGE", "filesystem")
+    monkeypatch.setenv("SCENE_WEBHOOK_ENABLED", "false")
     repo = FakeRepository()
     artifacts = FakeArtifactStore()
     orchestrator = FakeOrchestrator()
@@ -405,6 +412,63 @@ def test_readyz_rejects_stale_dispatcher_signals(
 
 
 @pytest.mark.unit
+def test_readyz_reports_webhook_outage_without_removing_app_from_service(
+    monkeypatch: pytest.MonkeyPatch,
+    operations_client: Tuple[
+        TestClient,
+        FakeRepository,
+        FakeArtifactStore,
+        FakeOrchestrator,
+    ],
+) -> None:
+    client, repo, _artifacts, _orchestrator = operations_client
+    monkeypatch.setenv("SCENE_WEBHOOK_ENABLED", "true")
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json()["checks"]["webhook"] == {
+        "ok": False,
+        "required": False,
+        "configured": False,
+        "reason": "heartbeat_missing",
+        "lease_seconds_remaining": 0.0,
+    }
+    assert repo.webhook_calls == 1
+
+
+@pytest.mark.unit
+def test_readyz_accepts_a_fresh_configured_webhook_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    operations_client: Tuple[
+        TestClient,
+        FakeRepository,
+        FakeArtifactStore,
+        FakeOrchestrator,
+    ],
+) -> None:
+    client, repo, _artifacts, _orchestrator = operations_client
+    monkeypatch.setenv("SCENE_WEBHOOK_ENABLED", "true")
+    now = datetime.now(timezone.utc)
+    repo.webhook = {
+        "owner": "webhook-a",
+        "heartbeat_at": (now - timedelta(seconds=1)).isoformat(),
+        "expires_at": (now + timedelta(seconds=29)).isoformat(),
+        "enabled": True,
+        "configured_ok": True,
+    }
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    webhook = response.json()["checks"]["webhook"]
+    assert webhook["ok"] is True
+    assert webhook["required"] is False
+    assert webhook["configured"] is True
+    assert 0 < webhook["lease_seconds_remaining"] <= 29
+
+
+@pytest.mark.unit
 def test_version_returns_only_explicit_non_secret_build_identity(
     monkeypatch: pytest.MonkeyPatch,
     operations_client: Tuple[
@@ -462,7 +526,7 @@ def test_metrics_is_valid_bounded_prometheus_text_even_when_not_ready(
     assert "# TYPE scene_ready gauge" in response.text
     assert "scene_ready 0" in response.text
     assert 'scene_dependency_ready{dependency="state"} 0' in response.text
-    assert response.text.count("scene_dependency_ready{") == 4
+    assert response.text.count("scene_dependency_ready{") == 5
     assert "must-never-appear" not in response.text
 
     sample_pattern = re.compile(
@@ -535,7 +599,15 @@ def test_metrics_exposes_bounded_state_dispatcher_and_callback_observability(
             "callback_duplicate_total": 2,
             "callback_conflict_total": 1,
             "callback_invalid_total": 3,
+            "webhook_attempt_total": 7,
+            "webhook_success_total": 5,
+            "webhook_failure_total": 2,
         }
+    }
+    repo.webhook = {
+        "enabled": True,
+        "queue_depth": 2,
+        "oldest_pending_age_seconds": 12.5,
     }
     repo.dispatcher = {
         "metrics": {
@@ -576,6 +648,12 @@ def test_metrics_exposes_bounded_state_dispatcher_and_callback_observability(
     assert "scene_dispatcher_cycles_total 10" in response.text
     assert 'scene_runner_jobs_total{event="created"} 5' in response.text
     assert 'scene_runner_job_terminal_total{reason="oom_killed"} 1' in response.text
+    assert "scene_webhook_worker_enabled 1" in response.text
+    assert "scene_webhook_delivery_queue_depth 2" in response.text
+    assert "scene_webhook_delivery_oldest_age_seconds 12.5" in response.text
+    assert 'scene_webhook_deliveries_total{outcome="attempt"} 7' in response.text
+    assert 'scene_webhook_deliveries_total{outcome="success"} 5' in response.text
+    assert 'scene_webhook_deliveries_total{outcome="failure"} 2' in response.text
     assert "run-queued-must-not-be-a-label" not in response.text
     assert "execution-finished-must-not-be-a-label" not in response.text
     assert "secret/object/key.png" not in response.text

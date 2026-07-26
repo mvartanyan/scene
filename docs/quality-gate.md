@@ -36,6 +36,10 @@ The UI-only harness uses the reserved fail-closed `worker` backend so seeded
 runs produce deterministic terminal records without launching Docker or
 pretending that a k3s dispatcher is present. Kubernetes dispatch acceptance is
 run separately from `deploy/k3s`.
+The harness also enables Chromium's new headless implementation. The old
+headless process bundled with the pinned Playwright release aborts
+intermittently on current macOS, while the new mode uses the same browser build
+and tests without that startup failure.
 
 The integration group honors an explicit `DOCKER_HOST`. When it is unset, the
 gate resolves the active Docker CLI context and passes that endpoint to the

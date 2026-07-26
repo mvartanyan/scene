@@ -82,6 +82,7 @@ def test_config_export_import_round_trip_preserves_ids_and_credentials_only(
         "runs": 1,
         "executions": 1,
         "baselines": 1,
+        "webhook_events": 0,
         "webhook_deliveries": 0,
     }
 

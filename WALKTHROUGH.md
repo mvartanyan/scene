@@ -47,6 +47,9 @@ The UI is organised into three primary areas:
 ## Files & Directories
 - `app/services/orchestrator.py` — local Docker orchestration, durable k3s run preparation/callback finalization, and diffing.
 - `app/services/dispatcher.py` — leader-elected durable dispatcher that claims executions and reconciles Kubernetes Jobs.
+- `app/services/webhooks.py` and `app/services/webhook_worker.py` — durable
+  SCENE-to-SPM event materialization, exact-body HMAC delivery, retries,
+  worker heartbeat, and redelivery processing.
 - `app/services/kubernetes_runner.py` — deterministic, restricted Job/Secret construction, adoption, status classification, logs, and deletion.
 - `app/services/runner_script.py` — the executable Playwright runner baked into the runner image (auto-scrolls the detected scrollable element and waits for lazy content).
 - `app/services/storage.py` — JSON-backed local persistence, including config defaults, run timeout, and transactional agent setup writes.
@@ -69,6 +72,8 @@ The UI is organised into three primary areas:
 - `docs/artifacts.md` — filesystem/S3 artifact contract and runner transfer protocol.
 - `docs/k3s-runner.md` — durable dispatch, permissions, callback, recovery, and restart acceptance contract.
 - `docs/operations.md` — liveness, readiness, build identity, metrics, and probe exposure contract.
+- `docs/webhooks.md` — outbound event/signing contract, retry policy, secret
+  rotation, redacted inspection APIs, and SPM reconciliation boundary.
 - `scene_mcp/` — MCP server wrapper that forwards tools to SCENE REST APIs.
 
 Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding issues, and next steps.
@@ -82,6 +87,11 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
 - Temporary staging uses ingress BasicAuth plus a separate SCENE API token for
   humans/MCP, and a bounded Bearer-only route for SPM health, discovery, launch,
   and result polling. Customer-ready OIDC and run grants remain in SCENE-21.
+- The initial outbound webhook deployment supports one environment-configured
+  SPM endpoint. Delivery history is inspectable through protected JSON APIs;
+  page/batch/test configuration remains in SCENE. Correlated runs are retained
+  for canonical reconciliation, cannot be retried in place after terminal
+  state, and worker degradation does not remove the primary app from service.
 - Chromium uses the memory-backed `/dev/shm`, but remains unsandboxed because
   the pinned image cannot start its browser sandbox under the restricted pod
   profile. Runner Jobs compensate with one-execution pods, no AWS/Kubernetes

@@ -330,6 +330,14 @@ def _safe_operational_counters(repo: object) -> Dict[str, int]:
     return counters
 
 
+def _safe_webhook_worker_status(repo: object) -> Dict[str, object]:
+    callback = getattr(repo, "webhook_worker_status", None)
+    if not callable(callback):
+        return {}
+    record = callback() or {}
+    return dict(record) if isinstance(record, Mapping) else {}
+
+
 def collect_repository_metrics(repo: object, *, limit: Optional[int] = None) -> Dict[str, object]:
     """Collect a bounded, cached-by-caller operational view of retained state."""
 
@@ -428,4 +436,5 @@ def collect_repository_metrics(repo: object, *, limit: Optional[int] = None) -> 
         },
         "counters": _safe_operational_counters(repo),
         "dispatcher": dict(dispatcher_metrics),
+        "webhook": _safe_webhook_worker_status(repo),
     }

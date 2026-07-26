@@ -272,12 +272,32 @@
   `/healthz`, candidate discovery, comparison launch, and canonical result
   polling. Candidate/result reads enforce the same constant-time Bearer token
   check as mutations, while the catch-all human UI remains behind BasicAuth.
+- SCENE-14 adds deterministic run outbox markers inside the same DynamoDB item
+  as each correlated lifecycle transition, plus immutable event records,
+  per-endpoint delivery records, leases, bounded attempt history, exact-body
+  HMAC-SHA256 signing, SSRF validation, retry/backoff, and terminal manual
+  redelivery. The dedicated worker publishes sanitized readiness/queue metrics;
+  SPM treats webhooks as a completion signal and fetches canonical run results.
+- SPM-correlated runs are retained across direct, batch, and project deletion
+  and cannot be reopened for in-place execution retry. Manual webhook
+  redelivery keeps total audit history while starting a fresh retry generation.
+  Worker heartbeats renew around outbound calls, and worker degradation is
+  observable without removing primary app pods needed for runner callbacks and
+  canonical polling.
+- SPM correlation can arrive through explicit criterion/invocation UUID fields
+  or the compatibility note `SPM criterion <uuid>; invocation <uuid>`. SCENE
+  canonicalizes and freezes the captured IDs, and configuration transfer
+  excludes webhook event/delivery history.
 - Runner readiness imports the production browser launch helper. Chromium and
   Firefox therefore exercise the same settings as real Jobs, including use of
   mounted `/dev/shm`; Chromium's unsandboxed limitation is explicit and bounded
   by the restricted, credential-free per-execution pod. SCENE-22 tracks the
   supported-image upgrade and long-term sandbox/isolation posture.
 - SCENE-17 adds bounded large-project behaviour: project tabs load independently, page/task lists use 25-item pages, run history uses 25-item pages, and execution overlays use 50-item pages while retaining direct execution navigation.
+- The deterministic frontend quality gate now selects Chromium's new headless
+  implementation. The pinned old-headless process aborts intermittently on
+  current macOS before page setup; new-headless completes the same suite and
+  remains suitable for Linux CI.
 - The run launcher now estimates the execution matrix, warns above 100 targets, and supports full-batch, one-task smoke, and validated selected-task scopes. REST and MCP launch methods accept the same optional `task_ids` contract.
 - Agent setup now applies local JSON writes in one rollback-capable transaction and indexes existing entities by name, avoiding repeated full-state serialization and scans during 200+ item imports.
 - Synthetic server fixtures cover 205 pages/tasks, 70 runs, and 125 executions with bounded payload and response-time assertions. Headless Playwright provisions 205 pages/tasks through `/api/agent/setup` and verifies lazy tabs and all three launch scopes.

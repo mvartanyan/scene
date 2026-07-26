@@ -11,7 +11,13 @@ from app.services.storage import CONFIG_COLLECTIONS, SceneRepository
 
 
 CONFIG_EXPORT_FORMAT = "scene-config-v1"
-RUNTIME_COLLECTIONS = ("runs", "executions", "baselines", "webhook_deliveries")
+RUNTIME_COLLECTIONS = (
+    "runs",
+    "executions",
+    "baselines",
+    "webhook_events",
+    "webhook_deliveries",
+)
 MODELS: Dict[str, Type[BaseModel]] = {
     "projects": Project,
     "pages": Page,

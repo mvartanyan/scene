@@ -108,6 +108,69 @@ def _ensure_project(repo: SceneRepository, project_id: str) -> None:
         raise HTTPException(status_code=404, detail="Project not found")
 
 
+def _public_webhook_event(record: Dict[str, object]) -> Dict[str, object]:
+    return {
+        key: value
+        for key, value in record.items()
+        if key
+        in {
+            "id",
+            "event_type",
+            "occurred_at",
+            "run_id",
+            "batch_id",
+            "body_sha256",
+            "created_at",
+        }
+    }
+
+
+def _public_webhook_delivery(record: Dict[str, object]) -> Dict[str, object]:
+    public = {
+        key: value
+        for key, value in record.items()
+        if key
+        in {
+            "id",
+            "event_id",
+            "run_id",
+            "endpoint_id",
+            "status",
+            "attempt_count",
+            "redelivery_generation",
+            "generation_attempt_count",
+            "generation_started_at",
+            "next_attempt_at",
+            "last_response_status",
+            "last_error",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        }
+    }
+    attempts = record.get("attempts")
+    public["attempts"] = [
+        {
+            key: value
+            for key, value in attempt.items()
+            if key
+            in {
+                "number",
+                "generation",
+                "generation_number",
+                "attempted_at",
+                "outcome",
+                "response_status",
+                "duration_seconds",
+                "error",
+            }
+        }
+        for attempt in attempts
+        if isinstance(attempt, dict)
+    ] if isinstance(attempts, list) else []
+    return public
+
+
 def _request_active_run_cancellation(
     repo: SceneRepository,
     *,
@@ -638,6 +701,18 @@ async def get_agent_manifest() -> AgentManifest:
             method="GET",
             path="/api/runs/{run_id}/result",
             description="Read SPM-friendly run metrics, thresholds, failures, and artifact links.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
+            method="GET",
+            path="/api/webhook-deliveries",
+            description="Inspect redacted SCENE webhook delivery history.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
+            method="POST",
+            path="/api/webhook-deliveries/{delivery_id}/redeliver",
+            description="Queue a durable webhook delivery for manual redelivery.",
             auth_required=True,
         ),
         AgentManifestEndpoint(
@@ -1233,6 +1308,8 @@ async def launch_batch_comparison_run(
             "timeout_seconds": payload.timeout_seconds,
             "task_ids": selected_task_ids,
             "idempotency_key": payload.idempotency_key,
+            "spm_criterion_id": payload.spm_criterion_id,
+            "spm_invocation_id": payload.spm_invocation_id,
         }
     )
     orchestrator = get_orchestrator()
@@ -1327,6 +1404,72 @@ async def get_run_result(
     return _build_integration_run_result(repo, request, record)
 
 
+@router.get("/webhook-events", response_model=List[Dict[str, object]])
+async def list_webhook_events(
+    run_id: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> List[Dict[str, object]]:
+    return [
+        _public_webhook_event(record)
+        for record in repo.list_webhook_events(run_id=run_id)
+    ]
+
+
+@router.get("/webhook-deliveries", response_model=List[Dict[str, object]])
+async def list_webhook_deliveries(
+    run_id: Optional[str] = None,
+    status: Optional[str] = None,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> List[Dict[str, object]]:
+    if status and status not in {
+        "pending",
+        "retry",
+        "succeeded",
+        "permanent_failure",
+    }:
+        raise HTTPException(status_code=400, detail="Invalid webhook delivery status")
+    return [
+        _public_webhook_delivery(record)
+        for record in repo.list_webhook_deliveries(run_id=run_id, status=status)
+    ]
+
+
+@router.get(
+    "/webhook-deliveries/{delivery_id}",
+    response_model=Dict[str, object],
+)
+async def get_webhook_delivery(
+    delivery_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> Dict[str, object]:
+    record = repo.get_webhook_delivery(delivery_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Webhook delivery not found")
+    return _public_webhook_delivery(record)
+
+
+@router.post(
+    "/webhook-deliveries/{delivery_id}/redeliver",
+    response_model=Dict[str, object],
+    status_code=202,
+)
+async def redeliver_webhook(
+    delivery_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
+) -> Dict[str, object]:
+    try:
+        record = repo.redeliver_webhook(delivery_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not record:
+        raise HTTPException(status_code=404, detail="Webhook delivery not found")
+    return _public_webhook_delivery(record)
+
+
 @router.get(
     "/runs/{run_id}/artifacts",
     response_model=RunArtifacts,
@@ -1378,7 +1521,10 @@ async def update_run(
     repo: SceneRepository = RepositoryDep,
     _auth: None = AgentAuthDep,
 ) -> Run:
-    record = repo.update_run(run_id, payload.model_dump(exclude_unset=True))
+    try:
+        record = repo.update_run(run_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not record:
         raise HTTPException(status_code=404, detail="Run not found")
     return record

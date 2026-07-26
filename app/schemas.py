@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,22 @@ class SpmTicketAliasModel(BaseModel):
             normalized["spm_ticket"] = normalized["jira_issue"]
             return normalized
         return data
+
+    @field_validator(
+        "spm_criterion_id",
+        "spm_invocation_id",
+        mode="before",
+        check_fields=False,
+    )
+    @classmethod
+    def normalize_spm_uuid(cls, value):
+        if value is None:
+            return None
+        try:
+            return str(uuid.UUID(str(value)))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("must be a valid UUID") from exc
+
 
 class ActionDefinition(BaseModel):
     type: str = Field(..., description="Action identifier, e.g. click, wait_for_selector.")
@@ -435,6 +452,14 @@ class BatchComparisonRunCreate(SpmTicketAliasModel):
         max_length=200,
         description="Caller-stable key used to return the same run after a retried launch.",
     )
+    spm_criterion_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F-]{36}$",
+    )
+    spm_invocation_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F-]{36}$",
+    )
 
 
 class RunFailureStatus(BaseModel):
@@ -485,6 +510,14 @@ class RunBase(SpmTicketAliasModel):
         description="Optional subset of task ids from the batch. Omit to run the full batch.",
     )
     idempotency_key: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    spm_criterion_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F-]{36}$",
+    )
+    spm_invocation_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F-]{36}$",
+    )
 
 
 class RunCreate(RunBase):
@@ -497,6 +530,14 @@ class RunUpdate(SpmTicketAliasModel):
     spm_ticket: Optional[str] = spm_ticket_field()
     summary: Optional[RunSummary] = None
     timeout_seconds: Optional[int] = Field(default=None, ge=1)
+    spm_criterion_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F-]{36}$",
+    )
+    spm_invocation_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[0-9a-fA-F-]{36}$",
+    )
 
 
 class Run(RunBase):

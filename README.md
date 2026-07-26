@@ -30,6 +30,9 @@ uv run uvicorn app.main:app --reload
   build/backend/image identity at `/version`, and bounded Prometheus metrics for
   retained state, queues, durations, callbacks, dispatcher/Job lifecycle,
   artifacts, and backend operations at `/metrics`. See `docs/operations.md`.
+- Outbound SCENE-to-SPM run events use a durable DynamoDB outbox, exact-body
+  HMAC signing, bounded retries, and redacted delivery history. SPM still reads
+  `/api/runs/{run_id}/result` as canonical state. See `docs/webhooks.md`.
 
 ## Runtime Data Policy
 - `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.
@@ -45,9 +48,15 @@ uv run uvicorn app.main:app --reload
 - **Runs**: Launch baseline/comparison runs for all tasks, a one-task smoke scope, or an explicit task selection. The launcher estimates executions and warns above 100 targets before submission. Run history uses 25-item pages and execution overlays use 50-item pages so polling remains bounded. The baseline picker refreshes via `/api/batches/{id}/baselines`, filtering out failed recordings so operators only see completed baselines.
 - **Config**: Use the gear icon in the navbar to toggle browser availability, manage viewport presets, switch timestamp display, and set the default run timeout. Browsers/viewports that are in use stay locked; add new entries with the inline form.
 - **Agent API/MCP**: Agents should discover capabilities via `/api/agent/manifest`, read docs from `/api/agent/docs`, and use `python -m scene_mcp.server` for MCP access. Set `SCENE_API_TOKEN` to require bearer auth for mutation/control endpoints.
+- **Webhook delivery**: Protected agent endpoints list redacted event/delivery
+  records and requeue terminal deliveries with a fresh retry budget. The
+  endpoint URL and signing secret remain deployment configuration, not project
+  configuration. SPM-correlated runs are retained and require a new invocation
+  instead of an in-place execution retry.
 - **State transfer**: `scripts/scene_config.py export` creates a private
   config-only snapshot; `import` validates by default and requires `--apply` to
-  write. Runs, baselines, executions, and artifact history are never imported.
+  write. Runs, baselines, executions, webhook history, and artifact history are
+  never imported.
 
 ## Run Tests
 ```bash
@@ -84,6 +93,11 @@ uv run --extra dev python -m pytest
   separate four-path SPM contract protected by the SCENE Bearer service token.
   This keeps machine credential rotation independent and preserves public-host
   viewer/artifact links.
+- `python -m app.services.webhook_worker` materializes correlated run outbox
+  markers and sends immutable signed events. Multi-process app/worker
+  deployments require DynamoDB; the local JSON adapter remains single-process.
+  Webhook-worker health is reported separately so downstream SPM outages do not
+  remove primary app pods needed for callbacks and canonical polling.
 - Active k3s runs are not deleted immediately: deletion requests cancellation
   and returns HTTP 409 until dispatcher-owned Job/Secret cleanup completes.
 - Destructive run, batch, and project operations use strongly consistent

@@ -5,7 +5,8 @@ This Kustomize layout targets namespace `scene` and
 controller and cert-manager `letsencrypt-prod` ClusterIssuer.
 
 The app references `scene-app-aws` and `scene-app-auth`; the dispatcher references
-only `scene-app-aws`. The Traefik middleware references
+only `scene-app-aws`; and the outbound webhook worker references `scene-app-aws`
+and `scene-webhook-auth`. The Traefik middleware references
 `scene-ingress-basic-auth`. The manifests never create or render those Secrets.
 The middleware protects the human UI and general API surface and removes its
 BasicAuth `Authorization` header before proxying. External MCP clients using
@@ -19,6 +20,9 @@ pulls. It has no RBAC, does not mount an API token, and runner Jobs receive no A
 environment or application Secret references. Only `scene-dispatcher` is bound
 to the exact namespaced Job, immutable execution-Secret, pod status, and pod-log
 permissions used by `KubernetesRunnerClient`.
+`scene-webhook-worker` has no Kubernetes RBAC or mounted API token. It uses
+DynamoDB for its durable lease/outbox state and can connect only to public HTTPS
+destinations, including AWS and the configured SPM receiver.
 
 ## Prerequisite gate
 
@@ -26,6 +30,8 @@ Do not deploy until all of these conditions hold:
 
 - SCENE-19, SCENE-20, SCENE-7, and the core of SCENE-15 are merged and green;
 - `python -m app.services.dispatcher` is the delivered dispatcher entry point;
+- `python -m app.services.webhook_worker` is the delivered SCENE-14 worker entry
+  point;
 - `/healthz`, `/readyz`, and `/version` have their SCENE-15 semantics;
 - the CloudFormation stack is healthy and its non-secret outputs are recorded;
 - app and runner images are built for `linux/amd64`, pushed, and resolved to
@@ -43,7 +49,10 @@ deliberately non-runnable. Replace the bucket placeholder with the stack's
 `SCENE_GIT_SHA`, and the UTC `SCENE_BUILD_TIME`; and replace both images with
 references in the form
 `registry/repository@sha256:<64 lowercase hex characters>`. Kustomize propagates
-the image values into the app, dispatcher, and readiness Job.
+the image values into the app, dispatcher, webhook worker, and readiness Job.
+Replace `SCENE_WEBHOOK_URL` with the concrete integration-specific URL returned
+by SPM. The accepted form is
+`https://pm.spherical.horse/integrations/scene/<positive-integer>/webhooks`.
 
 Both Dockerfiles pin their base manifest lists. The app image installs the
 hash-locked Linux dependency set in `requirements.staging.lock`; regenerate it
@@ -64,7 +73,8 @@ kubectl kustomize deploy/k3s >/dev/null
 Without `--strict`, the k3s validator accepts the source template but warns for
 each non-runnable deployment placeholder. It still checks Kustomize rendering,
 resource identity, probes, resources, security contexts, RBAC, Secret isolation,
-storage configuration, ingress/TLS, network policy, and digest syntax.
+storage configuration, ingress/TLS, webhook-worker isolation, network policy,
+and digest syntax.
 
 The namespace enforces, audits, and warns at Pod Security `restricted`. Static
 workloads and generated runner Jobs run as fixed non-root users, use the runtime
@@ -137,10 +147,60 @@ htpasswd -nB scene-reviewer |
   kubectl apply -f -
 ```
 
-Create `scene-registry` as a `kubernetes.io/dockerconfigjson` Secret before either
-Deployment starts. Dynamic runner Jobs inherit it through `scene-runner`, because
+Create `scene-registry` as a `kubernetes.io/dockerconfigjson` Secret before the
+Deployments start. Dynamic runner Jobs inherit it through `scene-runner`, because
 the current Job builder does not emit `imagePullSecrets`. Never copy any Secret
 object into evidence.
+
+Provision the same webhook signing value in SPM and SCENE through their protected
+secret stores. On the SCENE side, create only the referenced
+`scene-webhook-auth` Secret. The value must not be committed, printed, passed as
+a command-line argument, or attached to a ticket:
+
+```sh
+set +x
+: "${SCENE_WEBHOOK_SECRET:?set SCENE_WEBHOOK_SECRET from the protected handoff}"
+printf 'SCENE_WEBHOOK_SECRET=%s\n' "$SCENE_WEBHOOK_SECRET" |
+  kubectl -n scene create secret generic scene-webhook-auth \
+    --from-env-file=/dev/stdin --dry-run=client -o yaml |
+  kubectl apply -f -
+unset SCENE_WEBHOOK_SECRET
+```
+
+The Secret key name must remain `SCENE_WEBHOOK_SECRET`; only the webhook worker
+receives it. Confirm the SPM integration references its matching secret before
+enabling or restarting this worker.
+
+## Webhook worker configuration
+
+The non-secret worker settings live in `scene-runtime`:
+
+- `SCENE_WEBHOOK_ENABLED=true` enables the dedicated worker and its own required
+  readiness probe; the primary app reports worker degradation without becoming
+  unready;
+- `SCENE_WEBHOOK_ENDPOINT_ID=spm-1` scopes immutable delivery IDs to SPM
+  integration 1;
+- `SCENE_WEBHOOK_URL` is the concrete SPM integration receiver and is a strict
+  deployment placeholder in source;
+- `SCENE_WEBHOOK_TIMEOUT_SECONDS=10`;
+- `SCENE_WEBHOOK_MAX_ATTEMPTS=8`;
+- `SCENE_WEBHOOK_MAX_AGE_SECONDS=86400`;
+- `SCENE_WEBHOOK_POLL_SECONDS=2`;
+- `SCENE_WEBHOOK_ALLOW_PRIVATE_URLS=false`, reinforced by NetworkPolicy;
+- `SCENE_WEBHOOK_ALLOWED_HOSTS=pm.spherical.horse` restricts the production
+  receiver hostname before DNS resolution and connection.
+
+The worker has one replica and uses a durable DynamoDB lease, deterministic
+event IDs, and delivery records. Its readiness probe requires the current pod
+to own an unexpired lease and report an enabled, valid configuration. Liveness
+only checks that the long-running Python process exists, so configuration or
+storage failures remain visible as unready rather than causing a restart loop.
+
+For secret rotation, first configure SPM to accept the new secret while retaining
+the previous secret for its replay overlap window. Then update
+`scene-webhook-auth`, restart `scene-webhook-worker`, and prove a signed delivery.
+Remove SPM's previous-secret reference only after the overlap window and any
+pending deliveries have cleared.
 
 ## Install and upgrade
 
@@ -154,12 +214,16 @@ kubectl -n scene delete job scene-runner-readiness --ignore-not-found
 kubectl apply -k deploy/k3s
 kubectl -n scene rollout status deployment/scene-app --timeout=5m
 kubectl -n scene rollout status deployment/scene-dispatcher --timeout=5m
+kubectl -n scene rollout status deployment/scene-webhook-worker --timeout=5m
 kubectl -n scene wait --for=condition=complete job/scene-runner-readiness --timeout=10m
 kubectl -n scene logs job/scene-runner-readiness
 ```
 
 The dispatcher Deployment intentionally has one replica while SCENE-7's durable
 claim loop serializes work. The app has two replicas and a PodDisruptionBudget.
+The webhook worker also has one replica and `Recreate` rollout semantics. Its
+durable lease protects against a stale predecessor, while SPM deduplicates
+at-least-once delivery by event ID.
 The dispatcher reserves `512Mi` and is capped at `1Gi` because callback
 finalization can hold baseline and observed full-page RGBA images concurrently;
 the horse node must retain that headroom.
@@ -185,6 +249,8 @@ kubectl auth can-i --as=system:serviceaccount:scene:scene-dispatcher delete secr
 kubectl auth can-i --as=system:serviceaccount:scene:scene-dispatcher list pods -n scene
 kubectl auth can-i --as=system:serviceaccount:scene:scene-dispatcher get pods/log -n scene
 kubectl auth can-i --as=system:serviceaccount:scene:scene-dispatcher create selfsubjectaccessreviews.authorization.k8s.io
+kubectl auth can-i --as=system:serviceaccount:scene:scene-webhook-worker get secrets -n scene
+kubectl auth can-i --as=system:serviceaccount:scene:scene-webhook-worker create jobs -n scene
 kubectl auth can-i --as=system:serviceaccount:scene:scene-runner create jobs -n scene
 kubectl auth can-i --as=system:serviceaccount:scene:scene-runner get secrets -n scene
 kubectl -n scene exec deployment/scene-app -- python -c \
@@ -207,11 +273,12 @@ paired `SCENE_INGRESS_BASIC_AUTH_USERNAME` and
 `SCENE_INGRESS_BASIC_AUTH_PASSWORD` environment variables documented in
 `docs/agent-api.md`. Inject them from a protected source with shell tracing
 disabled so neither credential appears in command arguments or logs.
-The final two runner authorization checks must print `no`; the dispatcher checks
-must print `yes`. Dispatcher readiness consumes its fresh durable lease and the
-complete Kubernetes capability result published by the reconciliation loop. App
-readiness is the aggregate DynamoDB, S3, runner configuration, and dispatcher
-gate. Confirm generated
+The webhook-worker and runner authorization checks must print `no`; the
+dispatcher checks must print `yes`. Dispatcher readiness consumes its fresh
+durable lease and the complete Kubernetes capability result published by the
+reconciliation loop. Webhook-worker readiness consumes its own fresh lease and
+configuration result. App readiness is the aggregate DynamoDB, S3, runner
+configuration, and dispatcher gate. Confirm generated
 runner Job specs have no `AWS_*` variables, API token, Docker socket, or
 `host.docker.internal`, and that callbacks use
 `http://scene.scene.svc.cluster.local`.
@@ -258,10 +325,10 @@ contain page credentials.
 ## Rollback
 
 Retain DynamoDB and S3. Reapply `deploy/k3s` from the previously accepted commit,
-whose ConfigMap must contain the prior app and runner digests, then wait for both
-rollouts. Do not use a mutable tag. If only one Deployment changed, Kubernetes
-`rollout undo` is acceptable after confirming that the referenced ConfigMap still
-contains the matching prior runtime values.
+whose ConfigMap must contain the prior app and runner digests, then wait for the
+app, dispatcher, and webhook-worker rollouts. Do not use a mutable tag. If only
+one Deployment changed, Kubernetes `rollout undo` is acceptable after confirming
+that the referenced ConfigMap still contains the matching prior runtime values.
 
 Stop and investigate if rollback readiness fails; do not bypass `/readyz` or
 expose the service anonymously.
@@ -272,6 +339,7 @@ Teardown requires explicit approval. Export configuration first, then remove
 only SCENE-owned Kubernetes resources with `kubectl delete -k deploy/k3s`.
 Delete the externally managed SCENE Secrets separately after workloads are gone,
 including `scene-app-aws`, `scene-app-auth`, `scene-ingress-basic-auth`, and
-`scene-registry`. The dispatcher should already have removed every execution
-Secret. The AWS stack is independent: its table, bucket, and transport policy
-remain retained, and storage deletion is never implied by Kubernetes teardown.
+`scene-webhook-auth`, and `scene-registry`. The dispatcher should already have
+removed every execution Secret. The AWS stack is independent: its table, bucket,
+and transport policy remain retained, and storage deletion is never implied by
+Kubernetes teardown.

@@ -699,6 +699,35 @@ def test_retry_rejects_failed_execution_on_finished_run_before_reservation(
 
 
 @pytest.mark.unit
+def test_retry_rejects_spm_correlated_run_before_reserving_a_child(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo, orchestrator, _runner, _dispatcher, run = _system(monkeypatch, tmp_path)
+    execution = repo.list_executions(run_id=run["id"])[0]
+    repo.update_execution(
+        execution["id"],
+        {"status": "failed", "completed_at": "2026-07-26T12:00:00+00:00"},
+    )
+    repo.update_run(
+        run["id"],
+        {
+            "status": "failed",
+            "spm_ticket": "SPM-193",
+            "spm_criterion_id": "11111111-1111-4111-8111-111111111111",
+            "spm_invocation_id": "22222222-2222-4222-8222-222222222222",
+        },
+    )
+
+    with pytest.raises(ValueError, match="launch a new invocation"):
+        orchestrator.retry_execution(execution["id"])
+
+    assert not repo.get_execution(execution["id"]).get("superseded_by_execution_id")
+    assert len(repo.list_executions(run_id=run["id"])) == 1
+    assert repo.get_run(run["id"])["status"] == "failed"
+
+
+@pytest.mark.unit
 def test_retry_is_idempotent_and_comparison_baseline_remains_completed(
     monkeypatch,
     tmp_path: Path,

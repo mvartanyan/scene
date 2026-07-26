@@ -54,6 +54,8 @@ The UI is organised into three primary areas:
   with conditional versions, GSIs, and continuation cursors.
 - `app/services/s3_artifacts.py` — private S3 persistence, deterministic object
   keys, checksums, presigned transfer manifests, and explicit-key deletion.
+- `app/services/operational_metrics.py` — bounded retained-state snapshots plus
+  fixed-label backend counters and latency histograms for `/metrics`.
 - `app/services/config_transfer.py` and `scripts/scene_config.py` — validated,
   idempotent config-only export/import without run or artifact history.
 - `app/services/run_scope.py` — task-subset validation and execution-count helpers shared by UI/API launch paths.

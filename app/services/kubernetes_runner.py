@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 try:
     from kubernetes import client, config
@@ -15,6 +15,9 @@ except ModuleNotFoundError:  # pragma: no cover - dependency is present in stagi
 
     class ApiException(Exception):
         status: Optional[int] = None
+
+
+from app.services.operational_metrics import observe_backend_operation
 
 
 LOGGER = logging.getLogger("scene.kubernetes_runner")
@@ -86,6 +89,16 @@ class KubernetesRunnerClient:
         self.batch_api = batch_api or client.BatchV1Api()
         self.core_api = core_api or client.CoreV1Api()
         self.auth_api = auth_api or client.AuthorizationV1Api()
+
+    @staticmethod
+    def _call(
+        operation: str,
+        callback: Callable[..., Any],
+        *args: object,
+        **kwargs: object,
+    ) -> Any:
+        with observe_backend_operation("kubernetes", operation):
+            return callback(*args, **kwargs)
 
     @staticmethod
     def spec_digest(config_payload: Dict[str, object]) -> str:
@@ -258,40 +271,76 @@ class KubernetesRunnerClient:
         if annotations.get(SPEC_DIGEST_ANNOTATION) != spec_digest:
             raise RuntimeError(f"Existing Kubernetes {kind} has a different SCENE spec digest.")
 
-    def create_or_adopt(self, *, secret: Any, job: Any, spec_digest: str) -> None:
+    def create_or_adopt(self, *, secret: Any, job: Any, spec_digest: str) -> str:
         try:
-            self.core_api.create_namespaced_secret(self.namespace, secret)
+            self._call(
+                "job_create",
+                self.core_api.create_namespaced_secret,
+                self.namespace,
+                secret,
+            )
         except ApiException as exc:
             if exc.status != 409:
                 raise
-            existing = self.core_api.read_namespaced_secret(secret.metadata.name, self.namespace)
+            existing = self._call(
+                "job_create",
+                self.core_api.read_namespaced_secret,
+                secret.metadata.name,
+                self.namespace,
+            )
             self._assert_adoptable(existing, spec_digest=spec_digest, kind="Secret")
+        job_created = True
         try:
-            self.batch_api.create_namespaced_job(self.namespace, job)
+            self._call(
+                "job_create",
+                self.batch_api.create_namespaced_job,
+                self.namespace,
+                job,
+            )
         except ApiException as exc:
             if exc.status != 409:
                 raise
-            existing = self.batch_api.read_namespaced_job(job.metadata.name, self.namespace)
+            job_created = False
+            existing = self._call(
+                "job_create",
+                self.batch_api.read_namespaced_job,
+                job.metadata.name,
+                self.namespace,
+            )
             self._assert_adoptable(existing, spec_digest=spec_digest, kind="Job")
+        return "created" if job_created else "adopted"
 
     def delete(self, *, job_name: str, secret_name: str) -> bool:
         """Request cleanup and report whether every execution resource is absent."""
         body = client.V1DeleteOptions(propagation_policy="Foreground")
         if job_name:
             try:
-                self.batch_api.delete_namespaced_job(job_name, self.namespace, body=body)
+                self._call(
+                    "job_delete",
+                    self.batch_api.delete_namespaced_job,
+                    job_name,
+                    self.namespace,
+                    body=body,
+                )
             except ApiException as exc:
                 if exc.status != 404:
                     raise
 
             try:
-                self.batch_api.read_namespaced_job(job_name, self.namespace)
+                self._call(
+                    "job_delete",
+                    self.batch_api.read_namespaced_job,
+                    job_name,
+                    self.namespace,
+                )
                 return False
             except ApiException as exc:
                 if exc.status != 404:
                     raise
 
-            pods = self.core_api.list_namespaced_pod(
+            pods = self._call(
+                "job_delete",
+                self.core_api.list_namespaced_pod,
                 self.namespace,
                 label_selector=f"job-name={job_name}",
             ).items
@@ -301,13 +350,24 @@ class KubernetesRunnerClient:
         if not secret_name:
             return True
         try:
-            self.core_api.delete_namespaced_secret(secret_name, self.namespace, body=body)
+            self._call(
+                "job_delete",
+                self.core_api.delete_namespaced_secret,
+                secret_name,
+                self.namespace,
+                body=body,
+            )
         except ApiException as exc:
             if exc.status != 404:
                 raise
 
         try:
-            self.core_api.read_namespaced_secret(secret_name, self.namespace)
+            self._call(
+                "job_delete",
+                self.core_api.read_namespaced_secret,
+                secret_name,
+                self.namespace,
+            )
             return False
         except ApiException as exc:
             if exc.status != 404:
@@ -358,12 +418,19 @@ class KubernetesRunnerClient:
 
     def status(self, job_name: str) -> KubernetesExecutionStatus:
         try:
-            job = self.batch_api.read_namespaced_job(job_name, self.namespace)
+            job = self._call(
+                "job_status",
+                self.batch_api.read_namespaced_job,
+                job_name,
+                self.namespace,
+            )
         except ApiException as exc:
             if exc.status == 404:
                 return KubernetesExecutionStatus("missing", "JobNotFound")
             raise
-        pods = self.core_api.list_namespaced_pod(
+        pods = self._call(
+            "job_status",
+            self.core_api.list_namespaced_pod,
             self.namespace,
             label_selector=f"job-name={job_name}",
         ).items
@@ -393,7 +460,9 @@ class KubernetesRunnerClient:
 
     def logs(self, pod_name: str, *, tail_lines: int = 500) -> str:
         return str(
-            self.core_api.read_namespaced_pod_log(
+            self._call(
+                "logs",
+                self.core_api.read_namespaced_pod_log,
                 pod_name,
                 self.namespace,
                 tail_lines=max(1, min(int(tail_lines), 5000)),
@@ -425,7 +494,11 @@ class KubernetesRunnerClient:
                     )
                 )
             )
-            response = self.auth_api.create_self_subject_access_review(review)
+            response = self._call(
+                "permissions",
+                self.auth_api.create_self_subject_access_review,
+                review,
+            )
             resource_name = f"{resource}/{subresource}" if subresource else resource
             checks[f"{verb}:{group or 'core'}:{resource_name}"] = bool(
                 response.status.allowed

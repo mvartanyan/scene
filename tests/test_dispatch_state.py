@@ -96,12 +96,18 @@ def test_dispatcher_lease_is_single_owner_and_can_be_released(tmp_path: Path) ->
         "dispatcher-a",
         capabilities={"create:batch:jobs": True},
     )
+    assert repo.report_dispatcher_metrics(
+        "dispatcher-a",
+        metrics={"counters": {"cycles_total": 3}},
+    )
     assert repo.dispatcher_status()["capabilities_ok"] is True
+    assert repo.dispatcher_status()["metrics"]["counters"]["cycles_total"] == 3
     assert repo.release_dispatcher_lease("dispatcher-a")
     assert repo.acquire_dispatcher_lease("dispatcher-b")
     status = repo.dispatcher_status()
     assert status["owner"] == "dispatcher-b"
     assert "capabilities_ok" not in status
+    assert "metrics" not in status
 
 
 @pytest.mark.unit

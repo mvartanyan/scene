@@ -11,6 +11,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from app.services.operational_metrics import observe_backend_operation
 from app.services.storage_types import InvalidStorageCursorError, StorageConflictError
 
 
@@ -116,9 +117,10 @@ class DynamoDBStorage:
 
     def _validate_table(self) -> None:
         try:
-            description = self._table.meta.client.describe_table(
-                TableName=self.table_name
-            )["Table"]
+            with observe_backend_operation("dynamodb", "validate"):
+                description = self._table.meta.client.describe_table(
+                    TableName=self.table_name
+                )["Table"]
         except ClientError as exc:
             raise RuntimeError(
                 f"DynamoDB table '{self.table_name}' is unavailable in {self.region_name}"
@@ -154,6 +156,22 @@ class DynamoDBStorage:
                 f"DynamoDB table '{self.table_name}' has incorrectly keyed indexes: "
                 + ", ".join(invalid)
             )
+
+    def _put_item(self, **request: Any) -> Dict[str, Any]:
+        with observe_backend_operation("dynamodb", "write"):
+            return self._table.put_item(**request)
+
+    def _get_item(self, **request: Any) -> Dict[str, Any]:
+        with observe_backend_operation("dynamodb", "read"):
+            return self._table.get_item(**request)
+
+    def _delete_item(self, **request: Any) -> Dict[str, Any]:
+        with observe_backend_operation("dynamodb", "delete"):
+            return self._table.delete_item(**request)
+
+    def _query(self, **request: Any) -> Dict[str, Any]:
+        with observe_backend_operation("dynamodb", "query"):
+            return self._table.query(**request)
 
     def _item(
         self,
@@ -256,7 +274,7 @@ class DynamoDBStorage:
         if values:
             request["ExpressionAttributeValues"] = values
         try:
-            self._table.put_item(**request)
+            self._put_item(**request)
         except ClientError as exc:
             if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
                 raise StorageConflictError(
@@ -268,7 +286,7 @@ class DynamoDBStorage:
         return result
 
     def get(self, collection: str, item_id: str) -> Optional[Dict[str, Any]]:
-        response = self._table.get_item(
+        response = self._get_item(
             Key={PK: self._collection_pk(collection), SK: item_id},
             ConsistentRead=True,
         )
@@ -276,13 +294,13 @@ class DynamoDBStorage:
         return self._record(item) if item else None
 
     def delete(self, collection: str, item_id: str) -> None:
-        self._table.delete_item(Key={PK: self._collection_pk(collection), SK: item_id})
+        self._delete_item(Key={PK: self._collection_pk(collection), SK: item_id})
 
     def _query_all(self, **kwargs: Any) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         request = dict(kwargs)
         while True:
-            response = self._table.query(**request)
+            response = self._query(**request)
             items.extend(self._record(item) for item in response.get("Items", []))
             last_key = response.get("LastEvaluatedKey")
             if not last_key:
@@ -326,11 +344,12 @@ class DynamoDBStorage:
         return [record for record in self.list(collection) if record.get(key) == value]
 
     def bulk_delete(self, collection: str, item_ids: Iterable[str]) -> None:
-        with self._table.batch_writer() as batch:
-            for item_id in item_ids:
-                batch.delete_item(
-                    Key={PK: self._collection_pk(collection), SK: str(item_id)}
-                )
+        with observe_backend_operation("dynamodb", "batch_delete"):
+            with self._table.batch_writer() as batch:
+                for item_id in item_ids:
+                    batch.delete_item(
+                        Key={PK: self._collection_pk(collection), SK: str(item_id)}
+                    )
 
     def query_page(
         self,
@@ -378,7 +397,7 @@ class DynamoDBStorage:
         start_key = _decode_cursor(cursor)
         if start_key:
             request["ExclusiveStartKey"] = start_key
-        response = self._table.query(**request)
+        response = self._query(**request)
         records = [self._record(item) for item in response.get("Items", [])]
         return records, _encode_cursor(response.get("LastEvaluatedKey"))
 
@@ -407,7 +426,8 @@ class DynamoDBStorage:
             return len(self.filter(collection, key=key, value=value))
         count = 0
         while True:
-            response = self._table.query(**request)
+            with observe_backend_operation("dynamodb", "count"):
+                response = self._table.query(**request)
             count += int(response.get("Count", 0))
             last_key = response.get("LastEvaluatedKey")
             if not last_key:

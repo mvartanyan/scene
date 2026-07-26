@@ -19,8 +19,15 @@ class FakeRepository:
         self.probe_error: Optional[Exception] = None
         self.probe_result: Dict[str, object] = {"ok": True, "backend": "json"}
         self.dispatcher: Optional[Dict[str, object]] = None
+        self.records: Dict[str, list[Dict[str, object]]] = {
+            "runs": [],
+            "executions": [],
+            "baselines": [],
+        }
+        self.operational: Dict[str, object] = {"counters": {}}
         self.probe_calls = 0
         self.dispatcher_calls = 0
+        self.query_calls = 0
 
     def probe(self) -> Dict[str, object]:
         self.probe_calls += 1
@@ -31,6 +38,31 @@ class FakeRepository:
     def dispatcher_status(self) -> Optional[Dict[str, object]]:
         self.dispatcher_calls += 1
         return self.dispatcher
+
+    def count(self, collection: str) -> int:
+        return len(self.records.get(collection, []))
+
+    def query_page(
+        self,
+        collection: str,
+        *,
+        limit: int,
+        cursor: Optional[str] = None,
+        descending: bool = False,
+    ) -> tuple[list[Dict[str, object]], Optional[str]]:
+        self.query_calls += 1
+        records = sorted(
+            self.records.get(collection, []),
+            key=lambda record: str(record.get("created_at") or ""),
+            reverse=descending,
+        )
+        offset = int(cursor or 0)
+        page = records[offset : offset + limit]
+        next_offset = offset + len(page)
+        return page, str(next_offset) if next_offset < len(records) else None
+
+    def operational_metrics(self) -> Dict[str, object]:
+        return self.operational
 
 
 class FakeArtifactStore:
@@ -387,6 +419,8 @@ def test_version_returns_only_explicit_non_secret_build_identity(
     monkeypatch.setenv("SCENE_GIT_SHA", "abc1234")
     monkeypatch.setenv("SCENE_BUILD_TIME", "2026-07-20T12:00:00Z")
     monkeypatch.setenv("SCENE_ENV", "staging")
+    monkeypatch.setenv("SCENE_APP_IMAGE", "registry.example/scene@sha256:" + "a" * 64)
+    monkeypatch.setenv("SCENE_RUNNER_IMAGE", "registry.example/runner@sha256:" + "b" * 64)
     monkeypatch.setenv("SCENE_API_TOKEN", "must-never-appear")
 
     response = client.get("/version")
@@ -397,6 +431,14 @@ def test_version_returns_only_explicit_non_secret_build_identity(
         "git_sha": "abc1234",
         "build_time": "2026-07-20T12:00:00Z",
         "environment": "staging",
+        "app_image": "registry.example/scene@sha256:" + "a" * 64,
+        "runner_image": "registry.example/runner@sha256:" + "b" * 64,
+        "backends": {
+            "state": "json",
+            "artifacts": "filesystem",
+            "runner": "docker",
+        },
+        "state_schema_version": 1,
     }
     assert "must-never-appear" not in response.text
 
@@ -424,8 +466,8 @@ def test_metrics_is_valid_bounded_prometheus_text_even_when_not_ready(
     assert "must-never-appear" not in response.text
 
     sample_pattern = re.compile(
-        r'^[a-zA-Z_:][a-zA-Z0-9_:]*(?:\{dependency="[a-z]+"\})? '
-        r"[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?$"
+        r"^[a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^{}]*\})? "
+        r"-?[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?$"
     )
     samples = [line for line in response.text.splitlines() if not line.startswith("#")]
     assert samples
@@ -433,6 +475,111 @@ def test_metrics_is_valid_bounded_prometheus_text_even_when_not_ready(
     assert repo.probe_calls == 0
     assert _artifacts.probe_calls == 0
     assert _orchestrator.readiness_calls == 0
+
+
+@pytest.mark.unit
+def test_metrics_exposes_bounded_state_dispatcher_and_callback_observability(
+    operations_client: Tuple[
+        TestClient,
+        FakeRepository,
+        FakeArtifactStore,
+        FakeOrchestrator,
+    ],
+) -> None:
+    client, repo, _artifacts, _orchestrator = operations_client
+    repo.records["runs"] = [
+        {
+            "id": "run-queued-must-not-be-a-label",
+            "status": "queued",
+            "created_at": "2026-07-20T00:00:00+00:00",
+        },
+        {
+            "id": "run-finished-must-not-be-a-label",
+            "status": "finished",
+            "created_at": "2026-07-20T00:00:00+00:00",
+            "completed_at": "2026-07-20T00:02:00+00:00",
+        },
+    ]
+    repo.records["executions"] = [
+        {
+            "id": "execution-queued-must-not-be-a-label",
+            "status": "queued",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": "execution-finished-must-not-be-a-label",
+            "status": "finished",
+            "created_at": "2026-07-20T00:00:00+00:00",
+            "started_at": "2026-07-20T00:00:10+00:00",
+            "completed_at": "2026-07-20T00:00:40+00:00",
+            "artifacts": {
+                "observed": {
+                    "storage": "s3",
+                    "key": "secret/object/key.png",
+                    "version_id": "version-secret",
+                    "size_bytes": 1234,
+                }
+            },
+        },
+    ]
+    repo.records["baselines"] = [
+        {
+            "id": "baseline-id",
+            "created_at": "2026-07-20T00:00:00+00:00",
+            "artifacts": {},
+        }
+    ]
+    repo.operational = {
+        "counters": {
+            "callback_accepted_total": 4,
+            "callback_duplicate_total": 2,
+            "callback_conflict_total": 1,
+            "callback_invalid_total": 3,
+        }
+    }
+    repo.dispatcher = {
+        "metrics": {
+            "counters": {
+                "cycles_total": 10,
+                "cycle_failures_total": 1,
+                "dispatch_total": 6,
+                "reconcile_total": 12,
+                "callbacks_finalized_total": 5,
+                "cleanup_total": 4,
+                "jobs_created_total": 5,
+                "jobs_adopted_total": 1,
+                "jobs_scheduled_total": 6,
+                "jobs_started_total": 6,
+                "kubernetes_errors_total": 1,
+            },
+            "job_terminal": {"succeeded": 5, "oom_killed": 1},
+            "last_cycle_duration_seconds": 0.25,
+        }
+    }
+
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "scene_metrics_collection_available 1" in response.text
+    assert "scene_runs 2" in response.text
+    assert 'scene_run_status{status="queued"} 1' in response.text
+    assert 'scene_run_status{status="finished"} 1' in response.text
+    assert "scene_executions 2" in response.text
+    assert 'scene_execution_status{status="finished"} 1' in response.text
+    assert 'scene_queue_depth{kind="execution"} 1' in response.text
+    assert "scene_artifacts 1" in response.text
+    assert "scene_artifact_bytes 1234" in response.text
+    assert "scene_run_duration_seconds_count 1" in response.text
+    assert "scene_execution_duration_seconds_count 1" in response.text
+    assert 'scene_callbacks_total{outcome="accepted"} 4' in response.text
+    assert 'scene_callbacks_total{outcome="duplicate"} 2' in response.text
+    assert "scene_dispatcher_cycles_total 10" in response.text
+    assert 'scene_runner_jobs_total{event="created"} 5' in response.text
+    assert 'scene_runner_job_terminal_total{reason="oom_killed"} 1' in response.text
+    assert "run-queued-must-not-be-a-label" not in response.text
+    assert "execution-finished-must-not-be-a-label" not in response.text
+    assert "secret/object/key.png" not in response.text
+    assert "version-secret" not in response.text
 
 
 @pytest.mark.unit

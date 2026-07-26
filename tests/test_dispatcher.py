@@ -126,6 +126,46 @@ def test_dispatcher_creates_one_durable_job_and_marks_execution(monkeypatch, tmp
 
 
 @pytest.mark.unit
+def test_dispatcher_publishes_bounded_lifecycle_counters(monkeypatch, tmp_path: Path) -> None:
+    repo, _orchestrator, runner, dispatcher, run = _system(monkeypatch, tmp_path)
+
+    dispatched = dispatcher.run_once()
+    dispatcher._accumulate_metrics(dispatched, duration_seconds=0.1)
+    execution = repo.list_executions(run_id=run["id"])[0]
+    runner.phases[execution["kubernetes_job_name"]] = KubernetesExecutionStatus(
+        "pending",
+        reason="Scheduling",
+    )
+    pending = dispatcher.run_once()
+    dispatcher._accumulate_metrics(pending, duration_seconds=0.2)
+    runner.phases[execution["kubernetes_job_name"]] = KubernetesExecutionStatus(
+        "active",
+        pod_name="pod-1",
+    )
+    active = dispatcher.run_once()
+    dispatcher._accumulate_metrics(active, duration_seconds=0.3)
+    runner.phases[execution["kubernetes_job_name"]] = KubernetesExecutionStatus(
+        "succeeded",
+        pod_name="pod-1",
+    )
+    terminal = dispatcher.run_once()
+    dispatcher._accumulate_metrics(terminal, duration_seconds=0.4)
+    dispatcher._publish_metrics(force=True)
+
+    metrics = repo.dispatcher_status()["metrics"]
+    assert metrics["counters"]["cycles_total"] == 4
+    assert metrics["counters"]["dispatch_total"] == 1
+    assert metrics["counters"]["reconcile_total"] == 3
+    assert metrics["counters"]["jobs_created_total"] == 1
+    assert metrics["counters"]["jobs_scheduled_total"] == 1
+    assert metrics["counters"]["jobs_started_total"] == 1
+    assert metrics["job_terminal"]["succeeded"] == 1
+    assert metrics["last_cycle_duration_seconds"] == 0.4
+    assert "pod-1" not in str(metrics)
+    assert execution["id"] not in str(metrics)
+
+
+@pytest.mark.unit
 def test_dispatcher_deletes_job_before_terminalizing_cancellation(monkeypatch, tmp_path: Path) -> None:
     repo, _orchestrator, runner, dispatcher, run = _system(monkeypatch, tmp_path)
     dispatcher.run_once()

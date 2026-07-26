@@ -162,11 +162,20 @@
 
 ## Session Updates
 - SCENE-15 adds process-only `/healthz`, dependency-aware `/readyz`, sanitized
-  `/version`, and bounded Prometheus `/metrics`. Dependency initialization and
-  probe errors return a no-secret 503 readiness report instead of preventing
-  liveness. k3s readiness also requires a fresh dispatcher lease and a current
-  successful Kubernetes Job/Secret/Pod permission audit published by the
-  dispatcher; Docker mode does not require that lease.
+  `/version`, and bounded Prometheus `/metrics`. The metrics snapshot pages
+  through at most `SCENE_METRICS_RECORD_LIMIT + 1` records per retained
+  collection, caches for five seconds, serves a marked stale snapshot on a
+  bounded collection timeout, and exposes truncation instead of scanning
+  without limit. Fixed-label metrics cover run/execution states, queue age,
+  durations, callback outcomes, dispatcher and runner Job lifecycle, artifact
+  count/bytes, and per-process DynamoDB/S3/Kubernetes operation latency/errors.
+  Dispatcher counters are published into the leader lease so the app can expose
+  them without a Docker socket or Kubernetes credentials. Dependency
+  initialization and probe errors return a no-secret 503 readiness report
+  instead of preventing liveness. k3s readiness also requires a fresh
+  dispatcher lease and a current successful Kubernetes Job/Secret/Pod
+  permission audit published by the dispatcher; Docker mode does not require
+  that lease.
 - SCENE-7 adds a dedicated k3s dispatcher. The FastAPI process materializes the
   complete execution matrix in durable state and does not start an in-process
   queue or watchdog in k3s mode. A DynamoDB leader lease and per-execution CAS

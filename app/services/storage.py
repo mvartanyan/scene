@@ -42,6 +42,39 @@ CONFIG_COLLECTIONS = ("projects", "pages", "tasks", "batches")
 MAX_CONFLICT_RETRIES = 5
 TERMINAL_RUN_STATUSES = {"finished", "failed", "cancelled"}
 TERMINAL_EXECUTION_STATUSES = {"finished", "failed", "cancelled"}
+OPERATIONAL_COUNTER_KEYS = {
+    "callback_accepted_total",
+    "callback_duplicate_total",
+    "callback_conflict_total",
+    "callback_invalid_total",
+    "webhook_attempt_total",
+    "webhook_success_total",
+    "webhook_failure_total",
+}
+DISPATCHER_COUNTER_KEYS = {
+    "cycles_total",
+    "cycle_failures_total",
+    "dispatch_total",
+    "reconcile_total",
+    "callbacks_finalized_total",
+    "cleanup_total",
+    "jobs_created_total",
+    "jobs_adopted_total",
+    "jobs_scheduled_total",
+    "jobs_started_total",
+    "kubernetes_errors_total",
+}
+DISPATCHER_JOB_TERMINAL_KEYS = {
+    "succeeded",
+    "failed",
+    "deadline_exceeded",
+    "image_pull",
+    "oom_killed",
+    "evicted",
+    "unschedulable",
+    "missing",
+    "unknown",
+}
 RUN_IDEMPOTENCY_NAMESPACE = uuid.UUID("6740667e-e6d2-4f80-bbe8-8c73742f38d2")
 BASELINE_IDEMPOTENCY_NAMESPACE = uuid.UUID("a2c250c5-8a92-4d83-bc94-34f167285f62")
 EXECUTION_IDEMPOTENCY_NAMESPACE = uuid.UUID("7aaef15c-3e65-49f4-b122-49883d68d85e")
@@ -486,6 +519,7 @@ class SceneRepository:
                         "capabilities",
                         "capabilities_checked_at",
                         "capabilities_ok",
+                        "metrics",
                     ):
                         record.pop(field, None)
                 record.update(
@@ -552,6 +586,117 @@ class SceneRepository:
 
         self._update_record("leases", "k3s-dispatcher", mutate)
         return reported
+
+    def report_dispatcher_metrics(
+        self,
+        owner: str,
+        *,
+        metrics: Dict[str, Any],
+    ) -> bool:
+        reported = False
+
+        def normalized_ints(
+            value: object,
+            allowed: set[str],
+        ) -> Dict[str, int]:
+            if not isinstance(value, dict):
+                return {}
+            result: Dict[str, int] = {}
+            for key, raw in value.items():
+                if str(key) not in allowed:
+                    continue
+                try:
+                    result[str(key)] = max(0, int(raw))
+                except (TypeError, ValueError):
+                    continue
+            return result
+
+        def mutate(record: Dict[str, Any]) -> Optional[bool]:
+            nonlocal reported
+            reported = False
+            if record.get("owner") != owner or str(record.get("expires_at") or "") <= _utcnow():
+                return False
+            try:
+                last_cycle_duration = max(
+                    0.0,
+                    min(float(metrics.get("last_cycle_duration_seconds") or 0.0), 86_400.0),
+                )
+            except (TypeError, ValueError):
+                last_cycle_duration = 0.0
+            record["metrics"] = {
+                "started_at": str(metrics.get("started_at") or ""),
+                "updated_at": _utcnow(),
+                "counters": normalized_ints(
+                    metrics.get("counters"),
+                    DISPATCHER_COUNTER_KEYS,
+                ),
+                "job_terminal": normalized_ints(
+                    metrics.get("job_terminal"),
+                    DISPATCHER_JOB_TERMINAL_KEYS,
+                ),
+                "last_cycle_duration_seconds": last_cycle_duration,
+            }
+            reported = True
+            return None
+
+        self._update_record("leases", "k3s-dispatcher", mutate)
+        return reported
+
+    def operational_metrics(self) -> Dict[str, Any]:
+        record = self._storage.get("operational_metrics", "global")
+        if record:
+            return record
+        return {
+            "id": "global",
+            "created_at": "",
+            "updated_at": "",
+            "counters": {},
+        }
+
+    def record_operational_counters(self, increments: Dict[str, int]) -> Dict[str, Any]:
+        normalized: Dict[str, int] = {}
+        for key, raw in increments.items():
+            if key not in OPERATIONAL_COUNTER_KEYS:
+                raise ValueError(f"Unsupported operational counter: {key}")
+            try:
+                value = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Operational counter '{key}' must be an integer") from exc
+            if value < 0:
+                raise ValueError(f"Operational counter '{key}' cannot decrease")
+            if value:
+                normalized[key] = value
+        if not normalized:
+            return self.operational_metrics()
+
+        for attempt in range(MAX_CONFLICT_RETRIES):
+            now = _utcnow()
+            record = self._storage.get("operational_metrics", "global")
+            if record is None:
+                record = {
+                    "id": "global",
+                    "created_at": now,
+                    "updated_at": now,
+                    "counters": {},
+                }
+            counters = record.get("counters")
+            if not isinstance(counters, dict):
+                counters = {}
+            record["counters"] = {
+                key: max(0, int(value))
+                for key, value in counters.items()
+                if key in OPERATIONAL_COUNTER_KEYS
+                and isinstance(value, (int, float))
+            }
+            for key, value in normalized.items():
+                record["counters"][key] = int(record["counters"].get(key, 0)) + value
+            record["updated_at"] = now
+            try:
+                return self._storage.upsert("operational_metrics", "global", record)
+            except StorageConflictError:
+                if attempt + 1 == MAX_CONFLICT_RETRIES:
+                    raise
+        raise AssertionError("unreachable")
 
     def _update_record(
         self,

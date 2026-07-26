@@ -27,7 +27,9 @@ uv run uvicorn app.main:app --reload
   optional `SCENE_S3_PREFIX`. The bucket stays private; SCENE issues short-lived
   downloads and execution-scoped runner uploads. See `docs/artifacts.md`.
 - Operations use process-only `/healthz`, dependency-aware `/readyz`, sanitized
-  `/version`, and Prometheus `/metrics`. See `docs/operations.md`.
+  build/backend/image identity at `/version`, and bounded Prometheus metrics for
+  retained state, queues, durations, callbacks, dispatcher/Job lifecycle,
+  artifacts, and backend operations at `/metrics`. See `docs/operations.md`.
 
 ## Runtime Data Policy
 - `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.

@@ -17,6 +17,17 @@ from app.services.runner_backend import validate_runner_runtime_config
 from app.services.storage import SceneRepository, get_repository
 
 LOGGER = logging.getLogger("scene.dispatcher")
+_METRICS_PUBLISH_INTERVAL_SECONDS = 10.0
+_JOB_TERMINAL_PHASES = {
+    "succeeded",
+    "failed",
+    "deadline_exceeded",
+    "image_pull",
+    "oom_killed",
+    "evicted",
+    "unschedulable",
+    "missing",
+}
 
 
 def _utcnow() -> str:
@@ -66,6 +77,25 @@ class KubernetesDispatcher:
         self.max_concurrency = max(1, int(runtime.max_concurrency))
         self._capabilities_checked_at = 0.0
         self._capabilities_ok = False
+        self._metrics_started_at = _utcnow()
+        self._metrics_last_published_at = 0.0
+        self._metrics_last_cycle_duration = 0.0
+        self._metrics_counters = {
+            "cycles_total": 0,
+            "cycle_failures_total": 0,
+            "dispatch_total": 0,
+            "reconcile_total": 0,
+            "callbacks_finalized_total": 0,
+            "cleanup_total": 0,
+            "jobs_created_total": 0,
+            "jobs_adopted_total": 0,
+            "jobs_scheduled_total": 0,
+            "jobs_started_total": 0,
+            "kubernetes_errors_total": 0,
+        }
+        self._metrics_job_terminal = {
+            phase: 0 for phase in sorted(_JOB_TERMINAL_PHASES | {"unknown"})
+        }
 
     def _publish_capabilities(self, *, force: bool = False) -> bool:
         now = time.monotonic()
@@ -167,6 +197,33 @@ class KubernetesDispatcher:
             return "Run has an invalid timeout deadline"
         return "Run timed out before execution completed" if expired else None
 
+    def _observe_job_phase(
+        self,
+        execution: Dict[str, object],
+        status: KubernetesExecutionStatus,
+        stats: Dict[str, object],
+    ) -> None:
+        phase = status.phase if status.phase in _JOB_TERMINAL_PHASES | {"pending", "active"} else "unknown"
+        previous_phase = str(execution.get("kubernetes_observed_phase") or "")
+        if previous_phase == phase:
+            return
+        self.repo.update_execution(
+            str(execution["id"]),
+            {
+                "kubernetes_observed_phase": phase,
+                "kubernetes_observed_phase_at": _utcnow(),
+            },
+        )
+        execution["kubernetes_observed_phase"] = phase
+        if phase in {"pending", "active"} and previous_phase not in {"pending", "active"}:
+            stats["jobs_scheduled"] = int(stats["jobs_scheduled"]) + 1
+        if phase == "active":
+            stats["jobs_started"] = int(stats["jobs_started"]) + 1
+        if phase in _JOB_TERMINAL_PHASES:
+            terminal = stats["job_terminal"]
+            if isinstance(terminal, dict):
+                terminal[phase] = int(terminal.get(phase, 0)) + 1
+
     @staticmethod
     def _remembered_terminal_status(
         execution: Dict[str, object],
@@ -237,7 +294,11 @@ class KubernetesDispatcher:
             return "waiting", remembered
         return "expired", remembered
 
-    def _reconcile_execution(self, execution: Dict[str, object]) -> str:
+    def _reconcile_execution(
+        self,
+        execution: Dict[str, object],
+        stats: Dict[str, object],
+    ) -> str:
         execution_id = str(execution["id"])
         if execution.get("callback_state") in {"accepted", "finalized"}:
             self.orchestrator.finalize_durable_callback(
@@ -279,6 +340,7 @@ class KubernetesDispatcher:
             )
             return "failed"
         status = self.runner.status(job_name)
+        self._observe_job_phase(execution, status, stats)
         if status.phase in {"active", "pending"}:
             if execution.get("result_recovery_started_at"):
                 self.repo.update_execution(
@@ -313,7 +375,7 @@ class KubernetesDispatcher:
         )
         return status.phase
 
-    def _dispatch(self, execution: Dict[str, object]) -> bool:
+    def _dispatch(self, execution: Dict[str, object]) -> Optional[str]:
         execution_id = str(execution["id"])
         timeout_reason = self._timeout_reason(execution)
         if timeout_reason:
@@ -322,29 +384,28 @@ class KubernetesDispatcher:
                 reason=timeout_reason,
             )
             self._cancel(cancelled or execution)
-            return False
+            return None
         claimed = self.repo.claim_execution(
             execution_id,
             owner=self.owner,
             lease_seconds=max(self.lease_seconds * 2, 60),
         )
         if not claimed:
-            return False
+            return None
         job_name = str(claimed["kubernetes_job_name"])
         secret_name = str(claimed["kubernetes_secret_name"])
         generation = int(claimed["dispatch_generation"])
         if claimed.get("callback_token_sha256") and claimed.get("runner_spec_digest"):
             existing_status = self.runner.status(job_name)
             if existing_status.phase != "missing":
-                return bool(
-                    self.repo.mark_execution_dispatched(
-                        execution_id,
-                        owner=self.owner,
-                        generation=generation,
-                    )
+                adopted = self.repo.mark_execution_dispatched(
+                    execution_id,
+                    owner=self.owner,
+                    generation=generation,
                 )
+                return "adopted" if adopted else None
             if not self.runner.delete(job_name=job_name, secret_name=secret_name):
-                return False
+                return None
         prepared = self.orchestrator.prepare_k3s_dispatch(execution_id, owner=self.owner)
         runner_config = prepared["runner_config"]
         spec_digest = str(prepared["spec_digest"])
@@ -366,13 +427,20 @@ class KubernetesDispatcher:
             timeout_seconds=int(prepared["timeout_seconds"]),
             spec_digest=spec_digest,
         )
-        self.runner.create_or_adopt(secret=secret, job=job, spec_digest=spec_digest)
+        create_outcome = (
+            self.runner.create_or_adopt(
+                secret=secret,
+                job=job,
+                spec_digest=spec_digest,
+            )
+            or "created"
+        )
         dispatched = self.repo.mark_execution_dispatched(
             execution_id,
             owner=self.owner,
             generation=generation,
         )
-        return dispatched is not None
+        return str(create_outcome) if dispatched is not None else None
 
     def _cleanup_terminal(self) -> int:
         cleaned = 0
@@ -407,6 +475,14 @@ class KubernetesDispatcher:
             "reconciled": 0,
             "callbacks_finalized": 0,
             "cleaned": 0,
+            "jobs_created": 0,
+            "jobs_adopted": 0,
+            "jobs_scheduled": 0,
+            "jobs_started": 0,
+            "job_terminal": {
+                phase: 0 for phase in sorted(_JOB_TERMINAL_PHASES | {"unknown"})
+            },
+            "kubernetes_errors": 0,
         }
         if not self.repo.acquire_dispatcher_lease(
             self.owner,
@@ -437,8 +513,12 @@ class KubernetesDispatcher:
                 or execution.get("cancellation_requested_at")
                 or self._timeout_reason(execution)
             ):
-                self._reconcile_execution(execution)
-                stats["reconciled"] = int(stats["reconciled"]) + 1
+                try:
+                    self._reconcile_execution(execution, stats)
+                    stats["reconciled"] = int(stats["reconciled"]) + 1
+                except Exception:  # noqa: BLE001
+                    stats["kubernetes_errors"] = int(stats["kubernetes_errors"]) + 1
+                    LOGGER.exception("Reconciliation failed for execution %s", execution["id"])
         refreshed = self.repo.list_execution_records_bounded(
             statuses={"executing"},
             limit=500,
@@ -446,9 +526,17 @@ class KubernetesDispatcher:
         available = max(0, self.max_concurrency - len(refreshed))
         for execution in self.repo.list_dispatchable_executions(limit=available):
             try:
-                if self._dispatch(execution):
+                dispatch_outcome = self._dispatch(execution)
+                if dispatch_outcome:
                     stats["dispatched"] = int(stats["dispatched"]) + 1
+                    metric_key = (
+                        "jobs_adopted"
+                        if dispatch_outcome == "adopted"
+                        else "jobs_created"
+                    )
+                    stats[metric_key] = int(stats[metric_key]) + 1
             except Exception as exc:  # noqa: BLE001
+                stats["kubernetes_errors"] = int(stats["kubernetes_errors"]) + 1
                 LOGGER.exception("Dispatch failed for execution %s", execution["id"])
                 self.repo.update_execution(
                     str(execution["id"]),
@@ -460,16 +548,85 @@ class KubernetesDispatcher:
         stats["cleaned"] = self._cleanup_terminal()
         return stats
 
+    def _accumulate_metrics(
+        self,
+        stats: Dict[str, object],
+        *,
+        duration_seconds: float,
+        failed: bool = False,
+    ) -> None:
+        self._metrics_last_cycle_duration = max(0.0, min(float(duration_seconds), 86_400.0))
+        self._metrics_counters["cycles_total"] += 1
+        if failed:
+            self._metrics_counters["cycle_failures_total"] += 1
+            return
+        mappings = {
+            "dispatched": "dispatch_total",
+            "reconciled": "reconcile_total",
+            "callbacks_finalized": "callbacks_finalized_total",
+            "cleaned": "cleanup_total",
+            "jobs_created": "jobs_created_total",
+            "jobs_adopted": "jobs_adopted_total",
+            "jobs_scheduled": "jobs_scheduled_total",
+            "jobs_started": "jobs_started_total",
+            "kubernetes_errors": "kubernetes_errors_total",
+        }
+        for source, destination in mappings.items():
+            self._metrics_counters[destination] += max(0, int(stats.get(source) or 0))
+        terminal = stats.get("job_terminal")
+        if isinstance(terminal, dict):
+            for phase, value in terminal.items():
+                normalized = phase if phase in _JOB_TERMINAL_PHASES else "unknown"
+                self._metrics_job_terminal[normalized] += max(0, int(value or 0))
+
+    def _publish_metrics(self, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if (
+            not force
+            and now - self._metrics_last_published_at
+            < _METRICS_PUBLISH_INTERVAL_SECONDS
+        ):
+            return
+        try:
+            reported = self.repo.report_dispatcher_metrics(
+                self.owner,
+                metrics={
+                    "started_at": self._metrics_started_at,
+                    "counters": self._metrics_counters,
+                    "job_terminal": self._metrics_job_terminal,
+                    "last_cycle_duration_seconds": self._metrics_last_cycle_duration,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Unable to publish dispatcher metrics")
+            return
+        if reported:
+            self._metrics_last_published_at = now
+
     def run_forever(self, *, poll_seconds: float = 2.0, stop_event: Optional[threading.Event] = None) -> None:
         stop = stop_event or threading.Event()
-        while not stop.is_set():
-            try:
-                stats = self.run_once()
-                LOGGER.info("dispatcher_cycle %s", stats)
-            except Exception:  # noqa: BLE001
-                LOGGER.exception("Dispatcher reconciliation cycle failed")
-            stop.wait(max(0.25, float(poll_seconds)))
-        self.repo.release_dispatcher_lease(self.owner)
+        try:
+            while not stop.is_set():
+                started_at = time.monotonic()
+                try:
+                    stats = self.run_once()
+                    self._accumulate_metrics(
+                        stats,
+                        duration_seconds=time.monotonic() - started_at,
+                    )
+                    LOGGER.info("dispatcher_cycle %s", stats)
+                except Exception:  # noqa: BLE001
+                    self._accumulate_metrics(
+                        {},
+                        duration_seconds=time.monotonic() - started_at,
+                        failed=True,
+                    )
+                    LOGGER.exception("Dispatcher reconciliation cycle failed")
+                self._publish_metrics()
+                stop.wait(max(0.25, float(poll_seconds)))
+        finally:
+            self._publish_metrics(force=True)
+            self.repo.release_dispatcher_lease(self.owner)
 
 
 def main() -> int:

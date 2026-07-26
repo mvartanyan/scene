@@ -189,6 +189,7 @@ kubectl -n scene exec deployment/scene-app -- python -c \
 curl -fsS https://scene.135.181.140.68.sslip.io/healthz
 curl -fsS https://scene.135.181.140.68.sslip.io/readyz
 curl -fsS https://scene.135.181.140.68.sslip.io/version
+curl -fsS https://scene.135.181.140.68.sslip.io/metrics
 ```
 
 The external requests must return `401` without basic auth. Use `curl -u
@@ -208,6 +209,13 @@ gate. Confirm generated
 runner Job specs have no `AWS_*` variables, API token, Docker socket, or
 `host.docker.internal`, and that callbacks use
 `http://scene.scene.svc.cluster.local`.
+
+The metrics request must also require ingress authorization. Verify
+`scene_metrics_collection_available 1`, zero truncation at the current staging
+volume, the deployed `scene_build_info`, nonzero retained run/execution
+families, and fresh dispatcher counters. Backend operation metrics are
+process-local, so a future Prometheus setup must scrape each app pod through an
+explicit monitoring NetworkPolicy rather than alternating through the Service.
 
 ## Configuration handoff
 

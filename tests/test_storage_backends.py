@@ -167,6 +167,47 @@ def _dynamo_storage(table: _FakeDynamoTable, *, validate_table: bool = True) -> 
     )
 
 
+@pytest.mark.parametrize("backend", ["json", "dynamodb"])
+def test_operational_counters_are_durable_bounded_and_monotonic(
+    backend: str,
+    tmp_path: Path,
+) -> None:
+    storage = (
+        LocalDynamoStorage(tmp_path / "state.json")
+        if backend == "json"
+        else _dynamo_storage(_FakeDynamoTable())
+    )
+    repo = SceneRepository(storage)
+
+    first = repo.record_operational_counters(
+        {
+            "callback_accepted_total": 1,
+            "callback_duplicate_total": 2,
+        }
+    )
+    second = repo.record_operational_counters(
+        {
+            "callback_accepted_total": 3,
+            "callback_conflict_total": 1,
+        }
+    )
+
+    assert first["counters"] == {
+        "callback_accepted_total": 1,
+        "callback_duplicate_total": 2,
+    }
+    assert second["counters"] == {
+        "callback_accepted_total": 4,
+        "callback_duplicate_total": 2,
+        "callback_conflict_total": 1,
+    }
+    assert repo.operational_metrics()["counters"] == second["counters"]
+    with pytest.raises(ValueError, match="Unsupported operational counter"):
+        repo.record_operational_counters({"run-id-must-not-become-a-label": 1})
+    with pytest.raises(ValueError, match="cannot decrease"):
+        repo.record_operational_counters({"callback_accepted_total": -1})
+
+
 def test_local_storage_detects_stale_writes_and_pages(tmp_path: Path) -> None:
     storage = LocalDynamoStorage(tmp_path / "state.json")
     first = storage.upsert(

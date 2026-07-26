@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.schemas import (
@@ -66,6 +67,7 @@ from app.services.run_scope import validate_task_subset
 from app.services.storage import RepositoryDep, SceneRepository
 
 router = APIRouter(prefix="/api", tags=["api"])
+LOGGER = logging.getLogger("scene.api")
 
 AGENT_DOCS_PATH = Path("docs/agent-api.md")
 
@@ -81,6 +83,24 @@ ARTIFACT_URL_PRIORITY = [
 ]
 
 AgentAuthDep = Depends(require_agent_api_token)
+
+
+def _record_callback_outcome(
+    repo: SceneRepository,
+    outcome: str,
+) -> None:
+    counter = {
+        "accepted": "callback_accepted_total",
+        "duplicate": "callback_duplicate_total",
+        "conflict": "callback_conflict_total",
+        "invalid": "callback_invalid_total",
+    }.get(outcome)
+    if not counter:
+        return
+    try:
+        repo.record_operational_counters({counter: 1})
+    except Exception:  # noqa: BLE001 - callback completion must not depend on metrics.
+        LOGGER.exception("Unable to record completion callback metric")
 
 
 def _ensure_project(repo: SceneRepository, project_id: str) -> None:
@@ -1536,6 +1556,7 @@ def _format_baseline_option_payload(baseline: Dict[str, object]) -> BaselineOpti
 async def complete_execution_callback(
     execution_id: str,
     payload: ExecutionCallbackRequest,
+    background_tasks: BackgroundTasks,
     repo: SceneRepository = RepositoryDep,
 ):
     execution = repo.get_execution(execution_id)
@@ -1548,13 +1569,28 @@ async def complete_execution_callback(
             execution_id,
             payload.model_dump(),
         )
+        background_tasks.add_task(_record_callback_outcome, repo, outcome)
         if outcome == "conflict":
-            raise HTTPException(status_code=409, detail="Conflicting completion callback")
+            return JSONResponse(
+                {"detail": "Conflicting completion callback"},
+                status_code=409,
+                background=background_tasks,
+            )
         if outcome not in {"accepted", "duplicate"}:
-            raise HTTPException(status_code=403, detail="Invalid completion identity or token")
+            return JSONResponse(
+                {"detail": "Invalid completion identity or token"},
+                status_code=403,
+                background=background_tasks,
+            )
         return {"status": "ok", "duplicate": outcome == "duplicate"}
     if not orchestrator.handle_execution_callback(execution_id, payload.model_dump()):
-        raise HTTPException(status_code=403, detail="Invalid completion token or execution not pending")
+        background_tasks.add_task(_record_callback_outcome, repo, "invalid")
+        return JSONResponse(
+            {"detail": "Invalid completion token or execution not pending"},
+            status_code=403,
+            background=background_tasks,
+        )
+    background_tasks.add_task(_record_callback_outcome, repo, "accepted")
     return {"status": "ok"}
 
 

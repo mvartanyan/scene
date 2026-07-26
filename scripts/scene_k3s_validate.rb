@@ -116,6 +116,7 @@ expected_runtime = {
   "SCENE_K3S_NAMESPACE" => "scene",
   "SCENE_K3S_RUNNER_SERVICE_ACCOUNT" => "scene-runner",
   "SCENE_K3S_SERVICE_URL" => "http://scene.scene.svc.cluster.local",
+  "SCENE_METRICS_RECORD_LIMIT" => "10000",
   "SCENE_RUNNER_BACKEND" => "k3s",
   "SCENE_RUNNER_CALLBACK_BASE_URL" => "http://scene.scene.svc.cluster.local",
   "SCENE_RUNNER_IMAGE_AUTOBUILD" => "false",

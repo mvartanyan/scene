@@ -10,13 +10,14 @@ import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, Mapping, Optional
+from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.services.artifacts import ArtifactStore, SCENE_ARTIFACT_TEMP_ROOT_ENV
+from app.services.operational_metrics import observe_backend_operation
 
 LOGGER = logging.getLogger(__name__)
 
@@ -92,6 +93,16 @@ class S3ArtifactStore(ArtifactStore):
         self.put_ttl_seconds = max(30, min(int(put_ttl_seconds), MAX_PRESIGN_TTL_SECONDS))
         self._client = client or _s3_client(region=self.region)
 
+    def _call(
+        self,
+        operation: str,
+        callback: Callable[..., Any],
+        *args: object,
+        **kwargs: object,
+    ) -> Any:
+        with observe_backend_operation("s3", operation):
+            return callback(*args, **kwargs)
+
     @classmethod
     def from_environment(cls, *, base_url: str = "/artifacts") -> "S3ArtifactStore":
         region = os.environ.get(AWS_REGION_ENV, "eu-central-1")
@@ -152,7 +163,9 @@ class S3ArtifactStore(ArtifactStore):
         )
         resolved_type = content_type or mimetypes.guess_type(object_name)[0] or "application/octet-stream"
         sha256 = self.checksum(source)
-        self._client.upload_file(
+        self._call(
+            "upload",
+            self._client.upload_file,
             str(source),
             self.bucket,
             key,
@@ -182,7 +195,7 @@ class S3ArtifactStore(ArtifactStore):
         head_request: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
         if version_id:
             head_request["VersionId"] = version_id
-        head = self._client.head_object(**head_request)
+        head = self._call("head", self._client.head_object, **head_request)
         metadata = head.get("Metadata") or {}
         checksum = sha256 or metadata.get("sha256")
         result: Dict[str, object] = {
@@ -219,14 +232,22 @@ class S3ArtifactStore(ArtifactStore):
         destination.parent.mkdir(parents=True, exist_ok=True)
         version_id = _version_id(artifact)
         if version_id:
-            self._client.download_file(
+            self._call(
+                "download",
+                self._client.download_file,
                 self.bucket,
                 key,
                 str(destination),
                 ExtraArgs={"VersionId": version_id},
             )
         else:
-            self._client.download_file(self.bucket, key, str(destination))
+            self._call(
+                "download",
+                self._client.download_file,
+                self.bucket,
+                key,
+                str(destination),
+            )
         return destination
 
     def download_url(self, artifact: Mapping[str, object]) -> Optional[str]:
@@ -240,7 +261,9 @@ class S3ArtifactStore(ArtifactStore):
         version_id = _version_id(artifact)
         if version_id:
             params["VersionId"] = version_id
-        return self._client.generate_presigned_url(
+        return self._call(
+            "presign_get",
+            self._client.generate_presigned_url,
             "get_object",
             Params=params,
             ExpiresIn=self.get_ttl_seconds,
@@ -260,7 +283,9 @@ class S3ArtifactStore(ArtifactStore):
         }
         if sha256:
             params["Metadata"] = {"sha256": sha256}
-        return self._client.generate_presigned_url(
+        return self._call(
+            "presign_put",
+            self._client.generate_presigned_url,
             "put_object",
             Params=params,
             ExpiresIn=self.put_ttl_seconds,
@@ -339,7 +364,7 @@ class S3ArtifactStore(ArtifactStore):
             head_request: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
             if receipt_version_id:
                 head_request["VersionId"] = receipt_version_id
-            head = self._client.head_object(**head_request)
+            head = self._call("head", self._client.head_object, **head_request)
             actual_version_id = str(head.get("VersionId") or receipt_version_id or "").strip()
             if receipt_version_id and actual_version_id and receipt_version_id != actual_version_id:
                 raise ValueError(f"Artifact upload receipt '{kind}' has the wrong version.")
@@ -359,7 +384,7 @@ class S3ArtifactStore(ArtifactStore):
                 get_request: Dict[str, object] = {"Bucket": self.bucket, "Key": key}
                 if actual_version_id:
                     get_request["VersionId"] = actual_version_id
-                response = self._client.get_object(**get_request)
+                response = self._call("read", self._client.get_object, **get_request)
                 digest = hashlib.sha256()
                 body = response["Body"]
                 for chunk in iter(lambda: body.read(1024 * 1024), b""):
@@ -383,7 +408,11 @@ class S3ArtifactStore(ArtifactStore):
         for key in keys:
             request: Dict[str, object] = {"Bucket": self.bucket, "Prefix": key}
             while True:
-                response = self._client.list_object_versions(**request)
+                response = self._call(
+                    "list_versions",
+                    self._client.list_object_versions,
+                    **request,
+                )
                 for item in [
                     *(response.get("Versions") or []),
                     *(response.get("DeleteMarkers") or []),
@@ -403,7 +432,9 @@ class S3ArtifactStore(ArtifactStore):
 
     def _delete_version_identifiers(self, identifiers: list[dict[str, str]]) -> None:
         for start in range(0, len(identifiers), 1000):
-            response = self._client.delete_objects(
+            response = self._call(
+                "delete_versions",
+                self._client.delete_objects,
                 Bucket=self.bucket,
                 Delete={"Objects": identifiers[start : start + 1000], "Quiet": True},
             )
@@ -477,7 +508,9 @@ class S3ArtifactStore(ArtifactStore):
         body = json.dumps({"probe": "scene"}).encode("utf-8")
         version_id: Optional[str] = None
         try:
-            put_response = self._client.put_object(
+            put_response = self._call(
+                "write",
+                self._client.put_object,
                 Bucket=self.bucket,
                 Key=key,
                 Body=body,
@@ -488,7 +521,7 @@ class S3ArtifactStore(ArtifactStore):
             get_request = {"Bucket": self.bucket, "Key": key}
             if version_id:
                 get_request["VersionId"] = version_id
-            response = self._client.get_object(**get_request)
+            response = self._call("read", self._client.get_object, **get_request)
             received = response["Body"].read()
             if received != body:
                 raise RuntimeError("S3 artifact probe read did not match its write.")
@@ -497,7 +530,7 @@ class S3ArtifactStore(ArtifactStore):
                 delete_request = {"Bucket": self.bucket, "Key": key}
                 if version_id:
                     delete_request["VersionId"] = version_id
-                self._client.delete_object(**delete_request)
+                self._call("delete", self._client.delete_object, **delete_request)
             except ClientError:
                 LOGGER.exception("Failed to remove S3 artifact readiness probe object %s", key)
         return {

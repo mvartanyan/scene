@@ -22,6 +22,7 @@ class _FakeOrchestrator:
         self.cancelled: list[str] = []
         self.retried: list[str] = []
         self.concurrency_updates: list[int] = []
+        self.callback_outcome = "accepted"
 
     def enqueue(self, run_id: str) -> None:
         self.enqueued.append(run_id)
@@ -76,6 +77,12 @@ class _FakeOrchestrator:
 
         return _Readiness()
 
+    def handle_durable_execution_callback(self, execution_id: str, payload: dict) -> str:
+        return self.callback_outcome
+
+    def handle_execution_callback(self, execution_id: str, payload: dict) -> bool:
+        return self.callback_outcome == "accepted"
+
 
 @pytest.fixture
 def client(monkeypatch, tmp_path: Path) -> Generator[Tuple[TestClient, SceneRepository, _FakeOrchestrator], None, None]:
@@ -102,6 +109,51 @@ def client(monkeypatch, tmp_path: Path) -> Generator[Tuple[TestClient, SceneRepo
 
 def _auth_headers() -> dict[str, str]:
     return {"Authorization": "Bearer secret"}
+
+
+def test_callback_outcomes_increment_durable_bounded_metrics(
+    client: Tuple[TestClient, SceneRepository, _FakeOrchestrator],
+) -> None:
+    api, repo, orchestrator = client
+    execution = repo.create_execution(
+        {
+            "run_id": "run-1",
+            "project_id": "project-1",
+            "batch_id": "batch-1",
+            "task_id": "task-1",
+            "task_name": "Task",
+            "browser": "chromium",
+            "viewport": {"width": 800, "height": 600},
+        }
+    )
+    repo.update_execution(execution["id"], {"dispatch_generation": 1})
+    payload = {
+        "token": "redacted",
+        "run_id": "run-1",
+        "execution_id": execution["id"],
+        "dispatch_generation": 1,
+        "result": {"status": "ok"},
+    }
+
+    accepted = api.post(f"/api/executions/{execution['id']}/complete", json=payload)
+    orchestrator.callback_outcome = "duplicate"
+    duplicate = api.post(f"/api/executions/{execution['id']}/complete", json=payload)
+    orchestrator.callback_outcome = "conflict"
+    conflict = api.post(f"/api/executions/{execution['id']}/complete", json=payload)
+    orchestrator.callback_outcome = "invalid"
+    invalid = api.post(f"/api/executions/{execution['id']}/complete", json=payload)
+
+    assert accepted.status_code == 200
+    assert duplicate.status_code == 200
+    assert duplicate.json()["duplicate"] is True
+    assert conflict.status_code == 409
+    assert invalid.status_code == 403
+    assert repo.operational_metrics()["counters"] == {
+        "callback_accepted_total": 1,
+        "callback_duplicate_total": 1,
+        "callback_conflict_total": 1,
+        "callback_invalid_total": 1,
+    }
 
 
 def test_agent_manifest_docs_and_openapi(client: Tuple[TestClient, SceneRepository, _FakeOrchestrator]) -> None:

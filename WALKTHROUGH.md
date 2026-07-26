@@ -92,6 +92,8 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
   page/batch/test configuration remains in SCENE. Correlated runs are retained
   for canonical reconciliation, cannot be retried in place after terminal
   state, and worker degradation does not remove the primary app from service.
+  Horse k3s dials the internal Traefik TLS Service while retaining the public
+  SPM hostname for validation, certificate identity, SNI, and HTTP routing.
 - Chromium uses the memory-backed `/dev/shm`, but remains unsandboxed because
   the pinned image cannot start its browser sandbox under the restricted pod
   profile. Runner Jobs compensate with one-execution pods, no AWS/Kubernetes

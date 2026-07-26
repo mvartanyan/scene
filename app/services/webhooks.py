@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import http.client
 import ipaddress
 import json
 import logging
 import os
 import random
+import re
 import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -30,9 +33,11 @@ SCENE_WEBHOOK_MAX_ATTEMPTS_ENV = "SCENE_WEBHOOK_MAX_ATTEMPTS"
 SCENE_WEBHOOK_MAX_AGE_SECONDS_ENV = "SCENE_WEBHOOK_MAX_AGE_SECONDS"
 SCENE_WEBHOOK_ALLOW_PRIVATE_URLS_ENV = "SCENE_WEBHOOK_ALLOW_PRIVATE_URLS"
 SCENE_WEBHOOK_ALLOWED_HOSTS_ENV = "SCENE_WEBHOOK_ALLOWED_HOSTS"
+SCENE_WEBHOOK_CONNECT_HOST_ENV = "SCENE_WEBHOOK_CONNECT_HOST"
 SCENE_WEBHOOK_POLL_SECONDS_ENV = "SCENE_WEBHOOK_POLL_SECONDS"
 
 RETRYABLE_STATUS_CODES = {408, 409, 425, 429}
+HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 Resolver = Callable[..., Sequence[Tuple[object, ...]]]
 RequestSender = Callable[[str, bytes, Dict[str, str], float], int]
@@ -72,6 +77,7 @@ class WebhookConfig:
     max_age_seconds: int = 86_400
     allow_private_urls: bool = False
     allowed_hosts: Tuple[str, ...] = ()
+    connect_host: str = ""
     poll_seconds: float = 2.0
 
 
@@ -92,12 +98,34 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _normalize_connect_host(value: str) -> str:
+    candidate = value.strip().rstrip(".").lower()
+    if not candidate:
+        return ""
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        pass
+    else:
+        raise WebhookConfigurationError("webhook_connect_host_invalid")
+    labels = candidate.split(".")
+    if (
+        len(candidate) > 253
+        or any(not label or not HOST_LABEL_RE.fullmatch(label) for label in labels)
+    ):
+        raise WebhookConfigurationError("webhook_connect_host_invalid")
+    return candidate
+
+
 def load_webhook_config() -> WebhookConfig:
     enabled = _env_bool(SCENE_WEBHOOK_ENABLED_ENV)
     allow_private = _env_bool(SCENE_WEBHOOK_ALLOW_PRIVATE_URLS_ENV)
     endpoint_id = os.environ.get(SCENE_WEBHOOK_ENDPOINT_ID_ENV, "spm").strip()
     endpoint_url = os.environ.get(SCENE_WEBHOOK_URL_ENV, "").strip()
     secret = os.environ.get(SCENE_WEBHOOK_SECRET_ENV, "")
+    connect_host = _normalize_connect_host(
+        os.environ.get(SCENE_WEBHOOK_CONNECT_HOST_ENV, "")
+    )
     allowed_hosts = tuple(
         dict.fromkeys(
             host.strip().rstrip(".").lower()
@@ -132,6 +160,7 @@ def load_webhook_config() -> WebhookConfig:
         ),
         allow_private_urls=allow_private,
         allowed_hosts=allowed_hosts,
+        connect_host=connect_host,
         poll_seconds=float(
             _env_int(
                 SCENE_WEBHOOK_POLL_SECONDS_ENV,
@@ -161,6 +190,8 @@ def load_webhook_config() -> WebhookConfig:
         allow_private=allow_private,
         allowed_hosts=allowed_hosts,
     )
+    if connect_host and urlsplit(endpoint_url).scheme.lower() != "https":
+        raise WebhookConfigurationError("webhook_connect_host_requires_https")
     return config
 
 
@@ -185,6 +216,12 @@ def validate_webhook_url(
         raise WebhookConfigurationError("webhook_url_host_forbidden")
     if parsed.query or parsed.fragment:
         raise WebhookConfigurationError("webhook_url_query_or_fragment_forbidden")
+    try:
+        parsed.path.encode("ascii")
+    except UnicodeEncodeError:
+        raise WebhookConfigurationError("webhook_url_path_invalid") from None
+    if any(ord(character) <= 0x20 or ord(character) == 0x7F for character in parsed.path):
+        raise WebhookConfigurationError("webhook_url_path_invalid")
     try:
         port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
     except ValueError:
@@ -334,6 +371,52 @@ def _stdlib_request_sender(
         return int(exc.code)
 
 
+def _pinned_https_request_sender(
+    url: str,
+    body: bytes,
+    headers: Dict[str, str],
+    timeout_seconds: float,
+    *,
+    connect_host: str,
+) -> int:
+    parsed = urlsplit(url)
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        raise WebhookConfigurationError("webhook_connect_host_requires_https")
+    port = parsed.port or 443
+    raw_socket = socket.create_connection(
+        (connect_host, port),
+        timeout=timeout_seconds,
+    )
+    try:
+        tls_socket = ssl.create_default_context().wrap_socket(
+            raw_socket,
+            server_hostname=parsed.hostname,
+        )
+    except Exception:
+        raw_socket.close()
+        raise
+    connection = http.client.HTTPConnection(
+        parsed.hostname,
+        port,
+        timeout=timeout_seconds,
+    )
+    connection.sock = tls_socket
+    request_headers = {**headers, "Host": parsed.hostname}
+    try:
+        connection.request(
+            "POST",
+            parsed.path or "/",
+            body=body,
+            headers=request_headers,
+        )
+        response = connection.getresponse()
+        status = int(response.status)
+        response.read(1024)
+        return status
+    finally:
+        connection.close()
+
+
 def attempt_webhook_delivery(
     *,
     endpoint_url: str,
@@ -368,13 +451,30 @@ def attempt_webhook_delivery(
             timeout_seconds,
         )
     except WebhookConfigurationError as exc:
+        error_code = str(exc)
+        return DeliveryAttempt(
+            outcome=(
+                "retry"
+                if error_code == "webhook_url_dns_unavailable"
+                else "permanent_failure"
+            ),
+            response_status=None,
+            duration_seconds=max(0.0, time.monotonic() - started_at),
+            error_code=error_code,
+        )
+    except http.client.InvalidURL:
         return DeliveryAttempt(
             outcome="permanent_failure",
             response_status=None,
             duration_seconds=max(0.0, time.monotonic() - started_at),
-            error_code=str(exc),
+            error_code="webhook_request_invalid",
         )
-    except (OSError, TimeoutError, urllib.error.URLError):
+    except (
+        OSError,
+        TimeoutError,
+        http.client.HTTPException,
+        urllib.error.URLError,
+    ):
         return DeliveryAttempt(
             outcome="retry",
             response_status=None,
@@ -426,7 +526,24 @@ class WebhookDeliveryWorker:
         self.repo = repo
         self.config = config
         self.owner = owner or f"{socket.gethostname()}-{uuid.uuid4().hex[:12]}"
-        self.sender = sender
+        if config.connect_host and sender is _stdlib_request_sender:
+            def pinned_sender(
+                url: str,
+                body: bytes,
+                headers: Dict[str, str],
+                timeout: float,
+            ) -> int:
+                return _pinned_https_request_sender(
+                    url,
+                    body,
+                    headers,
+                    timeout,
+                    connect_host=config.connect_host,
+                )
+
+            self.sender = pinned_sender
+        else:
+            self.sender = sender
         self.resolver = resolver
 
     def run_cycle(self, *, now: Optional[datetime] = None) -> int:

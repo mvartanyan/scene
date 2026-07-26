@@ -127,6 +127,7 @@ expected_runtime = {
   "SCENE_STATE_BACKEND" => "dynamodb",
   "SCENE_WEBHOOK_ALLOW_PRIVATE_URLS" => "false",
   "SCENE_WEBHOOK_ALLOWED_HOSTS" => "pm.spherical.horse",
+  "SCENE_WEBHOOK_CONNECT_HOST" => "traefik.kube-system.svc.cluster.local",
   "SCENE_WEBHOOK_ENABLED" => "true",
   "SCENE_WEBHOOK_ENDPOINT_ID" => "spm-1",
   "SCENE_WEBHOOK_MAX_AGE_SECONDS" => "86400",
@@ -427,9 +428,12 @@ webhook_policy = policy_for.call("scene-webhook-worker")
 check.call(webhook_policy.dig("spec", "ingress") == [], "webhook worker must accept no ingress")
 webhook_egress = Array(webhook_policy.dig("spec", "egress"))
 webhook_https = webhook_egress.find { |entry| entry.dig("to", 0, "ipBlock", "cidr") == "0.0.0.0/0" } || {}
-check.call(webhook_egress.length == 1, "webhook worker must have only public HTTPS egress")
+webhook_traefik = webhook_egress.find { |entry| entry.dig("to", 0, "namespaceSelector", "matchLabels", "kubernetes.io/metadata.name") == "kube-system" } || {}
+check.call(webhook_egress.length == 2, "webhook worker must have only public HTTPS and internal Traefik TLS egress")
 check.call(Array(webhook_https["ports"]) == [{ "port" => 443, "protocol" => "TCP" }], "webhook worker public egress must be HTTPS only")
 check.call(Array(webhook_https.dig("to", 0, "ipBlock", "except")).sort == private_ranges.sort, "webhook worker egress must exclude private and link-local ranges")
+check.call(webhook_traefik.dig("to", 0, "podSelector", "matchLabels") == { "app.kubernetes.io/instance" => "traefik-kube-system", "app.kubernetes.io/name" => "traefik" }, "webhook worker internal egress must target only kube-system Traefik pods")
+check.call(Array(webhook_traefik["ports"]) == [{ "port" => 8443, "protocol" => "TCP" }], "webhook worker internal Traefik egress must target only TCP port 8443")
 
 runner_policy = policy_for.call("scene-runner")
 check.call(runner_policy.dig("spec", "ingress") == [], "runner must accept no ingress")

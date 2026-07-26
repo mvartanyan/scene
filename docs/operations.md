@@ -47,6 +47,13 @@ lease/configuration readiness probe. The app does not receive or inspect the
 signing secret; only the dedicated worker does. Disabled environments report
 the webhook check as healthy and not required.
 
+Horse k3s routes outbound SPM webhook connections through the in-cluster
+Traefik TLS Service because the node's public load-balancer address is not
+hairpin reachable from SCENE pods. This is a transport override only: the
+worker keeps the public SPM hostname for URL validation, TLS identity, and HTTP
+routing, and its NetworkPolicy admits only the selected Traefik pods on their
+TLS port.
+
 ## Metrics Collection
 
 The retained-state snapshot is deliberately bounded:

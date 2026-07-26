@@ -188,7 +188,12 @@ The non-secret worker settings live in `scene-runtime`:
 - `SCENE_WEBHOOK_POLL_SECONDS=2`;
 - `SCENE_WEBHOOK_ALLOW_PRIVATE_URLS=false`, reinforced by NetworkPolicy;
 - `SCENE_WEBHOOK_ALLOWED_HOSTS=pm.spherical.horse` restricts the production
-  receiver hostname before DNS resolution and connection.
+  receiver hostname before DNS resolution and connection;
+- `SCENE_WEBHOOK_CONNECT_HOST=traefik.kube-system.svc.cluster.local` dials the
+  in-cluster Traefik Service when the node's public address is not hairpin
+  reachable. The request still uses `pm.spherical.horse` for TLS SNI,
+  certificate verification, and the HTTP `Host` header. NetworkPolicy permits
+  only the selected Traefik pods on TCP 8443 for this internal route.
 
 The worker has one replica and uses a durable DynamoDB lease, deterministic
 event IDs, and delivery records. Its readiness probe requires the current pod

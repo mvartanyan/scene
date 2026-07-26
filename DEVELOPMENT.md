@@ -288,6 +288,11 @@
   or the compatibility note `SPM criterion <uuid>; invocation <uuid>`. SCENE
   canonicalizes and freezes the captured IDs, and configuration transfer
   excludes webhook event/delivery history.
+- Horse k3s cannot hairpin from SCENE pods to the node's public load-balancer
+  address. The webhook worker therefore supports a validated connect-host
+  override that dials the internal Traefik TLS Service while preserving the
+  public SPM URL, certificate verification, SNI, and HTTP `Host`. NetworkPolicy
+  limits that route to the selected Traefik pods on TCP 8443.
 - Runner readiness imports the production browser launch helper. Chromium and
   Firefox therefore exercise the same settings as real Jobs, including use of
   mounted `/dev/shm`; Chromium's unsandboxed limitation is explicit and bounded

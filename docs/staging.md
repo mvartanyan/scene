@@ -53,6 +53,9 @@ Required staging variables:
   secret-backed HMAC value for the worker.
 - `SCENE_WEBHOOK_ALLOWED_HOSTS`: comma-separated exact receiver hostnames;
   production k3s uses `pm.spherical.horse`. See `docs/webhooks.md`.
+- `SCENE_WEBHOOK_CONNECT_HOST`: optional transport-only DNS override. Horse k3s
+  uses `traefik.kube-system.svc.cluster.local` while retaining the public SPM
+  hostname for TLS SNI, certificate verification, and the HTTP `Host` header.
 
 k3s uses different settings: `SCENE_RUNNER_BACKEND=k3s`,
 `SCENE_K3S_SERVICE_URL=http://scene.<namespace>.svc.cluster.local`, and

@@ -123,12 +123,22 @@ SCENE_WEBHOOK_MAX_AGE_SECONDS=86400
 SCENE_WEBHOOK_POLL_SECONDS=2
 SCENE_WEBHOOK_ALLOW_PRIVATE_URLS=false
 SCENE_WEBHOOK_ALLOWED_HOSTS=pm.spherical.horse
+SCENE_WEBHOOK_CONNECT_HOST=traefik.kube-system.svc.cluster.local
 ```
 
 `SCENE_WEBHOOK_SECRET` must come from a protected runtime secret and must never
 be committed, printed, or put in an API response. The app needs
 `SCENE_WEBHOOK_ENABLED` for aggregate readiness, but only the worker receives
 the endpoint secret.
+
+`SCENE_WEBHOOK_CONNECT_HOST` is an optional transport-only DNS override for
+clusters that cannot hairpin from a pod to their public load-balancer address.
+The worker still validates the public `SCENE_WEBHOOK_URL`, signs the same body,
+uses the public hostname for TLS SNI and certificate verification, and sends
+the public HTTP `Host` header. Only the TCP destination changes. The horse k3s
+deployment pins this value to the in-cluster Traefik Service and restricts the
+worker to Traefik's TLS pod port with NetworkPolicy. Do not replace the public
+URL with a private HTTP endpoint.
 
 Run the worker directly for a DynamoDB-backed development environment:
 

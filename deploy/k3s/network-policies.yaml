@@ -160,8 +160,9 @@ spec:
     - Egress
   ingress: []
   egress:
-    # The worker needs public HTTPS for DynamoDB and the configured SPM
-    # receiver. Private, link-local, metadata, and loopback ranges stay denied.
+    # Public HTTPS is needed for DynamoDB. The SPM receiver is reached through
+    # Traefik below so the public Host, SNI, and certificate checks stay intact
+    # without depending on public load-balancer hairpin routing.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -174,6 +175,17 @@ spec:
               - 192.168.0.0/16
       ports:
         - port: 443
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: traefik-kube-system
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 8443
           protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1

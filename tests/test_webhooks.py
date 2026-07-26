@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Callable, Dict, Sequence, Tuple
 import pytest
 from pydantic import ValidationError
 
+import app.services.webhooks as webhooks
 from app.schemas import BatchComparisonRunCreate
 from app.services.storage import LocalDynamoStorage, SceneRepository
 from app.services.storage_types import StorageConflictError
@@ -271,6 +273,14 @@ def test_sender_timeout_is_retryable_without_leaking_exception_details() -> None
             "https://hooks.example.test/spm#fragment",
             "webhook_url_query_or_fragment_forbidden",
         ),
+        (
+            "https://hooks.example.test/bad path",
+            "webhook_url_path_invalid",
+        ),
+        (
+            "https://hooks.example.test/\N{SNOWMAN}",
+            "webhook_url_path_invalid",
+        ),
         ("https://hooks.example.test:8443/spm", "webhook_url_port_invalid"),
     ],
 )
@@ -378,6 +388,231 @@ def test_enabled_config_requires_safe_values_and_redacts_the_secret_repr(
         match="webhook_endpoint_id_invalid",
     ):
         load_webhook_config()
+
+
+def test_enabled_config_normalizes_the_internal_tls_connect_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCENE_WEBHOOK_ENABLED", "true")
+    monkeypatch.setenv("SCENE_WEBHOOK_ENDPOINT_ID", "spm-1")
+    monkeypatch.setenv("SCENE_WEBHOOK_URL", "https://127.0.0.1/spm")
+    monkeypatch.setenv("SCENE_WEBHOOK_SECRET", "must-not-appear")
+    monkeypatch.setenv("SCENE_WEBHOOK_ALLOW_PRIVATE_URLS", "true")
+    monkeypatch.setenv("SCENE_WEBHOOK_ALLOWED_HOSTS", "127.0.0.1")
+    monkeypatch.setenv(
+        "SCENE_WEBHOOK_CONNECT_HOST",
+        "Traefik.Kube-System.SVC.Cluster.Local.",
+    )
+
+    config = load_webhook_config()
+
+    assert config.connect_host == "traefik.kube-system.svc.cluster.local"
+
+
+@pytest.mark.parametrize(
+    "connect_host",
+    [
+        "10.43.0.1",
+        "::1",
+        "traefik/path",
+        "-traefik.kube-system.svc.cluster.local",
+    ],
+)
+def test_enabled_config_rejects_an_unsafe_internal_connect_host(
+    connect_host: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCENE_WEBHOOK_ENABLED", "true")
+    monkeypatch.setenv("SCENE_WEBHOOK_ENDPOINT_ID", "spm-1")
+    monkeypatch.setenv("SCENE_WEBHOOK_URL", "https://127.0.0.1/spm")
+    monkeypatch.setenv("SCENE_WEBHOOK_SECRET", "must-not-appear")
+    monkeypatch.setenv("SCENE_WEBHOOK_ALLOW_PRIVATE_URLS", "true")
+    monkeypatch.setenv("SCENE_WEBHOOK_ALLOWED_HOSTS", "127.0.0.1")
+    monkeypatch.setenv("SCENE_WEBHOOK_CONNECT_HOST", connect_host)
+
+    with pytest.raises(
+        WebhookConfigurationError,
+        match="webhook_connect_host_invalid",
+    ):
+        load_webhook_config()
+
+
+def test_internal_connect_host_requires_an_https_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCENE_WEBHOOK_ENABLED", "true")
+    monkeypatch.setenv("SCENE_WEBHOOK_ENDPOINT_ID", "spm-1")
+    monkeypatch.setenv("SCENE_WEBHOOK_URL", "http://127.0.0.1:8080/spm")
+    monkeypatch.setenv("SCENE_WEBHOOK_SECRET", "must-not-appear")
+    monkeypatch.setenv("SCENE_WEBHOOK_ALLOW_PRIVATE_URLS", "true")
+    monkeypatch.setenv("SCENE_WEBHOOK_ALLOWED_HOSTS", "127.0.0.1")
+    monkeypatch.setenv(
+        "SCENE_WEBHOOK_CONNECT_HOST",
+        "traefik.kube-system.svc.cluster.local",
+    )
+
+    with pytest.raises(
+        WebhookConfigurationError,
+        match="webhook_connect_host_requires_https",
+    ):
+        load_webhook_config()
+
+
+def test_pinned_sender_dials_internal_traefik_with_public_tls_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: Dict[str, object] = {}
+
+    class FakeRawSocket:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeTlsSocket:
+        pass
+
+    raw_socket = FakeRawSocket()
+    tls_socket = FakeTlsSocket()
+
+    class FakeTlsContext:
+        def wrap_socket(
+            self,
+            supplied_socket: object,
+            *,
+            server_hostname: str,
+        ) -> object:
+            observed["wrapped_socket"] = supplied_socket
+            observed["server_hostname"] = server_hostname
+            return tls_socket
+
+    class FakeResponse:
+        status = 202
+
+        def read(self, amount: int) -> bytes:
+            observed["response_read"] = amount
+            return b""
+
+    class FakeConnection:
+        def __init__(self, host: str, port: int, timeout: float) -> None:
+            observed["logical_connection"] = (host, port, timeout)
+            self.sock: object | None = None
+
+        def request(
+            self,
+            method: str,
+            path: str,
+            *,
+            body: bytes,
+            headers: Dict[str, str],
+        ) -> None:
+            observed["request"] = (method, path, body, headers)
+            observed["connection_socket"] = self.sock
+
+        def getresponse(self) -> FakeResponse:
+            return FakeResponse()
+
+        def close(self) -> None:
+            observed["closed"] = True
+
+    def create_connection(
+        address: tuple[str, int],
+        *,
+        timeout: float,
+    ) -> FakeRawSocket:
+        observed["dial"] = (address, timeout)
+        return raw_socket
+
+    monkeypatch.setattr(webhooks.socket, "create_connection", create_connection)
+    monkeypatch.setattr(
+        webhooks.ssl,
+        "create_default_context",
+        lambda: FakeTlsContext(),
+    )
+    monkeypatch.setattr(webhooks.http.client, "HTTPConnection", FakeConnection)
+
+    status = webhooks._pinned_https_request_sender(
+        "https://pm.spherical.horse/integrations/scene/1/webhooks",
+        b'{"event_id":"event-1"}',
+        {"X-Scene-Event-Id": "event-1"},
+        7.0,
+        connect_host="traefik.kube-system.svc.cluster.local",
+    )
+
+    assert status == 202
+    assert observed["dial"] == (
+        ("traefik.kube-system.svc.cluster.local", 443),
+        7.0,
+    )
+    assert observed["wrapped_socket"] is raw_socket
+    assert observed["server_hostname"] == "pm.spherical.horse"
+    assert observed["logical_connection"] == ("pm.spherical.horse", 443, 7.0)
+    assert observed["connection_socket"] is tls_socket
+    method, path, body, headers = observed["request"]
+    assert method == "POST"
+    assert path == "/integrations/scene/1/webhooks"
+    assert body == b'{"event_id":"event-1"}'
+    assert headers["Host"] == "pm.spherical.horse"
+    assert headers["X-Scene-Event-Id"] == "event-1"
+    assert observed["response_read"] == 1024
+    assert observed["closed"] is True
+    assert raw_socket.closed is False
+
+
+def test_http_protocol_failure_is_retryable_without_leaking_details() -> None:
+    def disconnected_sender(*_args: object) -> int:
+        raise http.client.RemoteDisconnected("receiver closed with details")
+
+    result = attempt_webhook_delivery(
+        endpoint_url="https://hooks.example.test/spm",
+        event_id="event-123",
+        raw_body=b"{}",
+        secret="shared-secret",
+        timeout_seconds=1.0,
+        resolver=_public_resolver,
+        sender=disconnected_sender,
+    )
+
+    assert result.outcome == "retry"
+    assert result.response_status is None
+    assert result.error_code == "network_error"
+
+
+def test_temporary_public_dns_failure_is_retryable() -> None:
+    def unavailable_resolver(*_args: object, **_kwargs: object) -> object:
+        raise socket.gaierror("temporary resolver details")
+
+    result = attempt_webhook_delivery(
+        endpoint_url="https://hooks.example.test/spm",
+        event_id="event-123",
+        raw_body=b"{}",
+        secret="shared-secret",
+        timeout_seconds=1.0,
+        resolver=unavailable_resolver,
+    )
+
+    assert result.outcome == "retry"
+    assert result.response_status is None
+    assert result.error_code == "webhook_url_dns_unavailable"
+
+
+def test_invalid_http_request_is_a_permanent_safe_failure() -> None:
+    def invalid_sender(*_args: object) -> int:
+        raise http.client.InvalidURL("request details")
+
+    result = attempt_webhook_delivery(
+        endpoint_url="https://hooks.example.test/spm",
+        event_id="event-123",
+        raw_body=b"{}",
+        secret="shared-secret",
+        timeout_seconds=1.0,
+        resolver=_public_resolver,
+        sender=invalid_sender,
+    )
+
+    assert result.outcome == "permanent_failure"
+    assert result.response_status is None
+    assert result.error_code == "webhook_request_invalid"
 
 
 def test_correlation_note_creates_deterministic_lifecycle_outbox(
@@ -659,6 +894,54 @@ def test_worker_persists_spm_success_and_does_not_redeliver(
     assert persisted["attempt_count"] == 1
     assert persisted["last_response_status"] == status
     assert calls == 1
+
+
+def test_worker_uses_the_internal_tls_connect_host_for_its_default_sender(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo, _storage = _repo(tmp_path / "state.json")
+    delivery = _seed_delivery(repo)
+    observed: Dict[str, object] = {}
+
+    def pinned_sender(
+        url: str,
+        body: bytes,
+        headers: Dict[str, str],
+        timeout: float,
+        *,
+        connect_host: str,
+    ) -> int:
+        observed.update(
+            url=url,
+            body=body,
+            headers=headers,
+            timeout=timeout,
+            connect_host=connect_host,
+        )
+        return 202
+
+    monkeypatch.setattr(webhooks, "_pinned_https_request_sender", pinned_sender)
+    worker = WebhookDeliveryWorker(
+        repo,
+        WebhookConfig(
+            enabled=True,
+            endpoint_url="https://hooks.example.test/spm",
+            secret="shared-secret",
+            connect_host="traefik.kube-system.svc.cluster.local",
+        ),
+        owner="worker-a",
+        resolver=_public_resolver,
+    )
+
+    assert worker.run_cycle() == 1
+    persisted = repo.get_webhook_delivery(str(delivery["id"]))
+    assert persisted is not None
+    assert persisted["status"] == "succeeded"
+    assert observed["url"] == "https://hooks.example.test/spm"
+    assert observed["body"] == b'{"event_id":"event-1","event_type":"run.completed"}'
+    assert observed["headers"]["X-Scene-Event-Id"] == "event-1"
+    assert observed["connect_host"] == "traefik.kube-system.svc.cluster.local"
 
 
 def test_worker_stops_at_retry_policy_and_preserves_safe_failure(

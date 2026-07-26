@@ -32,7 +32,9 @@ uv run uvicorn app.main:app --reload
   artifacts, and backend operations at `/metrics`. See `docs/operations.md`.
 - Outbound SCENE-to-SPM run events use a durable DynamoDB outbox, exact-body
   HMAC signing, bounded retries, and redacted delivery history. SPM still reads
-  `/api/runs/{run_id}/result` as canonical state. See `docs/webhooks.md`.
+  `/api/runs/{run_id}/result` as canonical state. Horse k3s keeps the public SPM
+  TLS identity while dialing its internal Traefik Service to avoid unsupported
+  public-address hairpin routing. See `docs/webhooks.md`.
 
 ## Runtime Data Policy
 - `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.
@@ -97,7 +99,10 @@ uv run --extra dev python -m pytest
   markers and sends immutable signed events. Multi-process app/worker
   deployments require DynamoDB; the local JSON adapter remains single-process.
   Webhook-worker health is reported separately so downstream SPM outages do not
-  remove primary app pods needed for callbacks and canonical polling.
+  remove primary app pods needed for callbacks and canonical polling. An
+  optional connect-host override changes only the TCP destination; URL
+  validation, TLS SNI/certificate checks, and the HTTP `Host` remain bound to
+  the configured public receiver.
 - Active k3s runs are not deleted immediately: deletion requests cancellation
   and returns HTTP 409 until dispatcher-owned Job/Secret cleanup completes.
 - Destructive run, batch, and project operations use strongly consistent

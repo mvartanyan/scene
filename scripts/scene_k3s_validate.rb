@@ -306,7 +306,8 @@ check.call(middleware.dig("spec", "basicAuth", "secret") == "scene-ingress-basic
 check.call(middleware.dig("spec", "basicAuth", "removeHeader") == true, "Traefik middleware must remove ingress BasicAuth credentials before proxying")
 spm_ingress = resource.call("IngressRoute", "scene-spm-api")
 spm_routes = Array(spm_ingress.dig("spec", "routes"))
-spm_match = spm_routes.dig(0, "match").to_s.gsub(/\s+/, " ").strip
+spm_match_raw = spm_routes.dig(0, "match").to_s
+spm_match = spm_match_raw.gsub(/\s+/, " ").strip
 expected_spm_paths = [
   'Path(`/healthz`)',
   'Path(`/api/check-candidates`)',
@@ -315,6 +316,7 @@ expected_spm_paths = [
 ]
 check.call(Array(spm_ingress.dig("spec", "entryPoints")) == ["websecure"], "SPM API IngressRoute must use only websecure")
 check.call(spm_routes.length == 1 && spm_routes.dig(0, "kind") == "Rule", "SPM API IngressRoute must contain one bounded HTTP rule")
+check.call(!spm_match_raw.include?("\n"), "SPM API IngressRoute rule must be single-line for Traefik's parser")
 check.call(spm_match.include?('Host(`scene.135.181.140.68.sslip.io`)'), "SPM API IngressRoute must use the agreed sslip.io host")
 check.call(expected_spm_paths.all? { |path| spm_match.include?(path) }, "SPM API IngressRoute must expose only the health, candidate, launch, and result contract")
 check.call(spm_match.scan(/Path(?:Regexp)?\(/).length == expected_spm_paths.length, "SPM API IngressRoute must not expose additional paths")

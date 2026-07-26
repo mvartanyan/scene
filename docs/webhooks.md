@@ -35,8 +35,9 @@ invocation, which creates a new logical SCENE run, instead.
 ## Durable Event Model
 
 Run creation and lifecycle updates append deterministic outbox markers inside
-the same DynamoDB run item as the state transition. The webhook worker later
-materializes each marker into:
+the same DynamoDB run item as the state transition. Legacy offset-free SCENE
+timestamps are interpreted as UTC before a marker becomes immutable. The
+webhook worker later materializes each marker into:
 
 - one immutable event body and SHA-256 checksum;
 - one deterministic delivery per configured endpoint;

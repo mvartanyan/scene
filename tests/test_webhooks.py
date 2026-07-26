@@ -717,6 +717,38 @@ def test_terminal_run_that_never_started_does_not_emit_a_started_event(
     ]
 
 
+def test_webhook_markers_normalize_legacy_naive_run_timestamps_as_utc(
+    tmp_path: Path,
+) -> None:
+    repo, _storage = _repo(tmp_path / "state.json")
+    run = repo.create_run(_run_payload())
+
+    executing = repo.update_run(
+        str(run["id"]),
+        {
+            "status": "executing",
+            "started_at": "2026-07-26T12:35:00",
+        },
+    )
+    assert executing is not None
+    finished = repo.update_run(
+        str(run["id"]),
+        {
+            "status": "finished",
+            "completed_at": "2026-07-26T12:36:00",
+        },
+    )
+    assert finished is not None
+
+    occurred_at = {
+        str(marker["event_type"]): str(marker["occurred_at"])
+        for marker in finished["webhook_outbox"]
+    }
+    assert occurred_at["run.started"] == "2026-07-26T12:35:00+00:00"
+    assert occurred_at["run.completed"] == "2026-07-26T12:36:00+00:00"
+    assert occurred_at["run.threshold_evaluated"] == "2026-07-26T12:36:00+00:00"
+
+
 def test_explicit_spm_correlation_fields_require_and_normalize_real_uuids() -> None:
     payload = BatchComparisonRunCreate.model_validate(
         {

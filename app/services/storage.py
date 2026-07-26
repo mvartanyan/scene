@@ -159,6 +159,11 @@ def _parse_utc_timestamp(value: object) -> Optional[datetime]:
     return parsed.astimezone(timezone.utc)
 
 
+def _webhook_timestamp(value: object) -> str:
+    parsed = _parse_utc_timestamp(value)
+    return (parsed or datetime.now(tz=timezone.utc)).isoformat()
+
+
 def _artifact_records(value: object) -> List[Dict[str, Any]]:
     """Collect persisted artifact metadata without inferring storage prefixes."""
 
@@ -279,7 +284,7 @@ def _append_run_webhook_marker(
     ):
         record["webhook_outbox"] = markers
         return
-    timestamp = str(occurred_at or _utcnow())
+    timestamp = _webhook_timestamp(occurred_at)
     markers.append(
         {
             "event_id": str(

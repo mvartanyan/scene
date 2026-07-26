@@ -94,6 +94,8 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
   state, and worker degradation does not remove the primary app from service.
   Horse k3s dials the internal Traefik TLS Service while retaining the public
   SPM hostname for validation, certificate identity, SNI, and HTTP routing.
+  New lifecycle markers normalize older offset-free SCENE timestamps to UTC
+  before their exact event bodies become immutable.
 - Chromium uses the memory-backed `/dev/shm`, but remains unsandboxed because
   the pinned image cannot start its browser sandbox under the restricted pod
   profile. Runner Jobs compensate with one-execution pods, no AWS/Kubernetes

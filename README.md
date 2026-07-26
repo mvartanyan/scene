@@ -31,10 +31,11 @@ uv run uvicorn app.main:app --reload
   retained state, queues, durations, callbacks, dispatcher/Job lifecycle,
   artifacts, and backend operations at `/metrics`. See `docs/operations.md`.
 - Outbound SCENE-to-SPM run events use a durable DynamoDB outbox, exact-body
-  HMAC signing, bounded retries, and redacted delivery history. SPM still reads
-  `/api/runs/{run_id}/result` as canonical state. Horse k3s keeps the public SPM
-  TLS identity while dialing its internal Traefik Service to avoid unsupported
-  public-address hairpin routing. See `docs/webhooks.md`.
+  HMAC signing, UTC-normalized lifecycle timestamps, bounded retries, and
+  redacted delivery history. SPM still reads `/api/runs/{run_id}/result` as
+  canonical state. Horse k3s keeps the public SPM TLS identity while dialing its
+  internal Traefik Service to avoid unsupported public-address hairpin routing.
+  See `docs/webhooks.md`.
 
 ## Runtime Data Policy
 - `dev.dynamodb.json` is an ignored local data snapshot, not the default mutable development database. It may exist in an established workspace but is not supplied by Git.

@@ -293,6 +293,10 @@
   override that dials the internal Traefik TLS Service while preserving the
   public SPM URL, certificate verification, SNI, and HTTP `Host`. NetworkPolicy
   limits that route to the selected Traefik pods on TCP 8443.
+- Webhook marker creation normalizes legacy offset-free SCENE run timestamps as
+  UTC before immutable event materialization. This keeps the event contract
+  timezone-aware without rewriting historical event bodies or delivery audit
+  records.
 - Runner readiness imports the production browser launch helper. Chromium and
   Firefox therefore exercise the same settings as real Jobs, including use of
   mounted `/dev/shm`; Chromium's unsandboxed limitation is explicit and bounded

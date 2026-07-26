@@ -94,9 +94,11 @@ def _seed_batch(repo: SceneRepository):
 
 
 def test_success_criteria_integration_contract(
+    monkeypatch: pytest.MonkeyPatch,
     client: Tuple[TestClient, SceneRepository],
 ) -> None:
     api, repo = client
+    monkeypatch.setenv("SCENE_HOST_URL", "https://scene.spherical.horse")
     project, task, batch, baseline = _seed_batch(repo)
 
     projects_resp = api.get("/api/projects")
@@ -216,10 +218,10 @@ def test_success_criteria_integration_contract(
         f"execution {failed_execution['id']} diff 5.0000 exceeds threshold 4.0000",
     ]
     assert result["artifact_url"] == (
-        f"http://testserver/artifacts/runs/{run_id}/finished/diff.png"
+        f"https://scene.spherical.horse/artifacts/runs/{run_id}/finished/diff.png"
     )
     assert result["viewer_url"] == (
-        f"http://testserver/runs/{run_id}/executions/"
+        f"https://scene.spherical.horse/runs/{run_id}/executions/"
         f"{finished_execution['id']}/viewer"
     )
     assert result["failure_statuses"] == [

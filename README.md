@@ -94,8 +94,9 @@ uv run --extra dev python -m pytest
   parameters returns a conflict.
 - Horse staging keeps BasicAuth as the temporary human UI gate and exposes a
   separate four-path SPM contract protected by the SCENE Bearer service token.
-  This keeps machine credential rotation independent and preserves public-host
-  viewer/artifact links.
+  The canonical public endpoint is `https://scene.spherical.horse`; SPM may use
+  the existing in-cluster Service for transport while viewer/artifact links
+  remain bound to that public host.
 - `python -m app.services.webhook_worker` materializes correlated run outbox
   markers and sends immutable signed events. Multi-process app/worker
   deployments require DynamoDB; the local JSON adapter remains single-process.

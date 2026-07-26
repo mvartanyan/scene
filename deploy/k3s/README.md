@@ -1,7 +1,7 @@
 # SCENE horse k3s deployment
 
 This Kustomize layout targets namespace `scene` and
-`https://scene.135.181.140.68.sslip.io`. It uses the cluster's Traefik ingress
+`https://scene.spherical.horse`. It uses the cluster's Traefik ingress
 controller and cert-manager `letsencrypt-prod` ClusterIssuer.
 
 The app references `scene-app-aws` and `scene-app-auth`; the dispatcher references
@@ -15,6 +15,10 @@ that route therefore send the SCENE application token in
 bypasses BasicAuth only for health, candidate discovery, comparison launch, and
 canonical result fetch; the application requires Bearer auth for every data
 route in that contract.
+SPM app and worker pods may also call the existing
+`http://scene.scene.svc.cluster.local` Service directly. NetworkPolicy limits
+that path to those two components, the application still enforces Bearer auth,
+and generated viewer/artifact links use the configured public `SCENE_HOST_URL`.
 The `scene-runner` ServiceAccount inherits only `scene-registry` for kubelet image
 pulls. It has no RBAC, does not mount an API token, and runner Jobs receive no AWS
 environment or application Secret references. Only `scene-dispatcher` is bound
@@ -260,10 +264,10 @@ kubectl auth can-i --as=system:serviceaccount:scene:scene-runner create jobs -n 
 kubectl auth can-i --as=system:serviceaccount:scene:scene-runner get secrets -n scene
 kubectl -n scene exec deployment/scene-app -- python -c \
   'import urllib.request; print(urllib.request.urlopen("http://scene.scene.svc.cluster.local/healthz").status)'
-curl -fsS https://scene.135.181.140.68.sslip.io/healthz
-curl -fsS https://scene.135.181.140.68.sslip.io/readyz
-curl -fsS https://scene.135.181.140.68.sslip.io/version
-curl -fsS https://scene.135.181.140.68.sslip.io/metrics
+curl -fsS https://scene.spherical.horse/healthz
+curl -fsS https://scene.spherical.horse/readyz
+curl -fsS https://scene.spherical.horse/version
+curl -fsS https://scene.spherical.horse/metrics
 ```
 
 The general external requests must return `401` without basic auth. `/healthz`

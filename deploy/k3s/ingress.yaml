@@ -1,6 +1,19 @@
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
+  name: scene-https-redirect
+  namespace: scene
+  labels:
+    app.kubernetes.io/name: scene
+    app.kubernetes.io/component: ingress
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
   name: scene-staging-auth
   namespace: scene
   labels:
@@ -28,7 +41,7 @@ spec:
     - kind: Rule
       # This route bypasses only the temporary human BasicAuth gate. The
       # candidate, launch, and result handlers enforce SCENE Bearer auth.
-      match: 'Host(`scene.135.181.140.68.sslip.io`) && (Path(`/healthz`) || Path(`/api/check-candidates`) || PathRegexp(`^/api/batches/[^/]+/comparison-runs$`) || PathRegexp(`^/api/runs/[^/]+/result$`))'
+      match: '(Host(`scene.spherical.horse`) || Host(`scene.135.181.140.68.sslip.io`)) && (Path(`/healthz`) || Path(`/api/check-candidates`) || PathRegexp(`^/api/batches/[^/]+/comparison-runs$`) || PathRegexp(`^/api/runs/[^/]+/result$`))'
       priority: 1000
       services:
         - name: scene
@@ -46,12 +59,20 @@ metadata:
     app.kubernetes.io/component: ingress
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.middlewares: scene-scene-staging-auth@kubernetescrd
-    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: scene-scene-https-redirect@kubernetescrd,scene-scene-staging-auth@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
+    - host: scene.spherical.horse
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: scene
+                port:
+                  name: http
     - host: scene.135.181.140.68.sslip.io
       http:
         paths:
@@ -64,5 +85,6 @@ spec:
                   name: http
   tls:
     - hosts:
+        - scene.spherical.horse
         - scene.135.181.140.68.sslip.io
       secretName: scene-staging-tls

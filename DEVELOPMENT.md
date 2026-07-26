@@ -226,9 +226,10 @@
 - AWS S3 clients force SigV4 regional virtual-hosted endpoints for presigned
   transfers, avoiding the global endpoint's 307 redirect that credential-free
   runner PUTs cannot follow. Custom S3 endpoints retain their supplied routing.
-- The network-isolated staging app trusts Traefik forwarded headers so public
-  artifact and viewer links retain HTTPS; strict manifest validation prevents
-  that proxy setting from silently disappearing.
+- Public artifact and viewer links use the configured `SCENE_HOST_URL`, so they
+  remain canonical when SPM reaches the app through its in-cluster Service.
+  Strict manifest validation pins the horse public host and bounded SPM
+  NetworkPolicy source.
 - Dispatcher memory is requested at 512Mi and capped at 1Gi. Real horse
   comparison callbacks can materialize two tall RGBA screenshots during diff
   finalization, which exceeded the original 512Mi cap despite small PNG files.

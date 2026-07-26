@@ -206,7 +206,13 @@ def _absolute_url(request: Request, url: Optional[str]) -> Optional[str]:
         return None
     if url.startswith(("http://", "https://")):
         return url
-    return urljoin(str(request.base_url), url.lstrip("/"))
+    configured_host = os.environ.get("SCENE_HOST_URL", "").strip()
+    base_url = (
+        f"{configured_host.rstrip('/')}/"
+        if configured_host
+        else str(request.base_url)
+    )
+    return urljoin(base_url, url.lstrip("/"))
 
 
 def _public_artifact_info(request: Request, artifact: Dict[str, object]) -> Dict[str, object]:

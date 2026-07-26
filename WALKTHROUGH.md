@@ -86,7 +86,9 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
 - Auto-scroll relies on detecting the active scroll container; pages that inject bespoke scroll hosts after load may still need bespoke preparatory actions.
 - Temporary staging uses ingress BasicAuth plus a separate SCENE API token for
   humans/MCP, and a bounded Bearer-only route for SPM health, discovery, launch,
-  and result polling. Customer-ready OIDC and run grants remain in SCENE-21.
+  and result polling. SPM transport can use the existing in-cluster Service,
+  while generated links remain on `https://scene.spherical.horse`.
+  Customer-ready OIDC and run grants remain in SCENE-21.
 - The initial outbound webhook deployment supports one environment-configured
   SPM endpoint. Delivery history is inspectable through protected JSON APIs;
   page/batch/test configuration remains in SCENE. Correlated runs are retained

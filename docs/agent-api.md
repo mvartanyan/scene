@@ -43,7 +43,7 @@ For staging requests, keep the two authentication layers separate:
 export SCENE_INGRESS_BASIC_AUTH_USERNAME="scene-reviewer"
 curl --user "$SCENE_INGRESS_BASIC_AUTH_USERNAME" \
   -H "X-SCENE-API-Token: $SCENE_API_TOKEN" \
-  https://scene.135.181.140.68.sslip.io/api/config
+  https://scene.spherical.horse/api/config
 ```
 
 `curl` prompts for the ingress password. The staging public host has a separate,
@@ -256,7 +256,7 @@ For the temporary staging ingress, provide both BasicAuth variables in the MCP
 process environment as secrets:
 
 ```bash
-export SCENE_BASE_URL="https://scene.135.181.140.68.sslip.io"
+export SCENE_BASE_URL="https://scene.spherical.horse"
 export SCENE_API_TOKEN="replace-with-app-token"
 export SCENE_INGRESS_BASIC_AUTH_USERNAME="scene-reviewer"
 export SCENE_INGRESS_BASIC_AUTH_PASSWORD="replace-with-ingress-password"

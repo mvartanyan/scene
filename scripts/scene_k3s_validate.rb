@@ -9,7 +9,8 @@ require "yaml"
 
 options = {
   directory: Pathname.new(__dir__).join("..", "deploy", "k3s").cleanpath,
-  strict: false
+  strict: false,
+  secondary_host: nil
 }
 
 OptionParser.new do |parser|
@@ -20,11 +21,24 @@ OptionParser.new do |parser|
   parser.on("--strict", "Reject every committed non-runnable deployment placeholder") do
     options[:strict] = true
   end
+  parser.on("--secondary-host HOST", String, "Allow one temporary secondary ingress host") do |host|
+    options[:secondary_host] = host.strip
+  end
 end.parse!
 
 errors = []
 warnings = []
 check = lambda { |condition, message| errors << message unless condition }
+canonical_host = "scene.spherical.horse"
+secondary_host = options[:secondary_host]
+check.call(
+  secondary_host.nil? || (
+    secondary_host.match?(/\A[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\z/) &&
+    secondary_host != canonical_host
+  ),
+  "--secondary-host must be a distinct lowercase DNS hostname"
+)
+expected_ingress_hosts = [canonical_host, secondary_host].compact
 
 unless system("command", "-v", "kubectl", out: File::NULL, err: File::NULL)
   warn "ERROR: kubectl with built-in Kustomize support is required"
@@ -114,8 +128,10 @@ runtime_data = runtime.fetch("data", {})
 expected_runtime = {
   "AWS_REGION" => "eu-central-1",
   "SCENE_ARTIFACT_STORAGE" => "s3",
+  "SCENE_BASE_URL" => "https://#{canonical_host}",
   "SCENE_DYNAMODB_TABLE" => "scene-staging",
   "SCENE_ENV" => "staging",
+  "SCENE_HOST_URL" => "https://#{canonical_host}",
   "SCENE_K3S_NAMESPACE" => "scene",
   "SCENE_K3S_RUNNER_SERVICE_ACCOUNT" => "scene-runner",
   "SCENE_K3S_SERVICE_URL" => "http://scene.scene.svc.cluster.local",
@@ -349,14 +365,28 @@ check.call(service.dig("spec", "ports", 0, "port") == 80, "scene Service must ex
 check.call(service.dig("spec", "ports", 0, "targetPort") == "http", "scene Service must target the named app port")
 check.call(service.dig("spec", "selector", "app.kubernetes.io/component") == "app", "scene Service must select app pods")
 ingress = resource.call("Ingress", "scene")
-host = ingress.dig("spec", "rules", 0, "host")
-check.call(host == "scene.135.181.140.68.sslip.io", "Ingress must use the agreed sslip.io host")
+ingress_hosts = Array(ingress.dig("spec", "rules")).map { |rule| rule["host"] }
+tls_hosts = Array(ingress.dig("spec", "tls")).flat_map { |entry| Array(entry["hosts"]) }
+check.call(ingress_hosts == expected_ingress_hosts, "Ingress hosts must match the canonical and optional secondary hosts")
+check.call(tls_hosts == expected_ingress_hosts, "Ingress TLS hosts must match the canonical and optional secondary hosts")
 check.call(ingress.dig("spec", "ingressClassName") == "traefik", "Ingress class must be traefik")
 check.call(ingress.dig("metadata", "annotations", "cert-manager.io/cluster-issuer") == "letsencrypt-prod", "Ingress must request TLS through cert-manager")
 check.call(ingress.dig("spec", "tls", 0, "secretName") == "scene-staging-tls", "Ingress must use scene-staging-tls")
+redirect = resource.call("Middleware", "scene-https-redirect")
+check.call(redirect.dig("spec", "redirectScheme", "scheme") == "https", "redirect middleware must target HTTPS")
+check.call(redirect.dig("spec", "redirectScheme", "permanent") == true, "redirect middleware must be permanent")
 middleware = resource.call("Middleware", "scene-staging-auth")
 check.call(middleware.dig("spec", "basicAuth", "secret") == "scene-ingress-basic-auth", "Traefik middleware must reference the external basic-auth Secret")
 check.call(middleware.dig("spec", "basicAuth", "removeHeader") == true, "Traefik middleware must remove ingress BasicAuth credentials before proxying")
+expected_middleware_chain = "scene-scene-https-redirect@kubernetescrd,scene-scene-staging-auth@kubernetescrd"
+check.call(
+  ingress.dig("metadata", "annotations", "traefik.ingress.kubernetes.io/router.middlewares") == expected_middleware_chain,
+  "Ingress must redirect to HTTPS before applying BasicAuth"
+)
+check.call(
+  !ingress.fetch("metadata", {}).fetch("annotations", {}).key?("traefik.ingress.kubernetes.io/router.entrypoints"),
+  "Ingress must use Traefik's HTTP and HTTPS entrypoints"
+)
 spm_ingress = resource.call("IngressRoute", "scene-spm-api")
 spm_routes = Array(spm_ingress.dig("spec", "routes"))
 spm_match_raw = spm_routes.dig(0, "match").to_s
@@ -370,7 +400,10 @@ expected_spm_paths = [
 check.call(Array(spm_ingress.dig("spec", "entryPoints")) == ["websecure"], "SPM API IngressRoute must use only websecure")
 check.call(spm_routes.length == 1 && spm_routes.dig(0, "kind") == "Rule", "SPM API IngressRoute must contain one bounded HTTP rule")
 check.call(!spm_match_raw.include?("\n"), "SPM API IngressRoute rule must be single-line for Traefik's parser")
-check.call(spm_match.include?('Host(`scene.135.181.140.68.sslip.io`)'), "SPM API IngressRoute must use the agreed sslip.io host")
+expected_ingress_hosts.each do |host|
+  check.call(spm_match.include?("Host(`#{host}`)"), "SPM API IngressRoute must include host #{host}")
+end
+check.call(spm_match.scan(/Host\(`/).length == expected_ingress_hosts.length, "SPM API IngressRoute must not expose additional hosts")
 check.call(expected_spm_paths.all? { |path| spm_match.include?(path) }, "SPM API IngressRoute must expose only the health, candidate, launch, and result contract")
 check.call(spm_match.scan(/Path(?:Regexp)?\(/).length == expected_spm_paths.length, "SPM API IngressRoute must not expose additional paths")
 check.call(spm_routes.dig(0, "priority").to_i >= 1000, "SPM API IngressRoute must outrank the BasicAuth catch-all")
@@ -408,9 +441,19 @@ app_policy = policy_for.call("scene-app")
 app_sources = Array(app_policy.dig("spec", "ingress", 0, "from"))
 traefik_source = app_sources.find { |source| source.dig("podSelector", "matchLabels", "app.kubernetes.io/name") == "traefik" } || {}
 runner_source = app_sources.find { |source| source.dig("podSelector", "matchLabels", "app.kubernetes.io/component") == "runner" } || {}
-check.call(app_sources.length == 2, "app ingress must allow only Traefik and SCENE runner pods")
+spm_source = app_sources.find do |source|
+  source.dig("namespaceSelector", "matchLabels", "kubernetes.io/metadata.name") == "spherical-pm"
+end || {}
+check.call(app_sources.length == 3, "app ingress must allow only Traefik, SCENE runner, and SPM integration pods")
 check.call(traefik_source.dig("namespaceSelector", "matchLabels", "kubernetes.io/metadata.name") == "kube-system", "Traefik ingress must be constrained to kube-system")
 check.call(runner_source.dig("podSelector", "matchLabels", "app.kubernetes.io/name") == "scene" && !runner_source.key?("namespaceSelector"), "runner callbacks must be constrained to runner pods in the scene namespace")
+spm_expression = Array(spm_source.dig("podSelector", "matchExpressions")).find do |expression|
+  expression["key"] == "app.kubernetes.io/component"
+end || {}
+check.call(
+  spm_expression["operator"] == "In" && Array(spm_expression["values"]).sort == %w[app worker],
+  "SPM ingress must be constrained to app and worker pods"
+)
 app_external = Array(app_policy.dig("spec", "egress")).find { |entry| entry.dig("to", 0, "ipBlock", "cidr") == "0.0.0.0/0" } || {}
 check.call(Array(app_external.dig("to", 0, "ipBlock", "except")).sort == private_ranges.sort, "app HTTPS egress must exclude private and link-local ranges")
 check.call(Array(app_external["ports"]) == [{ "port" => 443, "protocol" => "TCP" }], "app external egress must be HTTPS only")

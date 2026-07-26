@@ -617,6 +617,12 @@ async def get_agent_manifest() -> AgentManifest:
             auth_required=True,
         ),
         AgentManifestEndpoint(
+            method="GET",
+            path="/api/check-candidates",
+            description="List configured batches that can be used as SPM success criteria.",
+            auth_required=True,
+        ),
+        AgentManifestEndpoint(
             method="POST",
             path="/api/batches/{batch_id}/comparison-runs",
             description="Launch an unattended comparison run from a completed baseline.",
@@ -632,6 +638,7 @@ async def get_agent_manifest() -> AgentManifest:
             method="GET",
             path="/api/runs/{run_id}/result",
             description="Read SPM-friendly run metrics, thresholds, failures, and artifact links.",
+            auth_required=True,
         ),
         AgentManifestEndpoint(
             method="GET",
@@ -1137,6 +1144,7 @@ async def delete_batch(
 async def list_check_candidates(
     project_id: Optional[str] = None,
     repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> List[CheckCandidate]:
     if project_id:
         _ensure_project(repo, project_id)
@@ -1155,7 +1163,9 @@ async def list_check_candidates(
     response_model=List[CheckCandidate],
 )
 async def list_project_check_candidates(
-    project_id: str, repo: SceneRepository = RepositoryDep
+    project_id: str,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> List[CheckCandidate]:
     _ensure_project(repo, project_id)
     return [_build_check_candidate(repo, batch) for batch in repo.list_batches(project_id)]
@@ -1306,7 +1316,10 @@ async def get_run_detail(run_id: str, repo: SceneRepository = RepositoryDep) -> 
 
 @router.get("/runs/{run_id}/result", response_model=IntegrationRunResult)
 async def get_run_result(
-    run_id: str, request: Request, repo: SceneRepository = RepositoryDep
+    run_id: str,
+    request: Request,
+    repo: SceneRepository = RepositoryDep,
+    _auth: None = AgentAuthDep,
 ) -> IntegrationRunResult:
     record = repo.get_run(run_id)
     if not record:

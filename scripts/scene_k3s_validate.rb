@@ -304,6 +304,24 @@ check.call(ingress.dig("spec", "tls", 0, "secretName") == "scene-staging-tls", "
 middleware = resource.call("Middleware", "scene-staging-auth")
 check.call(middleware.dig("spec", "basicAuth", "secret") == "scene-ingress-basic-auth", "Traefik middleware must reference the external basic-auth Secret")
 check.call(middleware.dig("spec", "basicAuth", "removeHeader") == true, "Traefik middleware must remove ingress BasicAuth credentials before proxying")
+spm_ingress = resource.call("IngressRoute", "scene-spm-api")
+spm_routes = Array(spm_ingress.dig("spec", "routes"))
+spm_match = spm_routes.dig(0, "match").to_s.gsub(/\s+/, " ").strip
+expected_spm_paths = [
+  'Path(`/healthz`)',
+  'Path(`/api/check-candidates`)',
+  'PathRegexp(`^/api/batches/[^/]+/comparison-runs$`)',
+  'PathRegexp(`^/api/runs/[^/]+/result$`)'
+]
+check.call(Array(spm_ingress.dig("spec", "entryPoints")) == ["websecure"], "SPM API IngressRoute must use only websecure")
+check.call(spm_routes.length == 1 && spm_routes.dig(0, "kind") == "Rule", "SPM API IngressRoute must contain one bounded HTTP rule")
+check.call(spm_match.include?('Host(`scene.135.181.140.68.sslip.io`)'), "SPM API IngressRoute must use the agreed sslip.io host")
+check.call(expected_spm_paths.all? { |path| spm_match.include?(path) }, "SPM API IngressRoute must expose only the health, candidate, launch, and result contract")
+check.call(spm_match.scan(/Path(?:Regexp)?\(/).length == expected_spm_paths.length, "SPM API IngressRoute must not expose additional paths")
+check.call(spm_routes.dig(0, "priority").to_i >= 1000, "SPM API IngressRoute must outrank the BasicAuth catch-all")
+check.call(spm_routes.dig(0, "middlewares").nil?, "SPM API IngressRoute must forward Bearer auth without BasicAuth middleware")
+check.call(spm_routes.dig(0, "services") == [{ "name" => "scene", "port" => 80 }], "SPM API IngressRoute must target only the SCENE service")
+check.call(spm_ingress.dig("spec", "tls", "secretName") == "scene-staging-tls", "SPM API IngressRoute must use scene-staging-tls")
 
 resource.call("PodDisruptionBudget", "scene-app")
 pdb = resource.call("PodDisruptionBudget", "scene-app")

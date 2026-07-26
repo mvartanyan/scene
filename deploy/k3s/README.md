@@ -7,10 +7,13 @@ controller and cert-manager `letsencrypt-prod` ClusterIssuer.
 The app references `scene-app-aws` and `scene-app-auth`; the dispatcher references
 only `scene-app-aws`. The Traefik middleware references
 `scene-ingress-basic-auth`. The manifests never create or render those Secrets.
-The middleware protects every external path and removes its BasicAuth
-`Authorization` header before proxying. External API/MCP clients therefore send
-the SCENE application token in `X-SCENE-API-Token`; direct clients can continue
-to use Bearer auth.
+The middleware protects the human UI and general API surface and removes its
+BasicAuth `Authorization` header before proxying. External MCP clients using
+that route therefore send the SCENE application token in
+`X-SCENE-API-Token`. A separate high-priority `scene-spm-api` IngressRoute
+bypasses BasicAuth only for health, candidate discovery, comparison launch, and
+canonical result fetch; the application requires Bearer auth for every data
+route in that contract.
 The `scene-runner` ServiceAccount inherits only `scene-registry` for kubelet image
 pulls. It has no RBAC, does not mount an API token, and runner Jobs receive no AWS
 environment or application Secret references. Only `scene-dispatcher` is bound
@@ -192,8 +195,11 @@ curl -fsS https://scene.135.181.140.68.sslip.io/version
 curl -fsS https://scene.135.181.140.68.sslip.io/metrics
 ```
 
-The external requests must return `401` without basic auth. Use `curl -u
-scene-reviewer` to enter the password interactively for authorized checks.
+The general external requests must return `401` without basic auth. `/healthz`
+is intentionally public for SPM connectivity checks. The other paths on the
+narrow SPM route must return application `401` without a Bearer token, `403`
+with a wrong token, and success with the SCENE service token. Use `curl -u
+scene-reviewer` to enter the password interactively for authorized human checks.
 For a protected application mutation, use the same interactive BasicAuth prompt
 and add `X-SCENE-API-Token: $SCENE_API_TOKEN`; do not attempt to send Bearer and
 Basic credentials in the single `Authorization` header. Configure MCP with the
@@ -210,7 +216,8 @@ runner Job specs have no `AWS_*` variables, API token, Docker socket, or
 `host.docker.internal`, and that callbacks use
 `http://scene.scene.svc.cluster.local`.
 
-The metrics request must also require ingress authorization. Verify
+The metrics request and every path outside the four-route SPM contract must
+still require ingress authorization. Verify
 `scene_metrics_collection_available 1`, zero truncation at the current staging
 volume, the deployed `scene_build_info`, nonzero retained run/execution
 families, and fresh dispatcher counters. Backend operation metrics are

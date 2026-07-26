@@ -268,6 +268,10 @@
 - Temporary staging BasicAuth and SCENE application tokens use separate HTTP
   headers. MCP supports paired ingress credentials without putting them in URLs,
   while direct clients retain Bearer authentication.
+- SPM automation uses a dedicated high-priority Traefik route limited to
+  `/healthz`, candidate discovery, comparison launch, and canonical result
+  polling. Candidate/result reads enforce the same constant-time Bearer token
+  check as mutations, while the catch-all human UI remains behind BasicAuth.
 - Runner readiness imports the production browser launch helper. Chromium and
   Firefox therefore exercise the same settings as real Jobs, including use of
   mounted `/dev/shm`; Chromium's unsandboxed limitation is explicit and bounded

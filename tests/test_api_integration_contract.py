@@ -236,6 +236,39 @@ def test_success_criteria_integration_contract(
     ]
 
 
+def test_spm_polling_reads_require_bearer_auth_when_configured(
+    monkeypatch,
+    client: Tuple[TestClient, SceneRepository],
+) -> None:
+    api, repo = client
+    project, _task, batch, baseline = _seed_batch(repo)
+    run = repo.create_run(
+        {
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "baseline_id": baseline["id"],
+            "purpose": "comparison",
+        }
+    )
+    monkeypatch.setenv("SCENE_API_TOKEN", "spm-service-token")
+
+    candidate_path = f"/api/check-candidates?project_id={project['id']}"
+    project_candidate_path = f"/api/projects/{project['id']}/check-candidates"
+    result_path = f"/api/runs/{run['id']}/result"
+    headers = {"Authorization": "Bearer spm-service-token"}
+
+    for path in (candidate_path, project_candidate_path, result_path):
+        missing = api.get(path)
+        assert missing.status_code == 401
+        assert missing.headers["www-authenticate"] == "Bearer"
+
+        invalid = api.get(path, headers={"Authorization": "Bearer wrong"})
+        assert invalid.status_code == 403
+
+        accepted = api.get(path, headers=headers)
+        assert accepted.status_code == 200
+
+
 def test_batch_comparison_run_requires_completed_baseline(
     client: Tuple[TestClient, SceneRepository],
 ) -> None:

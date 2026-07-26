@@ -147,7 +147,10 @@ SCENE_BASE_URL="$SCENE_HOST_URL" SCENE_API_TOKEN="$SCENE_API_TOKEN" python -m sc
 The app serves the agent docs at `/api/agent/docs` and OpenAPI at
 `/openapi.json`. Keep page, batch, threshold, baseline, and artifact
 configuration in SCENE; SPM should reference SCENE batches and consume
-`/api/runs/{run_id}/result`.
+`/api/runs/{run_id}/result`. Human and MCP access continues through BasicAuth
+plus `X-SCENE-API-Token`. SPM uses the public staging base URL with its dedicated
+Bearer service token; a bounded Traefik route forwards that header only for
+health, candidate discovery, comparison launch, and canonical result fetch.
 
 The script prints JSON with the staging URL, project/batch IDs, run IDs,
 baseline ID, execution count, diff percentages, and artifact readback URL.

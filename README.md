@@ -80,6 +80,10 @@ uv run --extra dev python -m pytest
 - REST/SPM callers should provide `idempotency_key` when launching a run. A
   retried request returns the same run; reusing the key for different launch
   parameters returns a conflict.
+- Horse staging keeps BasicAuth as the temporary human UI gate and exposes a
+  separate four-path SPM contract protected by the SCENE Bearer service token.
+  This keeps machine credential rotation independent and preserves public-host
+  viewer/artifact links.
 - Active k3s runs are not deleted immediately: deletion requests cancellation
   and returns HTTP 409 until dispatcher-owned Job/Secret cleanup completes.
 - Destructive run, batch, and project operations use strongly consistent

@@ -17,13 +17,13 @@ supported tool names.
 
 ## Authentication
 
-Set `SCENE_API_TOKEN` on the SCENE app to require token auth for mutation and
-control endpoints. Direct clients should use a Bearer token. The same token is
-also accepted in `X-SCENE-API-Token` so a staging client can use HTTP Basic in
-`Authorization` at the Traefik ingress without losing SCENE application auth.
-Read-only endpoints remain unauthenticated at the application layer so agents
-can discover projects, batches, and run results; the staging ingress still
-requires HTTP Basic for every path, including those reads.
+Set `SCENE_API_TOKEN` on the SCENE app to require token auth for mutation,
+control, SPM candidate-discovery, and canonical-result endpoints. Direct clients
+should use a Bearer token. The same token is also accepted in
+`X-SCENE-API-Token` so a human or MCP staging client can use HTTP Basic in
+`Authorization` without losing SCENE application auth. Other read-only endpoints
+remain unauthenticated at the application layer but stay behind staging
+BasicAuth.
 
 ```bash
 export SCENE_API_TOKEN="replace-with-staging-token"
@@ -46,8 +46,10 @@ curl --user "$SCENE_INGRESS_BASIC_AUTH_USERNAME" \
   https://scene.135.181.140.68.sslip.io/api/config
 ```
 
-`curl` prompts for the ingress password. Bearer auth remains supported when
-calling SCENE directly or through an ingress that does not require BasicAuth.
+`curl` prompts for the ingress password. The staging public host has a separate,
+narrow Bearer route for SPM that exposes only `/healthz`, candidate discovery,
+comparison launch, and canonical result fetch. All other public paths retain
+the human BasicAuth gate.
 
 ## Configure SCENE
 
@@ -125,7 +127,8 @@ curl http://127.0.0.1:8000/api/batches
 List batches suitable for SPM success criteria:
 
 ```bash
-curl "http://127.0.0.1:8000/api/check-candidates?project_id=<project-id>"
+curl -H "Authorization: Bearer $SCENE_API_TOKEN" \
+  "http://127.0.0.1:8000/api/check-candidates?project_id=<project-id>"
 ```
 
 Record a baseline:
@@ -185,7 +188,8 @@ Read status and results:
 
 ```bash
 curl http://127.0.0.1:8000/api/runs/<run-id>/detail
-curl http://127.0.0.1:8000/api/runs/<run-id>/result
+curl -H "Authorization: Bearer $SCENE_API_TOKEN" \
+  http://127.0.0.1:8000/api/runs/<run-id>/result
 curl http://127.0.0.1:8000/api/runs/<run-id>/artifacts
 ```
 

@@ -79,8 +79,9 @@ Refer to `DEVELOPMENT.md` for chronological implementation notes, outstanding is
 - The run detail modal refreshes only while open; occasional flicker remains while polling. Debounce or SSE-based updates are possible future improvements.
 - Project page/task tabs are lazy and paginated, but batch membership editors intentionally render the full task set inside a bounded scroll area so operators can review and edit membership in one form.
 - Auto-scroll relies on detecting the active scroll container; pages that inject bespoke scroll hosts after load may still need bespoke preparatory actions.
-- Temporary staging uses ingress BasicAuth plus a separate SCENE API token
-  header; customer-ready OIDC and run grants remain in SCENE-21.
+- Temporary staging uses ingress BasicAuth plus a separate SCENE API token for
+  humans/MCP, and a bounded Bearer-only route for SPM health, discovery, launch,
+  and result polling. Customer-ready OIDC and run grants remain in SCENE-21.
 - Chromium uses the memory-backed `/dev/shm`, but remains unsandboxed because
   the pinned image cannot start its browser sandbox under the restricted pod
   profile. Runner Jobs compensate with one-execution pods, no AWS/Kubernetes

@@ -41,7 +41,7 @@ spec:
     - kind: Rule
       # This route bypasses only the temporary human BasicAuth gate. The
       # candidate, launch, and result handlers enforce SCENE Bearer auth.
-      match: '(Host(`scene.spherical.horse`) || Host(`scene.135.181.140.68.sslip.io`)) && (Path(`/healthz`) || Path(`/api/check-candidates`) || PathRegexp(`^/api/batches/[^/]+/comparison-runs$`) || PathRegexp(`^/api/runs/[^/]+/result$`))'
+      match: 'Host(`scene.spherical.horse`) && (Path(`/healthz`) || Path(`/api/check-candidates`) || PathRegexp(`^/api/batches/[^/]+/comparison-runs$`) || PathRegexp(`^/api/runs/[^/]+/result$`))'
       priority: 1000
       services:
         - name: scene
@@ -73,18 +73,7 @@ spec:
                 name: scene
                 port:
                   name: http
-    - host: scene.135.181.140.68.sslip.io
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: scene
-                port:
-                  name: http
   tls:
     - hosts:
         - scene.spherical.horse
-        - scene.135.181.140.68.sslip.io
       secretName: scene-staging-tls

@@ -304,6 +304,11 @@
   by the restricted, credential-free per-execution pod. SCENE-22 tracks the
   supported-image upgrade and long-term sandbox/isolation posture.
 - SCENE-17 adds bounded large-project behaviour: project tabs load independently, page/task lists use 25-item pages, run history uses 25-item pages, and execution overlays use 50-item pages while retaining direct execution navigation.
+- SCENE-25 makes the published execution `viewer_url` usable outside the Runs
+  dashboard. Normal navigation renders a complete SCENE document with viewer
+  styles and scripts; requests carrying `HX-Request: true` retain the existing
+  modal fragment. The response varies on that header, and shared viewer
+  initialization now runs on both entry paths.
 - The deterministic frontend quality gate now selects Chromium's new headless
   implementation. The pinned old-headless process aborts intermittently on
   current macOS before page setup; new-headless completes the same suite and

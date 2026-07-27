@@ -1156,6 +1156,7 @@
     state.selectedRunId = selectedFromDom();
     setupModals();
     setupLaunchForm();
+    initExecutionViewer(document.getElementById("execution-viewer-content"));
     highlightRunSelection();
     syncFilterSelected();
     showToasts(document);

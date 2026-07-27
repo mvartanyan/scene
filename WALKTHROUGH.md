@@ -42,6 +42,7 @@ The UI is organised into three primary areas:
 3. **Observe progress**: the run log polls every 5s. Run history is paginated at 25 rows and each execution overlay at 50 rows, keeping periodic responses bounded. Selecting an entry opens the modal, displaying execution status and artifact links; direct execution links continue to work across pages.
 4. **Inspect artifacts**: each execution exposes Observed/Baseline/Diff/Heatmap downloads and in-app viewers; trace/log/video are available when captured.
    - The execution viewer now keeps metadata pinned, with Observed/Baseline/Reference/Diff/Heatmap/Slider modes. Reference mode uses the same image-compare slider as Baseline so the layouts stay identical.
+   - Viewer links returned to SPM open as full styled SCENE pages. Opening a viewer from the Runs dashboard still loads the shared content inside its modal.
 5. **Reconcile configuration**: update browsers/viewports or the default timeout in the Config modal as requirements evolve.
 
 ## Files & Directories

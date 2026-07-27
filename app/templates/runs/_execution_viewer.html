@@ -15,7 +15,7 @@
 {% set video_art = artifacts.get("video") %}
 {% set log_art = artifacts.get("log") %}
 
-<div class="modal-header">
+<div class="{% if standalone %}execution-viewer-page-header mb-3{% else %}modal-header{% endif %}">
   <div>
     <h5 class="modal-title mb-0">
       {{ execution.task_name }} · {{ execution.browser }} · {{ execution.viewport.width }}×{{ execution.viewport.height }}
@@ -24,7 +24,9 @@
       Run {{ run.id[:8] }} · Execution {{ execution.id[:8] }} · {{ execution.status.replace("_", " ") | title }}
     </div>
   </div>
-  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  {% if not standalone %}
+    <button type="button" class="btn-close" data-bs-dismiss="modal" data-role="viewer-close" aria-label="Close"></button>
+  {% endif %}
 </div>
 
 {% if observed %}
@@ -37,12 +39,19 @@
   {% set initial_mode = 'observed' %}
 {% endif %}
 
-<div class="modal-body">
+<div class="{% if standalone %}execution-viewer-page-body{% else %}modal-body{% endif %}">
   <style>
     #executionViewerModal .modal-dialog {
       max-width: min(96vw, 1600px);
     }
-    .modal-body {
+    .execution-viewer-page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    #execution-viewer-content > .modal-body,
+    #execution-viewer-content > .execution-viewer-page-body {
       padding-bottom: 0;
       overflow: hidden;
     }

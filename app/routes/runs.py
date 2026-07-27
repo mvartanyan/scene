@@ -833,11 +833,15 @@ async def execution_viewer(
         "run_diff_threshold": run_context.get("run_diff_threshold"),
         "artifact_dimensions": artifact_dimensions,
     }
-    return templates.TemplateResponse(
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
+    context["standalone"] = not is_htmx
+    response = templates.TemplateResponse(
         request=request,
-        name="runs/_execution_viewer.html",
+        name="runs/_execution_viewer.html" if is_htmx else "runs/execution_viewer.html",
         context=context,
     )
+    response.headers["Vary"] = "HX-Request"
+    return response
 
 
 @router.get("/runs/{run_id}/executions/{execution_id}/log", response_class=HTMLResponse)

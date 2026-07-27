@@ -119,6 +119,37 @@ async function openSeededRunModal(page: Page, runId: string): Promise<void> {
 }
 
 test.describe('Runs dashboard', () => {
+  test('renders a published execution viewer as a complete standalone page', async ({
+    page,
+    request,
+  }) => {
+    const seeded = await seedRun(request);
+    try {
+      const executionId = await waitForRunExecution(request, seeded.runId);
+      const pageErrors: string[] = [];
+      page.on('pageerror', (error) => pageErrors.push(error.message));
+
+      await page.goto(`/runs/${seeded.runId}/executions/${executionId}/viewer`);
+
+      await expect(page.getByTestId('standalone-execution-viewer')).toBeVisible();
+      await expect(page.locator('link[href$="/static/styles.css"]')).toHaveCount(1);
+      await expect(page.locator('script[src$="/static/run-dashboard.js"]')).toHaveCount(1);
+      await expect(page.locator('[data-role="viewer-close"]')).toHaveCount(0);
+
+      const viewerRoot = page.locator('[data-role="viewer-root"]');
+      await expect(viewerRoot).toHaveAttribute('data-scene-viewer-init', '1');
+      await expect(viewerRoot.locator('.viewer-metadata')).toHaveCSS('position', 'sticky');
+      expect(pageErrors).toEqual([]);
+
+      await openSeededRunModal(page, seeded.runId);
+      await page.locator(`[data-execution-id="${executionId}"]`).first().click();
+      await expect(page.locator('#executionViewerModal')).toBeVisible();
+      await expect(page.locator('#executionViewerModal [data-role="viewer-close"]')).toBeVisible();
+    } finally {
+      await request.delete(`${apiBase}/projects/${seeded.projectId}`);
+    }
+  });
+
   test('keeps the run modal stable while the run log refreshes', async ({
     page,
     request,

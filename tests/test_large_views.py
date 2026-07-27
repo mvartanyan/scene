@@ -233,3 +233,22 @@ def test_run_and_execution_views_have_bounded_payloads(
     viewer = client.get("/runs/run-000/executions/execution-124/viewer")
     assert viewer.status_code == 200
     assert "Task 124" in viewer.text
+    assert "<!DOCTYPE html>" in viewer.text
+    assert 'data-testid="standalone-execution-viewer"' in viewer.text
+    assert "/static/styles.css" in viewer.text
+    assert "/static/vendor/image-compare-viewer.css" in viewer.text
+    assert "/static/run-dashboard.js" in viewer.text
+    assert 'data-role="viewer-close"' not in viewer.text
+    assert viewer.headers["vary"] == "HX-Request"
+
+    viewer_fragment = client.get(
+        "/runs/run-000/executions/execution-124/viewer",
+        headers={"HX-Request": "true"},
+    )
+    assert viewer_fragment.status_code == 200
+    assert "Task 124" in viewer_fragment.text
+    assert "<!DOCTYPE html>" not in viewer_fragment.text
+    assert 'data-testid="standalone-execution-viewer"' not in viewer_fragment.text
+    assert 'data-role="viewer-root"' in viewer_fragment.text
+    assert 'data-role="viewer-close"' in viewer_fragment.text
+    assert viewer_fragment.headers["vary"] == "HX-Request"
